@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { generateSector } from '../gen/sector/generate'
 import { hashSeed } from '../gen/rng'
 import type { SectorParams } from '../gen/types'
@@ -17,6 +17,11 @@ export function App() {
   const [params, setParams] = useState<SectorParams>(() =>
     paramsFromSearch(window.location.search, randomSeed()),
   )
+
+  useEffect(() => {
+    window.history.replaceState(null, '', paramsToSearch(params))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const update = (p: SectorParams) => {
     setParams(p)
