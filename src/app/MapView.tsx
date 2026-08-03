@@ -32,6 +32,7 @@ export function MapView({ svg, onZoom }: { svg: string; onZoom?: (zoom: number) 
       onPointerUp={() => (drag.current = null)}
     >
       <div
+        className="map-viewport"
         style={{
           transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`,
           transformOrigin: '0 0',

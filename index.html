@@ -4,7 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SprawlForge</title>
-    <style>body{margin:0}</style>
+    <style>
+      body{margin:0}
+      /* injected map svg fits its viewport (letterboxed), zoom starts at whole-map */
+      .map-viewport svg{width:100%;height:100%;display:block}
+    </style>
   </head>
   <body>
     <div id="root"></div>
