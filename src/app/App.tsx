@@ -4,7 +4,6 @@ import { hashSeed } from '../gen/rng'
 import type { SectorParams } from '../gen/types'
 import { renderSector } from '../render/svg'
 import { getTheme } from '../render/theme'
-import { downloadPdf, downloadPng, downloadSvg } from './exports'
 import { KnobPanel } from './KnobPanel'
 import { MapView } from './MapView'
 import { paramsFromSearch, paramsToSearch } from './params'
@@ -35,10 +34,21 @@ export function App() {
   }, [params])
 
   const exportName = `sprawlforge-sector-${params.seed}`
-  const onExport = (kind: 'svg' | 'png' | 'pdf') => {
-    if (kind === 'svg') downloadSvg(svg, exportName)
-    if (kind === 'png') void downloadPng(svg, 2, exportName)
-    if (kind === 'pdf') void downloadPdf(svg, exportName)
+  // ponytail: jspdf pulls ~688kB into the main chunk — defer the whole
+  // exports module to the click that actually needs it
+  const onExport = async (kind: 'svg' | 'png' | 'pdf') => {
+    const m = await import('./exports')
+    switch (kind) {
+      case 'svg':
+        m.downloadSvg(svg, exportName)
+        break
+      case 'png':
+        await m.downloadPng(svg, 2, exportName)
+        break
+      case 'pdf':
+        await m.downloadPdf(svg, exportName)
+        break
+    }
   }
 
   return (
