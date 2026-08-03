@@ -17,7 +17,11 @@ export function MapView({ svg }: { svg: string }) {
       }}
       onPointerMove={(e) => {
         if (!drag.current) return
-        setView((v) => ({ ...v, x: e.clientX - drag.current!.x, y: e.clientY - drag.current!.y }))
+        // read the ref NOW — the updater runs later, possibly after pointerup
+        // has nulled it, and a throw during render unmounts the whole app
+        const x = e.clientX - drag.current.x
+        const y = e.clientY - drag.current.y
+        setView((v) => ({ ...v, x, y }))
       }}
       onPointerUp={() => (drag.current = null)}
     >

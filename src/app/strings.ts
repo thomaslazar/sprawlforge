@@ -19,6 +19,10 @@ export const strings = {
       png: 'Export PNG',
       pdf: 'Export PDF',
     },
+    crash: {
+      title: 'SprawlForge hit an error and stopped.',
+      hint: 'Reload the page to continue. If it keeps happening, please report the message below.',
+    },
   },
 }
 

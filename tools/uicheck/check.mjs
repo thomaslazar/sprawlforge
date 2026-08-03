@@ -34,6 +34,23 @@ await page.getByRole('button', { name: 'Reroll' }).click()
 const after = await page.locator('svg').innerHTML()
 if (before === after) fail('reroll did not change map')
 
+// pan/zoom survives repeated dense drags (regression: ref race unmounted the app)
+const map = await page.locator('svg').boundingBox()
+const mx = map.x + map.width / 2
+const my = map.y + map.height / 2
+await page.mouse.wheel(0, -240)
+for (let round = 0; round < 8; round++) {
+  await page.mouse.move(mx, my)
+  await page.mouse.down()
+  await page.mouse.move(mx + 80, my + 40, { steps: 12 })
+  await page.mouse.up()
+  await page.mouse.down()
+  await page.mouse.move(mx, my, { steps: 12 })
+  await page.mouse.up()
+}
+if ((await page.locator('svg').count()) !== 1) fail('map vanished after pan/zoom drags')
+if ((await page.locator('#root').textContent()).includes('hit an error')) fail('error boundary tripped during pan')
+
 // theme switch, screenshot both
 await page.getByLabel(/Theme/).selectOption('print')
 await page.screenshot({ path: `${OUT}/print.png`, fullPage: true })
