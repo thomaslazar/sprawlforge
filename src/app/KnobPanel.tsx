@@ -7,6 +7,7 @@ interface Props {
   params: SectorParams
   onChange: (p: SectorParams) => void
   onReroll: () => void
+  onExport: (kind: 'svg' | 'png' | 'pdf') => void
 }
 
 function Slider(props: {
@@ -33,7 +34,7 @@ function Slider(props: {
   )
 }
 
-export function KnobPanel({ params, onChange, onReroll }: Props) {
+export function KnobPanel({ params, onChange, onReroll, onExport }: Props) {
   const set = <K extends keyof SectorParams>(key: K, value: SectorParams[K]) =>
     onChange({ ...params, [key]: value })
 
@@ -79,6 +80,11 @@ export function KnobPanel({ params, onChange, onReroll }: Props) {
           ))}
         </select>
       </label>
+      <div style={{ display: 'grid', gap: 8, marginTop: 16 }}>
+        <button onClick={() => onExport('svg')}>{t.exports.svg}</button>
+        <button onClick={() => onExport('png')}>{t.exports.png}</button>
+        <button onClick={() => onExport('pdf')}>{t.exports.pdf}</button>
+      </div>
     </div>
   )
 }

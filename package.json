@@ -11,8 +11,10 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "jspdf": "^4.2.1",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "svg2pdf.js": "^2.7.0"
   },
   "devDependencies": {
     "@types/react": "^19.1.0",
