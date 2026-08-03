@@ -5,5 +5,5 @@ import { shadowrunish } from './shadowrunish'
 export const packs: Record<string, FlavorPack> = { generic, shadowrunish }
 
 export function getPack(id: string): FlavorPack {
-  return packs[id] ?? generic
+  return Object.hasOwn(packs, id) ? packs[id] : generic
 }

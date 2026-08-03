@@ -46,4 +46,7 @@ describe('renderSector', () => {
     expect(Object.keys(themes).sort()).toEqual(['neon', 'print'])
     expect(getTheme('nope').id).toBe('neon')
   })
+  it('getTheme falls back to neon for prototype-polluting ids', () => {
+    expect(getTheme('constructor').id).toBe('neon')
+  })
 })

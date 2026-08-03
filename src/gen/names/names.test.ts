@@ -27,6 +27,9 @@ describe('flavor packs', () => {
   it('getPack falls back to generic', () => {
     expect(getPack('unknown').id).toBe('generic')
   })
+  it('getPack falls back to generic for prototype-polluting ids', () => {
+    expect(getPack('__proto__').id).toBe('generic')
+  })
   for (const pack of Object.values(packs)) {
     it(`${pack.id}: every pattern placeholder resolves against its tables`, () => {
       const rng = mulberry32(3)

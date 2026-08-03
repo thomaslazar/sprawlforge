@@ -59,5 +59,5 @@ const print: Theme = {
 export const themes: Record<string, Theme> = { neon, print }
 
 export function getTheme(id: string): Theme {
-  return themes[id] ?? neon
+  return Object.hasOwn(themes, id) ? themes[id] : neon
 }
