@@ -40,5 +40,20 @@ await page.screenshot({ path: `${OUT}/print.png`, fullPage: true })
 await page.getByLabel(/Theme/).selectOption('neon')
 await page.screenshot({ path: `${OUT}/neon.png`, fullPage: true })
 
+// exports: each button fires a real download with the expected filename
+for (const [label, ext] of [
+  ['Export SVG', 'svg'],
+  ['Export PNG', 'png'],
+  ['Export PDF', 'pdf'],
+]) {
+  const [dl] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: label }).click(),
+  ])
+  const filename = dl.suggestedFilename()
+  if (!filename.startsWith('sprawlforge-sector-')) fail(`${label} filename ${filename} missing prefix`)
+  await dl.saveAs(`${OUT}/export.${ext}`)
+}
+
 await browser.close()
 console.log(process.exitCode ? 'uicheck FAILED' : 'uicheck passed')
