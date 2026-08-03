@@ -32,6 +32,15 @@ See `docs/specs/` for design docs.
   as one unit. Never autonomous for amends, force pushes, or commits to
   `main`.
 
+## Testing
+- **UI feature testing is part of development, not an afterthought.** Any
+  change that adds or alters UI behavior extends `tools/uicheck/`
+  (headless Playwright pass) in the same task and runs it before the task
+  counts as done. Unit tests alone never verify a UI feature.
+- Look at the uicheck screenshots; don't just trust the exit code.
+- Full e2e testing (multi-page flows, export file contents) is a separate
+  topic — see ROADMAP when it becomes real.
+
 ## Docs conventions
 - **Specs** go in `docs/specs/YYYY-MM-DD-<topic>-design.md`, **plans** in
   `docs/plans/YYYY-MM-DD-<topic>.md` — never `docs/superpowers/…`, whatever a
