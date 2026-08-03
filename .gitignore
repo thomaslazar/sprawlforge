@@ -1,0 +1,17 @@
+# ephemeral scratch space
+temp/
+
+# dependencies & build output
+node_modules/
+dist/
+coverage/
+
+# tooling artifacts
+.playwright-mcp/
+*.log
+
+# editors & OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
