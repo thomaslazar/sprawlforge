@@ -21,6 +21,9 @@
 - **Poster-tiling PDF** for printing battlemaps across multiple pages.
 - **Blueprint theme** — third theme; cheap once theme system exists.
 - **Better label placement** — v1 ships good-enough overlap heuristics.
+- **Annotation layer + JSON override export/import** — user labels, markers,
+  renames stored as diffs against generated state (spec §3). Follow-up plan
+  after sector v1 ships.
 - **Tile-based rendering** for metroplex scale — only if SVG performance
   actually hurts.
 
