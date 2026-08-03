@@ -2,10 +2,40 @@
 
 ## Build order
 
-1. **Sector generator** — v1 per `docs/specs/2026-08-03-sprawlforge-design.md`
-2. **Metroplex generator** — parent of sectors, proves linkage chain
-3. **Battlemap generator** — interiors/street combat, seeded from sector buildings
-4. **Node map generator** — abstract location graphs
+1. **Sector generator** — v1 per `docs/specs/2026-08-03-sprawlforge-design.md` ✅
+2. **Terrain v2 + organic map redesign** — next up, needs its own design
+   spec; see below
+3. **Metroplex generator** — parent of sectors, proves linkage chain
+4. **Battlemap generator** — interiors/street combat, seeded from sector buildings
+5. **Node map generator** — abstract location graphs
+
+## Terrain v2 + organic map redesign (next design spec)
+
+v1 water is a toy (straight east coast, horizontal river band, coast wins
+over river, no bridges, land clipped as rectangle) and the BSP street grid
+reads as a treemap. One redesign, three shippable phases, one
+`GENERATOR_VERSION` bump if landed as one release. Phases 1+2 and the
+organic street patterns share a dependency: an arbitrary-polygon geometry
+core (clipping, insetting, filling non-rectangular shapes).
+
+1. **Terrain v2** — terrain generated first, city adapts. Coast on any
+   side with a curved waterline; meandering river that can coexist with
+   the coast and flow into it; waterline as first-class polyline. Biggest
+   variety win, visible even with rectangular streets.
+2. **City adapts to terrain** — blocks/buildings clipped to the waterline
+   (waterfront buildings reach the river's edge), dock zones biased to
+   the shore, roads crossing water become bridges (rendered as such,
+   network stays connected).
+3. **Organic street patterns** — options, in ascending effort:
+   - **A: perturbation pass** — keep BSP skeleton; jitter road
+     centerlines, rotate district lattices a few degrees, buildings
+     inherit rotation. Planned-city-that-aged look.
+   - **C: zone-hybrid** — perturbed grid for corp/industrial/residential
+     (planned megacity fabric), separate irregular generator for
+     slum/old-quarter districts (crooked dense lanes). Zone contrast as
+     storytelling.
+   - **B: full Voronoi partition** — watabou-style organic everywhere.
+     Only if A/C prove insufficient; several times their cost.
 
 ## Deferred (explicit v1 excludes — do not forget)
 
