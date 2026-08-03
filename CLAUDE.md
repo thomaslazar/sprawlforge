@@ -14,7 +14,11 @@ hierarchical seeding. Client-side only, no backend, no accounts.
 See `docs/specs/` for design docs.
 
 ## Git conventions
-- **Always ask before committing.** Do not commit automatically.
+- **Ask before committing** after ad-hoc or exploratory changes — report what
+  changed, then ask. Exception: when executing a pre-approved implementation
+  plan whose tasks specify commit messages, commit per the plan without
+  pausing each task (the plan is the approval). Never autonomous for amends,
+  force pushes, or commits to `main`.
 - **Conventional Commits**: `type: subject` — `feat`, `fix`, `docs`, `test`,
   `ci`, `refactor`, `chore`.
 - Subject: imperative, lowercase, no period, max ~72 chars.
