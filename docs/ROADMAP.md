@@ -24,6 +24,13 @@
 - **Tile-based rendering** for metroplex scale — only if SVG performance
   actually hurts.
 
+## Cross-cutting
+
+- **Multi-language UI** — English first, German second. UI strings are
+  externalized from day one (no hardcoded labels in components) so adding
+  German is translation work, not refactoring. Generated map content
+  (district/POI names) is flavor-pack territory, not UI i18n.
+
 ## Open questions
 
 - Custom domain (sprawlforge.*) — decide when Pages deploy exists.

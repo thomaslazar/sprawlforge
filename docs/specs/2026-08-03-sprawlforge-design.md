@@ -38,7 +38,9 @@ sector's parent and proves out the linkage chain.
     Output: plain data model (geometry + metadata). Unit-testable, portable
     to Node or a backend later.
   - `src/render/` — data model → SVG. All theming lives here and only here.
-  - `src/app/` — React UI: knob panels, routing, export buttons.
+  - `src/app/` — React UI: knob panels, routing, export buttons. UI strings
+  are externalized from day one (i18n-ready); English ships first, German
+  second. Generated map content (names) is flavor-pack data, not UI i18n.
 - **Rendering: SVG.** Vector export is free; PNG comes from canvas
   rasterization of the SVG; PDF from SVG. The data model keeps semantic
   information (walls, doors, zones), which keeps VTT export formats possible
