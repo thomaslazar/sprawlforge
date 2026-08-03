@@ -26,6 +26,17 @@
   after sector v1 ships.
 - **Tile-based rendering** for metroplex scale — only if SVG performance
   actually hurts.
+- **Zone-mix knob** — spec §4 lists zone mix weights as a district knob;
+  v1 UI only exposes corp dominance (zoning derives the rest).
+- **PNG resolution knob** — spec §3 calls for a resolution knob; v1 export
+  is fixed at 2x.
+- **Hierarchical per-entity naming** — spec §3 specifies `hash(seed,
+  entityId)` per name; v1 draws all names from one sequential RNG stream
+  seeded once. Switching later renames everything on existing URLs —
+  needs a `GENERATOR_VERSION` bump when it happens.
+- **Road/building id format overflow** — ids are fixed-width
+  (`A99`/`S999`/`BLD999999`); a large enough sector (e.g. size 8) can
+  exceed the padding and produce colliding/malformed ids.
 
 ## Cross-cutting
 
