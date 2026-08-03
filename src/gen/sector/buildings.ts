@@ -25,7 +25,7 @@ export function fillBuildings(
   districts.forEach((district, di) => {
     const profile = ZONE_BUILD[district.zone]
     const fill = profile.fill * (0.6 + 0.4 * params.density)
-    const dd = String(di + 1).padStart(2, '0')
+    const dd = district.id.slice(1)
 
     ;(blocksByDistrict[di] ?? []).forEach((blockRect, bi) => {
       const blockId = `B${dd}${String(bi + 1).padStart(2, '0')}`

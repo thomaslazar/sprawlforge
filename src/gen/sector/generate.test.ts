@@ -34,8 +34,16 @@ describe('generateSector', () => {
     const districtIds = new Set(m.districts.map((d) => d.id))
     const blockIds = new Set(m.blocks.map((b) => b.id))
     const buildingIds = new Set(m.buildings.map((b) => b.id))
-    for (const b of m.blocks) expect(districtIds.has(b.districtId)).toBe(true)
-    for (const b of m.buildings) expect(blockIds.has(b.blockId)).toBe(true)
+    for (const b of m.blocks) {
+      expect(districtIds.has(b.districtId)).toBe(true)
+      // block's embedded district ordinal must match its actual district
+      expect(b.id.slice(1, 3)).toBe(b.districtId.slice(1))
+    }
+    for (const b of m.buildings) {
+      expect(blockIds.has(b.blockId)).toBe(true)
+      // building's blockId ordinal must match its own districtId
+      expect(b.blockId.slice(1, 3)).toBe(b.districtId.slice(1))
+    }
     for (const p of m.pois) expect(buildingIds.has(p.buildingId)).toBe(true)
   })
   it('shadowrunish pack changes names but not geometry', () => {
