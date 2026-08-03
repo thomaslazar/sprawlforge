@@ -13,8 +13,10 @@
 
   // Docker outside of Docker: run docker against the host daemon from inside
   // the container. GitHub CLI: `gh` is not bundled in the typescript-node image.
+  // moby:false — the typescript-node:22 image is Debian trixie, where the
+  // feature's default moby packages don't exist (docker-ce is used instead).
   "features": {
-    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": { "moby": false },
     "ghcr.io/devcontainers/features/github-cli:1": {}
   },
 
