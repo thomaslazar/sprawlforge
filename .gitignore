@@ -16,3 +16,4 @@ tools/uicheck/shots/
 .idea/
 .vscode/
 *.swp
+*.tsbuildinfo
