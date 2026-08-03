@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Rect } from '../geometry'
 import type { SectorParams } from '../types'
 import { genGeography } from './geography'
-import { layoutRoads } from './roads'
+import { coastClipX, layoutRoads } from './roads'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
@@ -28,11 +28,12 @@ describe('layoutRoads', () => {
     const hi = layoutRoads({ ...base, density: 0.9 }, noWater, sizeM).blocksByDistrict.flat().length
     expect(hi).toBeGreaterThan(lo)
   })
-  it('coast keeps all districts on land', () => {
+  it('coast keeps all districts on land, clipped at the mean coastline', () => {
     const water = genGeography({ ...base, coast: true }, sizeM)
     const r = layoutRoads({ ...base, coast: true }, water, sizeM)
+    const clipX = coastClipX(water, sizeM)
     for (const d of r.districtRects) {
-      expect(d.x + d.w).toBeLessThanOrEqual(water.bounds!.x + 1e-9)
+      expect(d.x + d.w).toBeLessThanOrEqual(clipX + 1e-9)
     }
   })
   it('river splits land into slabs above and below', () => {

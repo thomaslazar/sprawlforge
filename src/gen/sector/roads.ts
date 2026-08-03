@@ -15,9 +15,18 @@ function cutToRoad(cut: Cut, id: string, cls: Road['class'], width: number): Roa
   return { id, class: cls, points, width, name: null }
 }
 
+// Mean x of the jittered coastline (excludes the two sector-corner points
+// closing the polygon) — the coast wiggles around this line, so clipping
+// land here (rather than at the leftmost jitter) avoids a bare background
+// gutter between the districts and the water polygon.
+export function coastClipX(water: Water, sizeM: number): number {
+  const edge = water.polygon.filter((p) => p.x !== sizeM)
+  return edge.reduce((sum, p) => sum + p.x, 0) / edge.length
+}
+
 function landSlabs(water: Water, sizeM: number): Rect[] {
   const sector: Rect = { x: 0, y: 0, w: sizeM, h: sizeM }
-  if (water.kind === 'coast') return [{ ...sector, w: water.bounds!.x }]
+  if (water.kind === 'coast') return [{ ...sector, w: coastClipX(water, sizeM) }]
   if (water.kind === 'river') {
     const b = water.bounds!
     return [
