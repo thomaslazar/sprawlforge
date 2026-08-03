@@ -6,6 +6,25 @@ const esc = (s: string) =>
 
 const n = (v: number) => String(Math.round(v * 100) / 100)
 
+interface Box {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+// ponytail: greedy bbox rejection, not true label placement (no nudging/leader
+// lines) — good enough per spec §5; upgrade if labels still collide visibly
+function textBox(x: number, y: number, text: string, fontSize: number, anchor: 'start' | 'middle'): Box {
+  const w = text.length * fontSize * 0.6
+  const h = fontSize
+  return { x: anchor === 'middle' ? x - w / 2 : x, y: y - h, w, h }
+}
+
+function intersects(a: Box, b: Box): boolean {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+}
+
 export function renderSector(model: SectorModel, theme: Theme): string {
   const S = model.meta.sizeM
   const out: string[] = []
@@ -54,9 +73,14 @@ export function renderSector(model: SectorModel, theme: Theme): string {
     )
   }
 
+  const placedLabels: Box[] = []
+
   for (const d of model.districts) {
     const cx = d.bounds.x + d.bounds.w / 2
     const cy = d.bounds.y + d.bounds.h / 2
+    // district labels always render — they anchor the map — but still
+    // occupy space so later poi labels avoid them
+    placedLabels.push(textBox(cx, cy, d.name, fontD, 'middle'))
     out.push(
       `<text x="${n(cx)}" y="${n(cy)}" fill="${theme.districtLabel}" font-size="${n(fontD)}" text-anchor="middle" opacity="0.85"${glowAttr}>${esc(d.name)}</text>`,
     )
@@ -65,8 +89,16 @@ export function renderSector(model: SectorModel, theme: Theme): string {
   for (const p of model.pois) {
     out.push(
       `<circle data-id="${p.id}" cx="${n(p.at.x)}" cy="${n(p.at.y)}" r="${n(S * 0.004)}" fill="${theme.poi.marker}"${glowAttr}/>`,
-      `<text x="${n(p.at.x + S * 0.006)}" y="${n(p.at.y - S * 0.004)}" fill="${theme.poi.label}" font-size="${n(fontP)}">${esc(p.name)}</text>`,
     )
+    const lx = p.at.x + S * 0.006
+    const ly = p.at.y - S * 0.004
+    const box = textBox(lx, ly, p.name, fontP, 'start')
+    if (!placedLabels.some((b) => intersects(box, b))) {
+      placedLabels.push(box)
+      out.push(
+        `<text x="${n(lx)}" y="${n(ly)}" fill="${theme.poi.label}" font-size="${n(fontP)}">${esc(p.name)}</text>`,
+      )
+    }
   }
 
   const barM = model.meta.params.size < 5 ? 500 : 1000

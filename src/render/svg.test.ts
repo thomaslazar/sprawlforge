@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { generateSector } from '../gen/sector/generate'
-import type { SectorParams } from '../gen/types'
+import { GENERATOR_VERSION, type SectorModel, type SectorParams } from '../gen/types'
 import { renderSector } from './svg'
 import { getTheme, themes } from './theme'
 
@@ -48,5 +48,24 @@ describe('renderSector', () => {
   })
   it('getTheme falls back to neon for prototype-polluting ids', () => {
     expect(getTheme('constructor').id).toBe('neon')
+  })
+  it('drops an overlapping poi label but keeps both markers', () => {
+    const hand: SectorModel = {
+      meta: { seed: 1, generatorVersion: GENERATOR_VERSION, params: base, sizeM: 1000 },
+      water: { kind: 'none', polygon: [], bounds: null },
+      roads: [],
+      districts: [],
+      blocks: [],
+      buildings: [],
+      pois: [
+        { id: 'P01', buildingId: 'BLD01', districtId: 'D01', type: 'x', name: 'Alpha Tower', at: { x: 500, y: 500 } },
+        { id: 'P02', buildingId: 'BLD02', districtId: 'D01', type: 'x', name: 'Beta Tower', at: { x: 500, y: 500 } },
+      ],
+    }
+    const svg = renderSector(hand, getTheme('neon'))
+    expect(svg).toContain('data-id="P01"')
+    expect(svg).toContain('data-id="P02"')
+    expect(svg).toContain('Alpha Tower')
+    expect(svg).not.toContain('Beta Tower')
   })
 })
