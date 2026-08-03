@@ -2,7 +2,9 @@
 
 ## Main rule
 - Be brief.
-- Every answer to the user must start with their name: **Thomas**.
+- Every answer to the user must start by addressing them as **Mr. Johnson**.
+  (Shadowrun wink; doubles as a context-rot canary — if answers stop starting
+  with "Mr. Johnson", context has degraded.)
 
 ## What this is
 SprawlForge — free, static web toolkit for cyberpunk TTRPGs (system-agnostic,
