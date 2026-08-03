@@ -38,6 +38,15 @@ if (before === after) fail('reroll did not change map')
 const map = await page.locator('svg').boundingBox()
 const mx = map.x + map.width / 2
 const my = map.y + map.height / 2
+
+// semantic zoom: zooming in re-renders labels smaller → more of them fit
+const labelsAtBase = await page.locator('svg text').count()
+await page.mouse.move(mx, my)
+for (let i = 0; i < 12; i++) await page.mouse.wheel(0, -240) // deep zoom-in
+const labelsZoomed = await page.locator('svg text').count()
+if (labelsZoomed < labelsAtBase) fail(`zoom lost labels: ${labelsAtBase} -> ${labelsZoomed}`)
+for (let i = 0; i < 12; i++) await page.mouse.wheel(0, 240) // back out
+
 await page.mouse.wheel(0, -240)
 for (let round = 0; round < 8; round++) {
   await page.mouse.move(mx, my)

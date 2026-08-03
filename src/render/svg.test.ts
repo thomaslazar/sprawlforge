@@ -49,23 +49,73 @@ describe('renderSector', () => {
   it('getTheme falls back to neon for prototype-polluting ids', () => {
     expect(getTheme('constructor').id).toBe('neon')
   })
-  it('drops an overlapping poi label but keeps both markers', () => {
-    const hand: SectorModel = {
-      meta: { seed: 1, generatorVersion: GENERATOR_VERSION, params: base, sizeM: 1000 },
-      water: { kind: 'none', polygon: [], bounds: null },
-      roads: [],
-      districts: [],
-      blocks: [],
-      buildings: [],
-      pois: [
-        { id: 'P01', buildingId: 'BLD01', districtId: 'D01', type: 'x', name: 'Alpha Tower', at: { x: 500, y: 500 } },
-        { id: 'P02', buildingId: 'BLD02', districtId: 'D01', type: 'x', name: 'Beta Tower', at: { x: 500, y: 500 } },
-      ],
-    }
-    const svg = renderSector(hand, getTheme('neon'))
-    expect(svg).toContain('data-id="P01"')
-    expect(svg).toContain('data-id="P02"')
+  const handModel = (pois: SectorModel['pois']): SectorModel => ({
+    meta: { seed: 1, generatorVersion: GENERATOR_VERSION, params: base, sizeM: 1000 },
+    water: { kind: 'none', polygon: [], bounds: null },
+    roads: [],
+    districts: [],
+    blocks: [],
+    buildings: [],
+    pois,
+  })
+  const poi = (id: string, name: string, x: number, y: number, type = 'x') => ({
+    id, buildingId: `BLD${id}`, districtId: 'D01', type, name, at: { x, y },
+  })
+
+  it('nudges a colliding poi label to another side instead of dropping it', () => {
+    const svg = renderSector(
+      handModel([poi('P01', 'Alpha Tower', 500, 500), poi('P02', 'Beta Tower', 500, 500)]),
+      getTheme('neon'),
+    )
+    // both labels survive: second one lands on a different side
     expect(svg).toContain('Alpha Tower')
-    expect(svg).not.toContain('Beta Tower')
+    expect(svg).toContain('Beta Tower')
+  })
+
+  it('drops the label only when all candidate positions collide, markers always render', () => {
+    const pois = ['A', 'B', 'C', 'D', 'E'].map((s, i) =>
+      poi(`P0${i + 1}`, `${s} Tower`, 500, 500),
+    )
+    const svg = renderSector(handModel(pois), getTheme('neon'))
+    for (const p of pois) expect(svg).toContain(`data-id="${p.id}"`)
+    const labels = svg.match(/[A-E] Tower<\/text>/g) ?? []
+    // several nudge candidates place, the rest drop — never all five
+    expect(labels.length).toBeGreaterThanOrEqual(2)
+    expect(labels.length).toBeLessThan(5)
+  })
+
+  it('important poi types win the label contest', () => {
+    const svg = renderSector(
+      handModel([
+        // bar comes first in model order but must lose to the corp hq
+        ...['A', 'B', 'C', 'D'].map((s, i) => poi(`P0${i + 1}`, `${s} Dive`, 500, 500, 'bar')),
+        poi('P05', 'Zeta Spire HQ', 500, 500, 'corp_hq'),
+      ]),
+      getTheme('neon'),
+    )
+    expect(svg).toContain('Zeta Spire HQ')
+  })
+
+  it('every poi marker carries a tooltip with its name', () => {
+    const svg = renderSector(model, getTheme('neon'))
+    expect(svg.match(/<title>/g)!.length).toBe(model.pois.length)
+  })
+
+  it('clamps edge labels into the viewbox', () => {
+    const svg = renderSector(handModel([poi('P01', 'Edge Post', 995, 3)]), getTheme('neon'))
+    const text = svg.match(/<text x="([\d.-]+)" y="([\d.-]+)"[^>]*>Edge Post<\/text>/)
+    expect(text).not.toBeNull()
+    const fontP = 1000 * 0.011
+    const y = Number(text![2])
+    expect(y).toBeGreaterThanOrEqual(fontP) // label box top edge at y-h >= 0
+    expect(Number(text![1])).toBeLessThanOrEqual(1000)
+  })
+
+  it('labelZoom shrinks label fonts and never loses labels', () => {
+    const base1 = renderSector(model, getTheme('neon'))
+    const zoomed = renderSector(model, getTheme('neon'), { labelZoom: 4 })
+    const countLabels = (s: string) => (s.match(/<text /g) ?? []).length
+    expect(countLabels(zoomed)).toBeGreaterThanOrEqual(countLabels(base1))
+    expect(zoomed).toContain(`font-size="${(model.meta.sizeM * 0.011) / 4}"`)
   })
 })

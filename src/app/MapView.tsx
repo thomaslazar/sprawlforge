@@ -1,15 +1,21 @@
 import { useRef, useState } from 'react'
 
-export function MapView({ svg }: { svg: string }) {
+export function MapView({ svg, onZoom }: { svg: string; onZoom?: (zoom: number) => void }) {
   const [view, setView] = useState({ x: 0, y: 0, zoom: 1 })
   const drag = useRef<{ x: number; y: number } | null>(null)
+  // synchronous zoom mirror: wheel handlers read/write it directly, so rapid
+  // events compound correctly and the updater below never reads mutable state
+  const zoomRef = useRef(1)
 
   return (
     <div
       style={{ flex: 1, overflow: 'hidden', cursor: drag.current ? 'grabbing' : 'grab' }}
       onWheel={(e) => {
         const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
-        setView((v) => ({ ...v, zoom: Math.min(20, Math.max(0.2, v.zoom * factor)) }))
+        const zoom = Math.min(20, Math.max(0.2, zoomRef.current * factor))
+        zoomRef.current = zoom
+        setView((v) => ({ ...v, zoom }))
+        onZoom?.(zoom)
       }}
       onPointerDown={(e) => {
         drag.current = { x: e.clientX - view.x, y: e.clientY - view.y }

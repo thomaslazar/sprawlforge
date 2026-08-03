@@ -28,25 +28,31 @@ export function App() {
     window.history.replaceState(null, '', paramsToSearch(p))
   }
 
-  const svg = useMemo(() => {
-    const model = generateSector(params)
-    return renderSector(model, getTheme(params.theme))
-  }, [params])
+  // semantic zoom: labels re-render per zoom band (1|2|4|8) so more of them
+  // fit as you zoom in; generation itself only depends on params
+  const [labelZoom, setLabelZoom] = useState(1)
+  const model = useMemo(() => generateSector(params), [params])
+  const svg = useMemo(
+    () => renderSector(model, getTheme(params.theme), { labelZoom }),
+    [model, params.theme, labelZoom],
+  )
 
   const exportName = `sprawlforge-sector-${params.seed}`
   // ponytail: jspdf pulls ~688kB into the main chunk — defer the whole
   // exports module to the click that actually needs it
   const onExport = async (kind: 'svg' | 'png' | 'pdf') => {
     const m = await import('./exports')
+    // exports always use base label sizing, independent of viewport zoom
+    const exportSvg = renderSector(model, getTheme(params.theme))
     switch (kind) {
       case 'svg':
-        m.downloadSvg(svg, exportName)
+        m.downloadSvg(exportSvg, exportName)
         break
       case 'png':
-        await m.downloadPng(svg, 2, exportName)
+        await m.downloadPng(exportSvg, 2, exportName)
         break
       case 'pdf':
-        await m.downloadPdf(svg, exportName)
+        await m.downloadPdf(exportSvg, exportName)
         break
     }
   }
@@ -59,7 +65,10 @@ export function App() {
         onReroll={() => update({ ...params, seed: hashSeed(params.seed, 'reroll') })}
         onExport={onExport}
       />
-      <MapView svg={svg} />
+      <MapView
+        svg={svg}
+        onZoom={(z) => setLabelZoom(Math.min(8, Math.max(1, 2 ** Math.floor(Math.log2(z)))))}
+      />
     </div>
   )
 }

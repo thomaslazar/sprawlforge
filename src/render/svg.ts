@@ -13,23 +13,54 @@ interface Box {
   h: number
 }
 
-// ponytail: greedy bbox rejection, not true label placement (no nudging/leader
-// lines) — good enough per spec §5; upgrade if labels still collide visibly
-function textBox(x: number, y: number, text: string, fontSize: number, anchor: 'start' | 'middle'): Box {
+type Anchor = 'start' | 'middle' | 'end'
+
+// ponytail: estimated char-width boxes, no leader lines — good enough per
+// spec §5; measure real glyphs if estimates still misplace labels
+function textBox(x: number, y: number, text: string, fontSize: number, anchor: Anchor): Box {
   const w = text.length * fontSize * 0.6
   const h = fontSize
-  return { x: anchor === 'middle' ? x - w / 2 : x, y: y - h, w, h }
+  const bx = anchor === 'middle' ? x - w / 2 : anchor === 'end' ? x - w : x
+  return { x: bx, y: y - h, w, h }
 }
 
 function intersects(a: Box, b: Box): boolean {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 }
 
-export function renderSector(model: SectorModel, theme: Theme): string {
+/** shift needed to keep box fully inside [0,S]² so edge labels don't clip */
+function clampShift(box: Box, S: number): { dx: number; dy: number } {
+  const dx = box.x < 0 ? -box.x : box.x + box.w > S ? S - box.x - box.w : 0
+  const dy = box.y < 0 ? -box.y : box.y + box.h > S ? S - box.y - box.h : 0
+  return { dx, dy }
+}
+
+// ponytail: fixed type ranks — move to PoiTypeDef weight when packs need control
+const POI_RANK: Record<string, number> = {
+  corp_hq: 0,
+  matrix_hub: 1,
+  corp_office: 2,
+  clinic: 3,
+  market: 4,
+  talismonger: 5,
+  warehouse: 6,
+  club: 7,
+  safehouse: 8,
+  bar: 9,
+}
+
+export interface RenderOpts {
+  /** viewport zoom band (1|2|4|8): labels shrink in world units so they stay
+   * constant on screen, freeing room — more labels appear as you zoom in */
+  labelZoom?: number
+}
+
+export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts = {}): string {
   const S = model.meta.sizeM
   const out: string[] = []
-  const fontD = S * 0.018
-  const fontP = S * 0.011
+  const labelZoom = Math.min(8, Math.max(1, opts.labelZoom ?? 1))
+  const fontD = (S * 0.018) / labelZoom
+  const fontP = (S * 0.011) / labelZoom
 
   out.push(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S} ${S}" font-family="system-ui, sans-serif">`,
@@ -80,24 +111,46 @@ export function renderSector(model: SectorModel, theme: Theme): string {
     const cy = d.bounds.y + d.bounds.h / 2
     // district labels always render — they anchor the map — but still
     // occupy space so later poi labels avoid them
-    placedLabels.push(textBox(cx, cy, d.name, fontD, 'middle'))
+    const raw = textBox(cx, cy, d.name, fontD, 'middle')
+    const { dx, dy } = clampShift(raw, S)
+    placedLabels.push({ ...raw, x: raw.x + dx, y: raw.y + dy })
     out.push(
-      `<text x="${n(cx)}" y="${n(cy)}" fill="${theme.districtLabel}" font-size="${n(fontD)}" text-anchor="middle" opacity="0.85"${glowAttr}>${esc(d.name)}</text>`,
+      `<text x="${n(cx + dx)}" y="${n(cy + dy)}" fill="${theme.districtLabel}" font-size="${n(fontD)}" text-anchor="middle" opacity="0.85"${glowAttr}>${esc(d.name)}</text>`,
     )
   }
 
+  // markers first (all pois, model order, hover tooltip carries the name even
+  // when the visible label loses the placement contest)
+  const markerR = (S * 0.004) / labelZoom
   for (const p of model.pois) {
     out.push(
-      `<circle data-id="${p.id}" cx="${n(p.at.x)}" cy="${n(p.at.y)}" r="${n(S * 0.004)}" fill="${theme.poi.marker}"${glowAttr}/>`,
+      `<circle data-id="${p.id}" cx="${n(p.at.x)}" cy="${n(p.at.y)}" r="${n(markerR)}" fill="${theme.poi.marker}"${glowAttr}><title>${esc(p.name)}</title></circle>`,
     )
-    const lx = p.at.x + S * 0.006
-    const ly = p.at.y - S * 0.004
-    const box = textBox(lx, ly, p.name, fontP, 'start')
-    if (!placedLabels.some((b) => intersects(box, b))) {
+  }
+
+  // labels by importance: when space runs out, the corp HQ wins over the bar
+  const byRank = [...model.pois].sort(
+    (a, b) => (POI_RANK[a.type] ?? 5) - (POI_RANK[b.type] ?? 5),
+  )
+  const off = (S * 0.006) / labelZoom
+  for (const p of byRank) {
+    const candidates: Array<{ x: number; y: number; anchor: Anchor }> = [
+      { x: p.at.x + off, y: p.at.y - markerR, anchor: 'start' },
+      { x: p.at.x - off, y: p.at.y - markerR, anchor: 'end' },
+      { x: p.at.x, y: p.at.y - off * 1.5, anchor: 'middle' },
+      { x: p.at.x, y: p.at.y + off * 1.5 + fontP, anchor: 'middle' },
+    ]
+    for (const c of candidates) {
+      const raw = textBox(c.x, c.y, p.name, fontP, c.anchor)
+      const { dx, dy } = clampShift(raw, S)
+      const box = { ...raw, x: raw.x + dx, y: raw.y + dy }
+      if (placedLabels.some((b) => intersects(box, b))) continue
       placedLabels.push(box)
+      const anchorAttr = c.anchor === 'start' ? '' : ` text-anchor="${c.anchor}"`
       out.push(
-        `<text x="${n(lx)}" y="${n(ly)}" fill="${theme.poi.label}" font-size="${n(fontP)}">${esc(p.name)}</text>`,
+        `<text x="${n(c.x + dx)}" y="${n(c.y + dy)}" fill="${theme.poi.label}" font-size="${n(fontP)}"${anchorAttr}>${esc(p.name)}</text>`,
       )
+      break
     }
   }
 
