@@ -8,7 +8,7 @@ const base: SectorParams = {
   terrain: 'inland', piers: false, pack: 'generic', theme: 'neon',
 }
 const districts: District[] = [
-  { id: 'D01', zone: 'corp', name: 'Test Heights', bounds: { x: 0, y: 0, w: 600, h: 600 } },
+  { id: 'D01', zone: 'corp', name: 'Test Heights', bounds: { x: 0, y: 0, w: 600, h: 600 }, shore: false },
 ]
 const buildings: Building[] = Array.from({ length: 30 }, (_, i) => ({
   id: `BLD0101${String(i + 1).padStart(2, '0')}`,

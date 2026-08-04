@@ -14,7 +14,7 @@ export function generateSector(params: SectorParams): SectorModel {
 
   const terrain = sampleTerrain(params, sizeM)
   const { roads, districtRects, blocksByDistrict } = layoutRoads(params, terrain, sizeM)
-  const districts = assignZones(districtRects, params)
+  const districts = assignZones(districtRects, params, terrain)
 
   // re-align blocksByDistrict to the sorted district order
   const rectKey = (r: { x: number; y: number }) => `${r.x}:${r.y}`

@@ -68,6 +68,7 @@ export interface District {
   zone: ZoneType
   name: string
   bounds: Rect
+  shore: boolean
 }
 
 export interface Block {
