@@ -9,7 +9,14 @@
 4. **Battlemap generator** — interiors/street combat, seeded from sector buildings
 5. **Node map generator** — abstract location graphs
 
-## Terrain v2 + organic map redesign (next design spec)
+## Terrain v2 + organic map redesign
+
+Phases 1+2 are specced: `docs/specs/2026-08-04-terrain-v2-design.md`
+(metro-scale heightfield, one-pass water contouring, carved rivers,
+bridges, waterline clipping, shore zoning, piers). Phase 3 (organic
+streets) remains a future spec. Additional deferrals recorded in that
+spec §8: tributaries/confluences, elevation rendering, shallow-water
+bands, ships/harbor props.
 
 v1 water is a toy (straight east coast, horizontal river band, coast wins
 over river, no bridges, land clipped as rectangle) and the BSP street grid
