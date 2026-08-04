@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { pointInRings, type Pt } from '../geometry'
 import { sampleTerrain } from '../terrain'
+import { distToPolyline } from '../terrain/rivers'
 import type { SectorParams } from '../types'
 import { layoutRoads } from './roads'
 
@@ -100,6 +101,22 @@ describe('layoutRoads', () => {
         parent[find(a)] = find(b)
         // segments cross mid-polyline too: join consecutive points
         for (let i = 1; i < r.points.length; i++) parent[find(idx(r.points[i - 1]))] = find(idx(r.points[i]))
+      }
+      // T-junctions: road A's endpoint touching mid-span of road B (not B's own
+      // endpoints) is a real intersection, not a gap — BSP cut endpoints sit
+      // exactly gap/2 (up to 9m for an arterial) off the parent road's centerline,
+      // and a bridge landing needs a little more slack. Join on point-to-segment
+      // distance, reusing the same math nearestOnPolyline uses for river distance.
+      for (const A of roads) {
+        for (const B of roads) {
+          if (A === B) continue
+          for (const end of [A.points[0], A.points[A.points.length - 1]]) {
+            for (let i = 0; i < B.points.length - 1; i++) {
+              if (distToPolyline(end, [B.points[i], B.points[i + 1]]) <= 30)
+                parent[find(idx(end))] = find(idx(B.points[i]))
+            }
+          }
+        }
       }
       const components = new Set(pts.map((_, i) => find(i)))
       // arterial/street endpoints that merely touch nothing else may float;

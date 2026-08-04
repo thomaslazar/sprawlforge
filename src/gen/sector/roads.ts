@@ -1,7 +1,7 @@
-import { bspSplit, type Cut, type Pt, type Rect } from '../geometry'
+import { bspSplit, type Cut, type Rect } from '../geometry'
 import { hashSeed, mulberry32, type Rng } from '../rng'
 import type { Road, SectorParams, Terrain } from '../types'
-import { clipRoadsToLand, inWater, planBridges } from './bridges'
+import { clipRoadsToLand, planBridges, truncateOverSpanRoads } from './bridges'
 
 const HIGHWAY_W = 32
 const ARTERIAL_W = 18
@@ -62,81 +62,6 @@ function splitByHighway(slabs: Rect[], params: SectorParams, rng: Rng, roads: Ro
   return out
 }
 
-const SNAP_TOL = 20
-// A bridge's landing point is deliberately displaced from its host road's line (pushed onto
-// land, or re-oriented perpendicular to the river) so it rarely sits within SNAP_TOL of the
-// nearby grid it should join. Bridges get a wider search radius to reconnect to that grid.
-// ponytail: fixed radius, not a real shortest-path snap; revisit if a landing ever needs to
-// reach past a full block to find its street.
-const BRIDGE_SNAP_TOL = 150
-
-function nearestOnSegment(p: Pt, a: Pt, b: Pt): { pt: Pt; t: number; d: number } {
-  const abx = b.x - a.x
-  const aby = b.y - a.y
-  const len2 = abx * abx + aby * aby || 1
-  const t = Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2))
-  const pt = { x: a.x + t * abx, y: a.y + t * aby }
-  return { pt, t, d: Math.hypot(p.x - pt.x, p.y - pt.y) }
-}
-
-// BSP cuts meet as T-junctions (one road's endpoint lands mid-span of
-// another) rather than sharing an endpoint, so the raw output reads as
-// hundreds of disconnected components. Snap each endpoint onto the nearest
-// other road within tolerance and splice that point into the host road's
-// polyline so the two actually share a vertex.
-function snapJunctions(roads: Road[], terrain: Terrain): Road[] {
-  const out = roads.map((r) => ({ ...r, points: [...r.points] }))
-
-  const attempt = (i: number, end: number, tol: number): boolean => {
-    const p = out[i].points[end]
-    let best: { j: number; seg: number; pt: Pt; d: number } | null = null
-    for (let j = 0; j < out.length; j++) {
-      if (j === i) continue
-      const pts = out[j].points
-      for (let seg = 0; seg < pts.length - 1; seg++) {
-        const { pt, t, d } = nearestOnSegment(p, pts[seg], pts[seg + 1])
-        // t near 0/1 is already an endpoint-to-endpoint match; only mid-span touches need
-        // splicing. Never snap onto a wet point — an unclipped arterial can legitimately
-        // run through water under its bridge.
-        if (d < tol && t > 0.02 && t < 0.98 && !inWater(terrain, pt) && (!best || d < best.d))
-          best = { j, seg, pt, d }
-      }
-    }
-    if (!best) return false
-    out[i].points[end] = best.pt
-    out[best.j].points.splice(best.seg + 1, 0, best.pt)
-    return true
-  }
-
-  // pass 1: tight tolerance for ordinary T-junctions; bridges get the wide radius
-  // immediately since their landing point is deliberately displaced from the host
-  // road's line (pushed onto land, or re-oriented perpendicular to the river).
-  for (let i = 0; i < out.length; i++) {
-    const tol = out[i].bridge ? BRIDGE_SNAP_TOL : SNAP_TOL
-    for (const end of [0, out[i].points.length - 1]) attempt(i, end, tol)
-  }
-
-  // pass 2: rescue anything still fully isolated (no point of this road within tol of any
-  // other road's line) — e.g. a water-clipped street fragment whose only neighbor was
-  // dropped entirely — with the same wide radius.
-  const isIsolated = (i: number): boolean =>
-    out[i].points.every((p) => {
-      for (let j = 0; j < out.length; j++) {
-        if (j === i) continue
-        const pts = out[j].points
-        for (let seg = 0; seg < pts.length - 1; seg++)
-          if (nearestOnSegment(p, pts[seg], pts[seg + 1]).d < SNAP_TOL) return false
-      }
-      return true
-    })
-  for (let i = 0; i < out.length; i++) {
-    if (out[i].bridge || !isIsolated(i)) continue
-    attempt(i, 0, BRIDGE_SNAP_TOL)
-  }
-
-  return out
-}
-
 export function layoutRoads(
   params: SectorParams,
   terrain: Terrain,
@@ -171,6 +96,7 @@ export function layoutRoads(
   }
 
   const grounded = clipRoadsToLand(roads, terrain)
-  const bridges = planBridges(grounded, terrain)
-  return { roads: snapJunctions([...grounded, ...bridges], terrain), districtRects, blocksByDistrict }
+  const truncated = truncateOverSpanRoads(grounded, terrain)
+  const bridges = planBridges(truncated, terrain)
+  return { roads: [...truncated, ...bridges], districtRects, blocksByDistrict }
 }

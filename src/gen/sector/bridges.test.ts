@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Road, Terrain } from '../types'
-import { clipRoadsToLand, planBridges } from './bridges'
+import { clipRoadsToLand, inWater, planBridges, truncateOverSpanRoads } from './bridges'
 
 // hand terrain: vertical river band x∈[450,550] in a 1000² window
 const banded: Terrain = {
@@ -54,5 +54,35 @@ describe('planBridges', () => {
   it('no bridges on dry terrain', () => {
     const dry: Terrain = { kind: 'inland', metroSeed: 1, water: [], land: [[[[0, 0], [1000, 0], [1000, 1000], [0, 1000]]]], river: null }
     expect(planBridges([road('A01', 'arterial', 300)], dry)).toEqual([])
+  })
+})
+
+// hand terrain: a 600 m water band — wider than arterial's MAX_SPAN (450) but
+// narrower than highway's (900)
+const wideBand: Terrain = {
+  kind: 'river', metroSeed: 1,
+  water: [[[[200, 0], [800, 0], [800, 1000], [200, 1000]]]],
+  land: [
+    [[[0, 0], [200, 0], [200, 1000], [0, 1000]]],
+    [[[800, 0], [1000, 0], [1000, 1000], [800, 1000]]],
+  ],
+  river: null,
+}
+
+describe('truncateOverSpanRoads', () => {
+  it('truncates an arterial whose crossing exceeds MAX_SPAN, and it gets no bridge', () => {
+    const grounded = clipRoadsToLand([road('A01', 'arterial', 300)], wideBand)
+    const truncated = truncateOverSpanRoads(grounded, wideBand)
+    expect(truncated.length).toBe(2)
+    for (const r of truncated) for (const p of r.points) expect(inWater(wideBand, p)).toBe(false)
+    expect(planBridges(truncated, wideBand)).toEqual([])
+  })
+  it('leaves a highway whole over the same band (within MAX_SPAN) and still bridges it', () => {
+    const grounded = clipRoadsToLand([road('H1', 'highway', 300)], wideBand)
+    const truncated = truncateOverSpanRoads(grounded, wideBand)
+    expect(truncated).toEqual(grounded)
+    const bridges = planBridges(truncated, wideBand)
+    expect(bridges.length).toBe(1)
+    expect(bridges[0].class).toBe('highway')
   })
 })
