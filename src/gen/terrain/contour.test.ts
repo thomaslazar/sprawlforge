@@ -51,6 +51,22 @@ describe('contourWater', () => {
     const sample = (x: number, y: number) => (Math.hypot(x - 500, y - 500) - 250) / 1000
     expect(contourWater(sample, win, 64)).toEqual(contourWater(sample, win, 64))
   })
+  it('saddle cell: dry center → two disjoint polygons, wet center → one connected polygon', () => {
+    // single cell (n=1) over a 2x2 window: TL & BR wet (-1), TR & BL dry (+1) —
+    // the classic marching-squares saddle ambiguity.
+    const saddleWin = { x: 0, y: 0, w: 2, h: 2 }
+    const dryCenter = (x: number, y: number) => ((x < 1) === (y < 1) ? -1 : 1)
+    const { water: dryWater, land: dryLand } = contourWater(dryCenter, saddleWin, 1)
+    expect(dryWater.length).toBe(2) // two disjoint triangles, one per wet corner
+    expect(area(dryWater)).toBeCloseTo(1, 5) // linear approx of the two wet quadrants
+    expect(area(dryWater) + area(dryLand)).toBeCloseTo(4, 5)
+
+    // shift so the center height is < 0: same corners, now connected.
+    const wetCenter = (x: number, y: number) => dryCenter(x, y) - 0.6
+    const { water: wetWater } = contourWater(wetCenter, saddleWin, 1)
+    expect(wetWater.length).toBe(1) // single connected hexagon
+    expect(area(wetWater)).toBeGreaterThan(area(dryWater)) // markedly larger
+  })
   it('water area grows monotonically with the threshold (spec §7)', () => {
     const sample = (x: number, y: number) => (Math.hypot(x - 500, y - 500) - 250) / 1000
     const a0 = area(contourWater(sample, win, 64).water)

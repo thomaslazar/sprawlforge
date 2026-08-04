@@ -4,6 +4,12 @@ import type { Rect } from '../geometry'
 // fraction along the edge where the 0-contour sits, from height a to b
 const lerp0 = (a: number, b: number) => a / (a - b)
 
+interface Corner { x: number; y: number; h: number }
+const crossing = (a: Corner, b: Corner): [number, number] => {
+  const t = lerp0(a.h, b.h)
+  return [a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t]
+}
+
 /**
  * Marching squares, cell-polygon variant: for each grid cell emit the
  * below-threshold (water) sub-polygon, merge full-water runs per row into
@@ -51,12 +57,26 @@ export function contourWater(
       // partial cell: walk the square boundary, inserting contour crossings
       const x0 = i * dx
       const y0 = j * dy
-      const corners = [
+      const corners: Corner[] = [
         { x: x0, y: y0, h: tl },
         { x: x0 + dx, y: y0, h: tr },
         { x: x0 + dx, y: y0 + dy, h: br },
         { x: x0, y: y0 + dy, h: bl },
       ]
+      // saddle: two diagonal wet corners. The bilinear field is ambiguous
+      // between one connected region and two disjoint ones — disambiguate
+      // by the cell-center height (avg of the 4 corners).
+      const isSaddle = (wet[0] && wet[2] && !wet[1] && !wet[3]) || (wet[1] && wet[3] && !wet[0] && !wet[2])
+      if (isSaddle && (tl + tr + br + bl) / 4 >= 0) {
+        for (let c = 0; c < 4; c++) {
+          if (!wet[c]) continue
+          const prev = corners[(c + 3) % 4]
+          const cur = corners[c]
+          const next = corners[(c + 1) % 4]
+          pieces.push([[crossing(prev, cur), [cur.x, cur.y], crossing(cur, next)]])
+        }
+        continue
+      }
       const ring: [number, number][] = []
       for (let c = 0; c < 4; c++) {
         const a = corners[c]

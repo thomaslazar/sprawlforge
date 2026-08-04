@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bspSplit, insetRect, type Rect } from './geometry'
+import { bspSplit, insetRect, pointInRings, ringArea, type Rect } from './geometry'
 import { mulberry32 } from './rng'
 
 const within = (inner: Rect, outer: Rect) =>
@@ -14,6 +14,28 @@ describe('insetRect', () => {
   })
   it('returns null when too small', () => {
     expect(insetRect({ x: 0, y: 0, w: 15, h: 60 }, 10)).toBeNull()
+  })
+})
+
+describe('ringArea', () => {
+  it('is signed: reversing winding flips the sign, magnitude = area', () => {
+    const square = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }]
+    expect(ringArea(square)).toBe(100)
+    expect(ringArea(square.slice().reverse())).toBe(-100)
+  })
+})
+
+describe('pointInRings', () => {
+  const outer = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }]
+  const hole = [{ x: 3, y: 3 }, { x: 7, y: 3 }, { x: 7, y: 7 }, { x: 3, y: 7 }]
+  it('is true inside the outer ring and outside the hole', () => {
+    expect(pointInRings({ x: 1, y: 1 }, [outer, hole])).toBe(true)
+  })
+  it('is false inside the hole (even-odd: crossed by both rings)', () => {
+    expect(pointInRings({ x: 5, y: 5 }, [outer, hole])).toBe(false)
+  })
+  it('is false fully outside the outer ring', () => {
+    expect(pointInRings({ x: 20, y: 20 }, [outer, hole])).toBe(false)
   })
 })
 
