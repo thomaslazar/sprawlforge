@@ -10,6 +10,31 @@ export function insetRect(r: Rect, d: number): Rect | null {
   return { x: r.x + d, y: r.y + d, w, h }
 }
 
+/** signed area of a ring (positive = counter-clockwise in y-down coords) */
+export function ringArea(ring: Pt[]): number {
+  let a = 0
+  for (let i = 0; i < ring.length; i++) {
+    const p = ring[i]
+    const q = ring[(i + 1) % ring.length]
+    a += p.x * q.y - q.x * p.y
+  }
+  return a / 2
+}
+
+/** even-odd point-in-polygon over a list of rings */
+export function pointInRings(p: Pt, rings: Pt[][]): boolean {
+  let inside = false
+  for (const ring of rings) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const a = ring[i]
+      const b = ring[j]
+      if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x)
+        inside = !inside
+    }
+  }
+  return inside
+}
+
 export interface Cut { axis: 'x' | 'y'; strip: Rect }
 
 export interface BspOpts { minCell: number; gap: number; jitter: number; rng: Rng }

@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "jspdf": "^4.2.1",
+    "polygon-clipping": "^0.15.7",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "svg2pdf.js": "^2.7.0"
