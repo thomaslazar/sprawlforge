@@ -77,9 +77,17 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
 
   out.push(`<rect x="0" y="0" width="${S}" height="${S}" fill="${theme.bg}"/>`)
 
-  if (model.water.kind !== 'none') {
-    const pts = model.water.polygon.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
-    out.push(`<polygon points="${pts}" fill="${theme.water}"/>`)
+  for (const poly of model.terrain.water) {
+    const d = poly
+      .map((ring) => `M${ring.map(([x, y]) => `${n(x)},${n(y)}`).join('L')}Z`)
+      .join(' ')
+    out.push(`<path d="${d}" fill="${theme.water}" fill-rule="evenodd"/>`)
+  }
+  if (model.terrain.river) {
+    const pts = model.terrain.river.course.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
+    out.push(
+      `<polyline points="${pts}" fill="none" stroke="${theme.water}" stroke-width="${n(model.terrain.river.width)}" stroke-linecap="round"/>`,
+    )
   }
 
   for (const d of model.districts) {

@@ -20,6 +20,12 @@ describe('generateSector', () => {
     const m = generateSector(base)
     expect(m.meta).toMatchObject({ seed: 42, generatorVersion: GENERATOR_VERSION, sizeM: 4000 })
     expect(m.meta.params).toEqual(base)
+    expect(typeof m.meta.metroSeed).toBe('number')
+  })
+  it('samples terrain and exposes its kind', () => {
+    const m = generateSector(base)
+    expect(m.terrain.kind).toBe('inland')
+    expect(m.meta.metroSeed).toBe(m.terrain.metroSeed)
   })
   it('every district has a name; highways and arterials are named', () => {
     const m = generateSector(base)

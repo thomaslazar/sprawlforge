@@ -50,8 +50,14 @@ describe('renderSector', () => {
     expect(getTheme('constructor').id).toBe('neon')
   })
   const handModel = (pois: SectorModel['pois']): SectorModel => ({
-    meta: { seed: 1, generatorVersion: GENERATOR_VERSION, params: base, sizeM: 1000 },
-    water: { kind: 'none', polygon: [], bounds: null },
+    meta: { seed: 1, generatorVersion: GENERATOR_VERSION, params: base, sizeM: 1000, metroSeed: 1 },
+    terrain: {
+      kind: 'inland',
+      metroSeed: 1,
+      water: [],
+      land: [[[[0, 0], [1000, 0], [1000, 1000], [0, 1000]]]],
+      river: null,
+    },
     roads: [],
     districts: [],
     blocks: [],

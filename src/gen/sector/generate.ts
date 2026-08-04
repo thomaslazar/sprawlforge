@@ -1,9 +1,9 @@
 import { generateName } from '../names/names'
 import { getPack } from '../names/packs'
 import { hashSeed, mulberry32 } from '../rng'
+import { sampleTerrain } from '../terrain'
 import { GENERATOR_VERSION, type SectorModel, type SectorParams } from '../types'
 import { fillBuildings } from './buildings'
-import { genGeography } from './geography'
 import { placePois } from './pois'
 import { layoutRoads } from './roads'
 import { assignZones } from './zoning'
@@ -12,8 +12,8 @@ export function generateSector(params: SectorParams): SectorModel {
   const sizeM = params.size * 1000
   const pack = getPack(params.pack)
 
-  const water = genGeography(params, sizeM)
-  const { roads, districtRects, blocksByDistrict } = layoutRoads(params, water, sizeM)
+  const terrain = sampleTerrain(params, sizeM)
+  const { roads, districtRects, blocksByDistrict } = layoutRoads(params, terrain, sizeM)
   const districts = assignZones(districtRects, params)
 
   // re-align blocksByDistrict to the sorted district order
@@ -36,8 +36,14 @@ export function generateSector(params: SectorParams): SectorModel {
   const pois = placePois(namedDistricts, buildings, pack, params)
 
   return {
-    meta: { seed: params.seed, generatorVersion: GENERATOR_VERSION, params, sizeM },
-    water,
+    meta: {
+      seed: params.seed,
+      generatorVersion: GENERATOR_VERSION,
+      params,
+      sizeM,
+      metroSeed: terrain.metroSeed,
+    },
+    terrain,
     roads: namedRoads,
     districts: namedDistricts,
     blocks,

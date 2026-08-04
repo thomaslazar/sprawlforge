@@ -1,7 +1,7 @@
 import type { Rect } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import type { District, SectorParams, TerrainKind, ZoneType } from '../types'
-import { resolveTerrainKind } from './geography'
+import { resolveTerrainKind } from '../terrain'
 
 const COASTAL_KINDS: readonly TerrainKind[] = ['coastal', 'bay', 'estuary', 'island']
 // interim gate; Task 8 replaces this with real shore detection

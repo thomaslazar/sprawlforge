@@ -42,10 +42,10 @@ export function nearestOnPolyline(p: Pt, line: Pt[]): { dist: number; t01: numbe
   return { dist: best, t01: bestT }
 }
 
-export function traceRiver(base: TerrainFieldBase, metroSeed: number): River | null {
+export function traceRiver(base: TerrainFieldBase, metroSeed: number, sizeM: number): River | null {
   if (!base.hasRiver) return null
   const rng = mulberry32(hashSeed(metroSeed, 'river'))
-  const win = sectorWindow(4000) // window position is size-independent (centered)
+  const win = sectorWindow(sizeM) // window position is size-independent (centered)
 
   // start: highest of K samples on the window's far side from the water
   let start: Pt = { x: METRO_SIZE / 2, y: METRO_SIZE / 2 }
@@ -133,7 +133,7 @@ export function makeTerrainField(
   sizeM: number,
 ): TerrainField {
   const base = makeFieldBase(metroSeed, kind, sizeM)
-  const river = traceRiver(base, metroSeed)
+  const river = traceRiver(base, metroSeed, sizeM)
   const height = (x: number, y: number): number => {
     const h = base.heightRaw(x, y)
     if (!river) return h

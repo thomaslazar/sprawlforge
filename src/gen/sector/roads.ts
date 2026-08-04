@@ -1,6 +1,6 @@
 import { bspSplit, type Cut, type Rect } from '../geometry'
 import { hashSeed, mulberry32, type Rng } from '../rng'
-import type { Road, SectorParams, Water } from '../types'
+import type { Road, SectorParams, Terrain } from '../types'
 
 const HIGHWAY_W = 32
 const ARTERIAL_W = 18
@@ -15,26 +15,25 @@ function cutToRoad(cut: Cut, id: string, cls: Road['class'], width: number): Roa
   return { id, class: cls, points, width, name: null }
 }
 
-// Mean x of the jittered coastline (excludes the two sector-corner points
-// closing the polygon) — the coast wiggles around this line, so clipping
-// land here (rather than at the leftmost jitter) avoids a bare background
-// gutter between the districts and the water polygon.
-export function coastClipX(water: Water, sizeM: number): number {
-  const edge = water.polygon.filter((p) => p.x !== sizeM)
-  return edge.reduce((sum, p) => sum + p.x, 0) / edge.length
-}
-
-function landSlabs(water: Water, sizeM: number): Rect[] {
+// Bounding box of the land multipolygon — the one slab districts lay out
+// into. Precise waterline clipping of streets/blocks/buildings is Task 7+.
+function landSlabs(terrain: Terrain, sizeM: number): Rect[] {
   const sector: Rect = { x: 0, y: 0, w: sizeM, h: sizeM }
-  if (water.kind === 'coast') return [{ ...sector, w: coastClipX(water, sizeM) }]
-  if (water.kind === 'river') {
-    const b = water.bounds!
-    return [
-      { x: 0, y: 0, w: sizeM, h: b.y },
-      { x: 0, y: b.y + b.h, w: sizeM, h: sizeM - b.y - b.h },
-    ].filter((r) => r.h > 300)
+  const rings = terrain.land.flat()
+  if (rings.length === 0) return [sector]
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const ring of rings) {
+    for (const [x, y] of ring) {
+      if (x < minX) minX = x
+      if (y < minY) minY = y
+      if (x > maxX) maxX = x
+      if (y > maxY) maxY = y
+    }
   }
-  return [sector]
+  return [{ x: minX, y: minY, w: maxX - minX, h: maxY - minY }]
 }
 
 function splitByHighway(slabs: Rect[], params: SectorParams, rng: Rng, roads: Road[]): Rect[] {
@@ -64,13 +63,13 @@ function splitByHighway(slabs: Rect[], params: SectorParams, rng: Rng, roads: Ro
 
 export function layoutRoads(
   params: SectorParams,
-  water: Water,
+  terrain: Terrain,
   sizeM: number,
 ): { roads: Road[]; districtRects: Rect[]; blocksByDistrict: Rect[][] } {
   const rng = mulberry32(hashSeed(params.seed, 'roads'))
   const roads: Road[] = []
 
-  const slabs = splitByHighway(landSlabs(water, sizeM), params, rng, roads)
+  const slabs = splitByHighway(landSlabs(terrain, sizeM), params, rng, roads)
 
   const districtRects: Rect[] = []
   let a = 0

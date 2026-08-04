@@ -36,12 +36,19 @@ export interface SectorParams {
   theme: string
 }
 
-export interface Water {
-  kind: 'none' | 'coast' | 'river'
-  /** closed polygon in meters; empty when kind === 'none' */
-  polygon: Pt[]
-  /** axis-aligned bounding rect used to keep land layout out of water; null when none */
-  bounds: Rect | null
+export interface RiverSlice {
+  /** window-local course polyline (clipped to the window, margin included) */
+  course: Pt[]
+  width: number
+}
+
+export interface Terrain {
+  kind: TerrainKind
+  metroSeed: number
+  /** window-local multipolygons, meters, origin top-left */
+  water: Array<Array<Array<[number, number]>>>
+  land: Array<Array<Array<[number, number]>>>
+  river: RiverSlice | null
 }
 
 export interface Road {
@@ -92,8 +99,9 @@ export interface SectorModel {
     params: SectorParams
     /** sector edge length in meters */
     sizeM: number
+    metroSeed: number
   }
-  water: Water
+  terrain: Terrain
   roads: Road[]
   districts: District[]
   blocks: Block[]

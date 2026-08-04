@@ -1,15 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import type { Rect } from '../geometry'
+import { sampleTerrain } from '../terrain'
 import type { SectorParams } from '../types'
-import { genGeography } from './geography'
-import { coastClipX, layoutRoads } from './roads'
+import { layoutRoads } from './roads'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
   terrain: 'inland', piers: false, pack: 'generic', theme: 'neon',
 }
 const sizeM = 4000
-const noWater = genGeography(base, sizeM)
+const noWater = sampleTerrain(base, sizeM)
+
+function landBounds(terrain: ReturnType<typeof sampleTerrain>) {
+  const pts = terrain.land.flat().flat()
+  return {
+    minX: Math.min(...pts.map(([x]) => x)),
+    minY: Math.min(...pts.map(([, y]) => y)),
+    maxX: Math.max(...pts.map(([x]) => x)),
+    maxY: Math.max(...pts.map(([, y]) => y)),
+  }
+}
 
 describe('layoutRoads', () => {
   it('is deterministic', () => {
@@ -28,20 +37,27 @@ describe('layoutRoads', () => {
     const hi = layoutRoads({ ...base, density: 0.9 }, noWater, sizeM).blocksByDistrict.flat().length
     expect(hi).toBeGreaterThan(lo)
   })
-  it('coast keeps all districts on land, clipped at the mean coastline', () => {
-    const water = genGeography({ ...base, terrain: 'coastal' }, sizeM)
-    const r = layoutRoads({ ...base, terrain: 'coastal' }, water, sizeM)
-    const clipX = coastClipX(water, sizeM)
+  it('coast keeps all districts within the land bounding box', () => {
+    const terrain = sampleTerrain({ ...base, terrain: 'coastal' }, sizeM)
+    const r = layoutRoads({ ...base, terrain: 'coastal' }, terrain, sizeM)
+    const b = landBounds(terrain)
     for (const d of r.districtRects) {
-      expect(d.x + d.w).toBeLessThanOrEqual(clipX + 1e-9)
+      expect(d.x).toBeGreaterThanOrEqual(b.minX - 1e-6)
+      expect(d.y).toBeGreaterThanOrEqual(b.minY - 1e-6)
+      expect(d.x + d.w).toBeLessThanOrEqual(b.maxX + 1e-6)
+      expect(d.y + d.h).toBeLessThanOrEqual(b.maxY + 1e-6)
     }
   })
-  it('river splits land into slabs above and below', () => {
-    const water = genGeography({ ...base, terrain: 'river' }, sizeM)
-    const r = layoutRoads({ ...base, terrain: 'river' }, water, sizeM)
-    const above = r.districtRects.some((d: Rect) => d.y + d.h <= water.bounds!.y + 1e-9)
-    const below = r.districtRects.some((d: Rect) => d.y >= water.bounds!.y + water.bounds!.h - 1e-9)
-    expect(above && below).toBe(true)
+  it('river keeps all districts within the land bounding box', () => {
+    const terrain = sampleTerrain({ ...base, terrain: 'river' }, sizeM)
+    const r = layoutRoads({ ...base, terrain: 'river' }, terrain, sizeM)
+    const b = landBounds(terrain)
+    for (const d of r.districtRects) {
+      expect(d.x).toBeGreaterThanOrEqual(b.minX - 1e-6)
+      expect(d.y).toBeGreaterThanOrEqual(b.minY - 1e-6)
+      expect(d.x + d.w).toBeLessThanOrEqual(b.maxX + 1e-6)
+      expect(d.y + d.h).toBeLessThanOrEqual(b.maxY + 1e-6)
+    }
   })
   it('road ids are stable and prefixed by class', () => {
     const r = layoutRoads(base, noWater, sizeM)
