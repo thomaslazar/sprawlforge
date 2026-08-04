@@ -56,9 +56,14 @@ No per-feature special-case geometry.
 
 ### Rivers
 
-- Traced at **metroplex level**: gradient descent from a high region toward
-  the sea with meander noise, stored as a coarse world-space polyline.
-  Deterministic from `hashSeed(metroSeed, 'rivers')`.
+- Traced at **metroplex level**: gradient descent from a high region with
+  meander noise, stored as a coarse world-space polyline. Deterministic
+  from `hashSeed(metroSeed, 'rivers')`.
+- **Destination rule:** the trace ends at the sea when the field has one;
+  in a landlocked metro it ends at the **lowest point on the metro
+  boundary** — the river flows through the city and off the map, as real
+  inland rivers do. A metro can therefore be: dry, river-only, coast-only,
+  or both (estuary).
 - The course is **carved into the heightfield** (heights lowered along the
   path, width tapering downstream). Relief follows the river, not the
   other way round — this ordering avoids the classic
