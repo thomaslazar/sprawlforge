@@ -70,6 +70,14 @@ core (clipping, insetting, filling non-rectangular shapes).
 
 ## Cross-cutting
 
+- **App styling** — the UI currently has no design at all: components use
+  ad-hoc inline `style={{…}}` props (KnobPanel, MapView, App, error
+  boundary) and browser-default widgets. Replace with a proper stylesheet
+  (plain CSS file is enough — no CSS-in-JS dependency) and give the app
+  chrome an actual look (dark cyberpunk panel to match the neon theme,
+  styled sliders/selects/buttons). Inline styles should survive only where
+  values are computed at runtime (e.g. the map transform).
+
 - **Multi-language UI** — English first, German second. UI strings are
   externalized from day one (no hardcoded labels in components) so adding
   German is translation work, not refactoring. Generated map content
