@@ -1,12 +1,19 @@
 import { hashSeed, mulberry32 } from '../rng'
-import { TERRAIN_KINDS, type SectorParams, type Terrain, type TerrainKind } from '../types'
+import type { SectorParams, Terrain, TerrainKind } from '../types'
 import { contourWater } from './contour'
 import { sectorWindow } from './field'
 import { makeTerrainField } from './rivers'
 
-export function resolveTerrainKind(params: SectorParams): TerrainKind {
+// M4: weighted toward wet kinds — an unweighted pick over TERRAIN_KINDS gave
+// 'auto' a 1-in-7 shot at 'inland', which never shows off the water/river
+// rendering the tool exists to demo. Changes auto-resolution for existing
+// seeds (pre-release, fine).
+function resolveTerrainKind(params: SectorParams): TerrainKind {
   if (params.terrain !== 'auto') return params.terrain
-  return mulberry32(hashSeed(params.seed, 'terrain-kind')).pick(TERRAIN_KINDS)
+  return mulberry32(hashSeed(params.seed, 'terrain-kind')).weighted([
+    ['inland', 1], ['river', 2], ['coastal', 2], ['bay', 1.5],
+    ['estuary', 1.5], ['island', 1], ['lakes', 1.5],
+  ])
 }
 
 const GRID_N = 128

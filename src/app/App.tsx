@@ -29,15 +29,22 @@ export function App() {
     window.history.replaceState(null, '', stateToSearch(s))
   }
 
+  // theme is a render-side concern only (see SectorParams) — keyed apart
+  // from the generation-relevant fields so a theme switch never re-runs the
+  // generator (M5: it used to regenerate the whole sector on every swap)
+  const genParams = useMemo(
+    () => ({ seed: state.seed, pack: state.pack, ...resolveTags(state.tags) }),
+    [state.seed, state.pack, state.tags],
+  )
   const params: SectorParams = useMemo(
-    () => ({ seed: state.seed, pack: state.pack, theme: state.theme, ...resolveTags(state.tags) }),
-    [state],
+    () => ({ ...genParams, theme: state.theme }),
+    [genParams, state.theme],
   )
 
   // semantic zoom: labels re-render per zoom band (1|2|4|8) so more of them
-  // fit as you zoom in; generation itself only depends on params
+  // fit as you zoom in; generation itself only depends on genParams
   const [labelZoom, setLabelZoom] = useState(1)
-  const model = useMemo(() => generateSector(params), [params])
+  const model = useMemo(() => generateSector(params), [genParams])
   const svg = useMemo(
     () => renderSector(model, getTheme(params.theme), { labelZoom }),
     [model, params.theme, labelZoom],
