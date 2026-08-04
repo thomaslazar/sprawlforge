@@ -3,8 +3,8 @@
 ## Build order
 
 1. **Sector generator** — v1 per `docs/specs/2026-08-03-sprawlforge-design.md` ✅
-2. **Terrain v2 + organic map redesign** ✅ — next up, needs its own design
-   spec; see below
+2. **Terrain v2 + organic map redesign** — phases 1+2 ✅; phase 3 (organic
+   streets) needs its own spec; see below
 3. **Metroplex generator** — parent of sectors, proves linkage chain
 4. **Battlemap generator** — interiors/street combat, seeded from sector buildings
 5. **Node map generator** — abstract location graphs

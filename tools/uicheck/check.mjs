@@ -110,6 +110,12 @@ for (const t of ['inland', 'river', 'coastal', 'bay', 'estuary', 'island', 'lake
   if (t !== 'inland') {
     const water = await page.locator('svg [data-water]').count()
     if (water < 1) fail(`terrain ${t}: no water rendered`)
+    // presence alone isn't enough (rec 4) — [data-water] is a <use> onto
+    // #water-shape; a real multi-ring water body serializes to a long path,
+    // an empty/degenerate one wouldn't
+    const waterD = await page.locator('svg #water-shape').getAttribute('d')
+    if (!waterD || waterD.length <= 100)
+      fail(`terrain ${t}: water-shape path looks empty (${waterD?.length ?? 0} chars)`)
   }
 
   if (t === 'river') {
@@ -117,6 +123,12 @@ for (const t of ['inland', 'river', 'coastal', 'bay', 'estuary', 'island', 'lake
     if (bridges < 1) fail('terrain river: no bridge rendered')
   }
 }
+
+// small windows are the tight case for C3's window placement — confirm the
+// smallest size tag still shows water for a wet kind
+await page.goto(`${BASE}/?seed=42&tags=coastal,small`)
+await page.waitForSelector('svg')
+if ((await page.locator('svg [data-water]').count()) < 1) fail('coastal,small: no water rendered')
 
 await browser.close()
 console.log(process.exitCode ? 'uicheck FAILED' : 'uicheck passed')

@@ -58,7 +58,7 @@ No per-feature special-case geometry.
 
 - Traced at **metroplex level**: gradient descent from a high region with
   meander noise, stored as a coarse world-space polyline. Deterministic
-  from `hashSeed(metroSeed, 'rivers')`.
+  from `hashSeed(metroSeed, 'river')`.
 - **Destination rule:** the trace ends at the sea when the field has one;
   in a landlocked metro it ends at the **lowest point on the metro
   boundary** — the river flows through the city and off the map, as real
