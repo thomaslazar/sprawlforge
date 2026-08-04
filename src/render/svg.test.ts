@@ -101,12 +101,14 @@ describe('renderSector', () => {
     expect(svg).toContain('id="land-clip"')
     expect(svg).toContain(getTheme('neon').waterShallow)
     expect(svg).toContain('feGaussianBlur')
+    expect(svg).toContain('data-water=""')
   })
 
   it('renders bridge deck and shadow', () => {
     const svg = renderSector(wetModel, getTheme('neon'))
     expect(svg).toContain(getTheme('neon').bridge.deck)
     expect(svg).toContain(getTheme('neon').bridge.shadow)
+    expect(svg).toContain('data-bridge=""')
   })
 
   it('renders pier decks with data-id', () => {

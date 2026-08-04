@@ -99,7 +99,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     const d = poly
       .map((ring) => `M${ring.map(([x, y]) => `${n(x)},${n(y)}`).join('L')}Z`)
       .join(' ')
-    out.push(`<path d="${d}" fill="${theme.water}" fill-rule="evenodd"/>`)
+    out.push(`<path data-water="" d="${d}" fill="${theme.water}" fill-rule="evenodd"/>`)
   }
 
   // Shallow band
@@ -152,7 +152,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     )
     // Deck (square caps)
     out.push(
-      `<polyline points="${pts}" fill="none" stroke="${theme.bridge.deck}" stroke-width="${road.width}" stroke-linecap="square"/>`,
+      `<polyline data-bridge="" points="${pts}" fill="none" stroke="${theme.bridge.deck}" stroke-width="${road.width}" stroke-linecap="square"/>`,
     )
   }
 

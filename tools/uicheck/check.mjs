@@ -98,5 +98,25 @@ for (const [label, ext] of [
   await dl.saveAs(`${OUT}/export.${ext}`)
 }
 
+// terrain sweep: every kind renders buildings, wet kinds show water, rivers have bridges
+for (const t of ['inland', 'river', 'coastal', 'bay', 'estuary', 'island', 'lakes']) {
+  await page.goto(`${BASE}/?seed=42&tags=${t}`)
+  await page.waitForSelector('svg')
+  await page.screenshot({ path: `${OUT}/terrain-${t}.png` })
+
+  const bld = await page.locator('svg polygon[data-id^="BLD"]').count()
+  if (bld < 1) fail(`terrain ${t}: no buildings rendered`)
+
+  if (t !== 'inland') {
+    const water = await page.locator('svg [data-water]').count()
+    if (water < 1) fail(`terrain ${t}: no water rendered`)
+  }
+
+  if (t === 'river') {
+    const bridges = await page.locator('svg [data-bridge]').count()
+    if (bridges < 1) fail('terrain river: no bridge rendered')
+  }
+}
+
 await browser.close()
 console.log(process.exitCode ? 'uicheck FAILED' : 'uicheck passed')
