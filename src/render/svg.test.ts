@@ -24,7 +24,7 @@ describe('renderSector', () => {
     const svg = renderSector(model, getTheme('neon'))
     for (const d of model.districts) expect(svg).toContain(`data-id="${d.id}"`)
     for (const p of model.pois) expect(svg).toContain(`data-id="${p.id}"`)
-    expect(svg.match(/data-id="BLD/g)!.length).toBe(model.buildings.length)
+    expect(svg.match(/<polygon data-id="BLD/g)!.length).toBe(model.buildings.length)
   })
   it('has a metric scale bar', () => {
     expect(renderSector(model, getTheme('neon'))).toContain('500 m')

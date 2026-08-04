@@ -75,6 +75,8 @@ export interface Block {
   id: string
   districtId: string
   rect: Rect
+  /** outer ring, meters; equals rect's 4 corners unless clipped by water */
+  footprint: Pt[]
 }
 
 export interface Building {
@@ -82,6 +84,8 @@ export interface Building {
   blockId: string
   districtId: string
   rect: Rect
+  /** outer ring, meters; equals rect's 4 corners unless clipped by water */
+  footprint: Pt[]
 }
 
 export interface Poi {

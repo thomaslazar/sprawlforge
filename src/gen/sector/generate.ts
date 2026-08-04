@@ -32,7 +32,7 @@ export function generateSector(params: SectorParams): SectorModel {
       : { ...r, name: generateName(nameRng.pick(pack.streetPatterns), pack.tables, nameRng) },
   )
 
-  const { blocks, buildings } = fillBuildings(namedDistricts, alignedBlocks, params)
+  const { blocks, buildings } = fillBuildings(namedDistricts, alignedBlocks, params, terrain)
   const pois = placePois(namedDistricts, buildings, pack, params)
 
   return {

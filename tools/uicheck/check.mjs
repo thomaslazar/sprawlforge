@@ -23,7 +23,7 @@ const initialBox = await page.locator('svg').boundingBox()
 if (initialBox.height > 901 || initialBox.width > 1401)
   fail(`map does not fit viewport on load: ${initialBox.width}x${initialBox.height}`)
 
-const buildings = await page.locator('svg rect[data-id^="BLD"]').count()
+const buildings = await page.locator('svg polygon[data-id^="BLD"]').count()
 if (buildings < 50) fail(`expected a dense map, got ${buildings} buildings`)
 
 const pois = await page.locator('svg circle[data-id^="P"]').count()

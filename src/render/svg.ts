@@ -98,9 +98,9 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   }
 
   for (const b of model.buildings) {
-    const r = b.rect
+    const pts = b.footprint.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
     out.push(
-      `<rect data-id="${b.id}" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" fill="${theme.building.fill}" stroke="${theme.building.stroke}" stroke-width="1"/>`,
+      `<polygon data-id="${b.id}" points="${pts}" fill="${theme.building.fill}" stroke="${theme.building.stroke}" stroke-width="1"/>`,
     )
   }
 

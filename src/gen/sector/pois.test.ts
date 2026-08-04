@@ -15,6 +15,7 @@ const buildings: Building[] = Array.from({ length: 30 }, (_, i) => ({
   blockId: 'B0101',
   districtId: 'D01',
   rect: { x: i * 20, y: 0, w: 15, h: 15 },
+  footprint: [{ x: i * 20, y: 0 }, { x: i * 20 + 15, y: 0 }, { x: i * 20 + 15, y: 15 }, { x: i * 20, y: 15 }],
 }))
 
 describe('placePois', () => {
