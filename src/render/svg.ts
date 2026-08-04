@@ -156,6 +156,14 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     )
   }
 
+  // Pier decks, above water, below labels
+  for (const pier of model.piers) {
+    const [a, b] = pier.points
+    out.push(
+      `<line data-id="${pier.id}" x1="${n(a.x)}" y1="${n(a.y)}" x2="${n(b.x)}" y2="${n(b.y)}" stroke="${theme.bridge.deck}" stroke-width="${n(pier.width)}"/>`,
+    )
+  }
+
   const placedLabels: Box[] = []
 
   for (const d of model.districts) {

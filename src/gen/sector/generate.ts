@@ -4,6 +4,7 @@ import { hashSeed, mulberry32 } from '../rng'
 import { sampleTerrain } from '../terrain'
 import { GENERATOR_VERSION, type SectorModel, type SectorParams } from '../types'
 import { fillBuildings } from './buildings'
+import { placePiers } from './piers'
 import { placePois } from './pois'
 import { layoutRoads } from './roads'
 import { assignZones } from './zoning'
@@ -34,6 +35,7 @@ export function generateSector(params: SectorParams): SectorModel {
 
   const { blocks, buildings } = fillBuildings(namedDistricts, alignedBlocks, params, terrain)
   const pois = placePois(namedDistricts, buildings, pack, params)
+  const piers = placePiers(namedDistricts, terrain, params)
 
   return {
     meta: {
@@ -49,5 +51,6 @@ export function generateSector(params: SectorParams): SectorModel {
     blocks,
     buildings,
     pois,
+    piers,
   }
 }

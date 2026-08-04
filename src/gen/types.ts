@@ -88,6 +88,13 @@ export interface Building {
   footprint: Pt[]
 }
 
+export interface Pier {
+  id: string
+  /** deck centerline, land -> water */
+  points: [Pt, Pt]
+  width: number
+}
+
 export interface Poi {
   id: string
   buildingId: string
@@ -114,4 +121,5 @@ export interface SectorModel {
   blocks: Block[]
   buildings: Building[]
   pois: Poi[]
+  piers: Pier[]
 }

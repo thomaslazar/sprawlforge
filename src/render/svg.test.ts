@@ -63,6 +63,7 @@ describe('renderSector', () => {
     blocks: [],
     buildings: [],
     pois,
+    piers: [],
   })
   const poi = (id: string, name: string, x: number, y: number, type = 'x') => ({
     id, buildingId: `BLD${id}`, districtId: 'D01', type, name, at: { x, y },
@@ -91,6 +92,7 @@ describe('renderSector', () => {
     blocks: [],
     buildings: [],
     pois: [],
+    piers: [{ id: 'PR01', points: [{ x: 700, y: 500 }, { x: 760, y: 500 }], width: 6 }],
   }
 
   it('renders shallow band and shore glow via clip paths', () => {
@@ -105,6 +107,11 @@ describe('renderSector', () => {
     const svg = renderSector(wetModel, getTheme('neon'))
     expect(svg).toContain(getTheme('neon').bridge.deck)
     expect(svg).toContain(getTheme('neon').bridge.shadow)
+  })
+
+  it('renders pier decks with data-id', () => {
+    const svg = renderSector(wetModel, getTheme('neon'))
+    expect(svg).toContain('data-id="PR01"')
   })
 
   it('never renders wave ornaments', () => {
