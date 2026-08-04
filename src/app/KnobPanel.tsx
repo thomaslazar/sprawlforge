@@ -1,4 +1,4 @@
-import type { SectorParams } from '../gen/types'
+import { TERRAIN_KINDS, type SectorParams } from '../gen/types'
 import { packs } from '../gen/names/packs'
 import { themes } from '../render/theme'
 import { t } from './strings'
@@ -58,11 +58,17 @@ export function KnobPanel({ params, onChange, onReroll, onExport }: Props) {
       <Slider label={t.knobs.density} value={params.density} min={0} max={1} step={0.1} onChange={(v) => set('density', v)} />
       <Slider label={t.knobs.corpDominance} value={params.corpDominance} min={0} max={1} step={0.1} onChange={(v) => set('corpDominance', v)} />
       <Slider label={t.knobs.poiDensity} value={params.poiDensity} min={0} max={1} step={0.1} onChange={(v) => set('poiDensity', v)} />
-      <label style={{ display: 'block', marginBottom: 8 }}>
-        <input type="checkbox" checked={params.coast} onChange={(e) => set('coast', e.target.checked)} /> {t.knobs.coast}
-      </label>
       <label style={{ display: 'block', marginBottom: 12 }}>
-        <input type="checkbox" checked={params.river} onChange={(e) => set('river', e.target.checked)} /> {t.knobs.river}
+        {t.knobs.terrain}
+        <select
+          value={params.terrain}
+          onChange={(e) => set('terrain', e.target.value as SectorParams['terrain'])}
+          style={{ width: '100%' }}
+        >
+          {['auto', ...TERRAIN_KINDS].map((k) => (
+            <option key={k} value={k}>{k}</option>
+          ))}
+        </select>
       </label>
       <label style={{ display: 'block', marginBottom: 12 }}>
         {t.knobs.pack}

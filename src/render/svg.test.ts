@@ -6,7 +6,7 @@ import { getTheme, themes } from './theme'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  coast: true, river: false, pack: 'generic', theme: 'neon',
+  terrain: 'coastal', piers: false, pack: 'generic', theme: 'neon',
 }
 const model = generateSector(base)
 

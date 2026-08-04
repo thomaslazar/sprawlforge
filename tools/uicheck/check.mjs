@@ -14,7 +14,7 @@ const fail = (msg) => {
 
 // fixed seed → reproducible assertions
 await page.goto(
-  `${BASE}/?seed=42&size=4&density=0.5&corp=0.5&poi=0.5&coast=1&river=0&pack=generic&theme=neon`,
+  `${BASE}/?seed=42&size=4&density=0.5&corp=0.5&poi=0.5&terrain=coastal&pack=generic&theme=neon`,
 )
 await page.waitForSelector('svg')
 

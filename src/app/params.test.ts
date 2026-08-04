@@ -3,7 +3,7 @@ import { DEFAULTS, paramsFromSearch, paramsToSearch } from './params'
 
 describe('params codec', () => {
   it('round-trips', () => {
-    const p = { ...DEFAULTS, seed: 4711, size: 6, coast: true, pack: 'shadowrunish' }
+    const p = { ...DEFAULTS, seed: 4711, size: 6, terrain: 'coastal' as const, pack: 'shadowrunish' }
     expect(paramsFromSearch(paramsToSearch(p), 0)).toEqual(p)
   })
   it('empty search uses defaults and fallback seed', () => {

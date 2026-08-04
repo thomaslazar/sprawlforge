@@ -6,7 +6,7 @@ import { coastClipX, layoutRoads } from './roads'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  coast: false, river: false, pack: 'generic', theme: 'neon',
+  terrain: 'inland', piers: false, pack: 'generic', theme: 'neon',
 }
 const sizeM = 4000
 const noWater = genGeography(base, sizeM)
@@ -29,16 +29,16 @@ describe('layoutRoads', () => {
     expect(hi).toBeGreaterThan(lo)
   })
   it('coast keeps all districts on land, clipped at the mean coastline', () => {
-    const water = genGeography({ ...base, coast: true }, sizeM)
-    const r = layoutRoads({ ...base, coast: true }, water, sizeM)
+    const water = genGeography({ ...base, terrain: 'coastal' }, sizeM)
+    const r = layoutRoads({ ...base, terrain: 'coastal' }, water, sizeM)
     const clipX = coastClipX(water, sizeM)
     for (const d of r.districtRects) {
       expect(d.x + d.w).toBeLessThanOrEqual(clipX + 1e-9)
     }
   })
   it('river splits land into slabs above and below', () => {
-    const water = genGeography({ ...base, river: true }, sizeM)
-    const r = layoutRoads({ ...base, river: true }, water, sizeM)
+    const water = genGeography({ ...base, terrain: 'river' }, sizeM)
+    const r = layoutRoads({ ...base, terrain: 'river' }, water, sizeM)
     const above = r.districtRects.some((d: Rect) => d.y + d.h <= water.bounds!.y + 1e-9)
     const below = r.districtRects.some((d: Rect) => d.y >= water.bounds!.y + water.bounds!.h - 1e-9)
     expect(above && below).toBe(true)

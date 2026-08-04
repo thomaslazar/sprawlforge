@@ -1,6 +1,13 @@
 import type { Rect } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
-import type { District, SectorParams, ZoneType } from '../types'
+import type { District, SectorParams, TerrainKind, ZoneType } from '../types'
+import { resolveTerrainKind } from './geography'
+
+const COASTAL_KINDS: readonly TerrainKind[] = ['coastal', 'bay', 'estuary', 'island']
+// interim gate; Task 8 replaces this with real shore detection
+function coastal(params: SectorParams): boolean {
+  return COASTAL_KINDS.includes(resolveTerrainKind(params))
+}
 
 export function zoneWeights(params: SectorParams): Record<ZoneType, number> {
   const c = params.corpDominance
@@ -10,7 +17,7 @@ export function zoneWeights(params: SectorParams): Record<ZoneType, number> {
     slum: 2.5 - 2 * c,
     industrial: 1.5,
     entertainment: 1,
-    docks: params.coast ? 1.5 : 0,
+    docks: coastal(params) ? 1.5 : 0,
   }
 }
 

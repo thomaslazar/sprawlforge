@@ -5,7 +5,7 @@ import { fillBuildings } from './buildings'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  coast: false, river: false, pack: 'generic', theme: 'neon',
+  terrain: 'inland', piers: false, pack: 'generic', theme: 'neon',
 }
 const districts: District[] = [
   { id: 'D01', zone: 'corp', name: '', bounds: { x: 0, y: 0, w: 600, h: 600 } },

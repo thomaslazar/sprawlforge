@@ -5,8 +5,8 @@ export const DEFAULTS: Omit<SectorParams, 'seed'> = {
   density: 0.5,
   corpDominance: 0.5,
   poiDensity: 0.5,
-  coast: false,
-  river: false,
+  terrain: 'auto',
+  piers: false,
   pack: 'generic',
   theme: 'neon',
 }
@@ -26,8 +26,8 @@ export function paramsFromSearch(search: string, fallbackSeed: number): SectorPa
     density: num(sp, 'density', DEFAULTS.density, 0, 1),
     corpDominance: num(sp, 'corp', DEFAULTS.corpDominance, 0, 1),
     poiDensity: num(sp, 'poi', DEFAULTS.poiDensity, 0, 1),
-    coast: sp.get('coast') === '1',
-    river: sp.get('river') === '1',
+    terrain: (sp.get('terrain') as SectorParams['terrain']) ?? 'auto',
+    piers: sp.get('piers') === '1',
     pack: sp.get('pack') ?? DEFAULTS.pack,
     theme: sp.get('theme') ?? DEFAULTS.theme,
   }
@@ -40,8 +40,8 @@ export function paramsToSearch(p: SectorParams): string {
     density: String(p.density),
     corp: String(p.corpDominance),
     poi: String(p.poiDensity),
-    coast: p.coast ? '1' : '0',
-    river: p.river ? '1' : '0',
+    terrain: p.terrain,
+    piers: p.piers ? '1' : '0',
     pack: p.pack,
     theme: p.theme,
   })

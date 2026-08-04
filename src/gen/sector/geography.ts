@@ -1,6 +1,6 @@
 import type { Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
-import type { SectorParams, Water } from '../types'
+import { TERRAIN_KINDS, type SectorParams, type TerrainKind, type Water } from '../types'
 
 function bbox(points: Pt[]): { x: number; y: number; w: number; h: number } {
   const xs = points.map((p) => p.x)
@@ -10,13 +10,23 @@ function bbox(points: Pt[]): { x: number; y: number; w: number; h: number } {
   return { x, y, w: Math.max(...xs) - x, h: Math.max(...ys) - y }
 }
 
+// interim: v1 water shapes driven by the v2 terrain param; replaced in the
+// terrain-adapter task
+export function resolveTerrainKind(params: SectorParams): TerrainKind {
+  if (params.terrain !== 'auto') return params.terrain
+  return mulberry32(hashSeed(params.seed, 'terrain-kind')).pick(TERRAIN_KINDS)
+}
+
 export function genGeography(params: SectorParams, sizeM: number): Water {
-  if (!params.coast && !params.river) return { kind: 'none', polygon: [], bounds: null }
+  const kind = resolveTerrainKind(params)
+  const wantsCoast = kind === 'coastal' || kind === 'bay' || kind === 'estuary' || kind === 'island'
+  const wantsRiver = kind === 'river' || kind === 'estuary'
+  if (!wantsCoast && !wantsRiver) return { kind: 'none', polygon: [], bounds: null }
   const rng = mulberry32(hashSeed(params.seed, 'geo'))
   const steps = 12
   const step = sizeM / steps
 
-  if (params.coast) {
+  if (wantsCoast) {
     const baseX = sizeM * 0.78
     const amp = sizeM * 0.04
     const edge: Pt[] = []

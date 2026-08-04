@@ -95,11 +95,14 @@ its siblings):
 
 | Group    | Tags                                                    | Maps to |
 |----------|---------------------------------------------------------|---------|
-| terrain  | `inland \| coastal \| bay \| estuary \| island \| lakes` (none = auto) | window anchor + gradient family + water threshold |
+| terrain  | `inland \| river \| coastal \| bay \| estuary \| island \| lakes` (none = auto) | window anchor + gradient family + water threshold |
 | size     | `small \| medium \| large`                              | sector edge km |
 | density  | `sparse \| dense \| packed`                             | density |
 | power    | `corp-run \| balanced \| fringe`                        | corpDominance |
 | activity | `quiet \| lively`                                       | poiDensity |
+
+`river` is the landlocked river-city tag — river present, no sea (destination
+rule §2).
 
 - URL: `?seed=4711&tags=coastal,large,dense,corp-run&pack=…&theme=…` —
   `seed`, `pack` and `theme` stay explicit params; everything numeric is

@@ -4,7 +4,7 @@ import { generateSector } from './generate'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  coast: false, river: false, pack: 'generic', theme: 'neon',
+  terrain: 'inland', piers: false, pack: 'generic', theme: 'neon',
 }
 
 describe('generateSector', () => {
