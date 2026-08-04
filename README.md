@@ -9,7 +9,9 @@ share a URL, get the identical map.
 ## Tools
 
 - **Sector generator** — a few km² of sprawl: roads, zoned districts,
-  buildings, named POIs. Metric everywhere.
+  buildings, named POIs; terrain templates (coast, rivers, bays, islands,
+  lakes) with bridges and waterfront blocks; tag-based controls. Metric
+  everywhere.
 - Metroplex, battlemap and node-map generators: see `docs/ROADMAP.md`.
 
 ## Development

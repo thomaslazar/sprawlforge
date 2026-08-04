@@ -3,7 +3,7 @@
 ## Build order
 
 1. **Sector generator** — v1 per `docs/specs/2026-08-03-sprawlforge-design.md` ✅
-2. **Terrain v2 + organic map redesign** — next up, needs its own design
+2. **Terrain v2 + organic map redesign** ✅ — next up, needs its own design
    spec; see below
 3. **Metroplex generator** — parent of sectors, proves linkage chain
 4. **Battlemap generator** — interiors/street combat, seeded from sector buildings
@@ -25,11 +25,11 @@ reads as a treemap. One redesign, three shippable phases, one
 organic street patterns share a dependency: an arbitrary-polygon geometry
 core (clipping, insetting, filling non-rectangular shapes).
 
-1. **Terrain v2** — terrain generated first, city adapts. Coast on any
+1. **Terrain v2** ✅ — terrain generated first, city adapts. Coast on any
    side with a curved waterline; meandering river that can coexist with
    the coast and flow into it; waterline as first-class polyline. Biggest
    variety win, visible even with rectangular streets.
-2. **City adapts to terrain** — blocks/buildings clipped to the waterline
+2. **City adapts to terrain** ✅ — blocks/buildings clipped to the waterline
    (waterfront buildings reach the river's edge), dock zones biased to
    the shore, roads crossing water become bridges (rendered as such,
    network stays connected).
@@ -49,6 +49,9 @@ core (clipping, insetting, filling non-rectangular shapes).
 - **Structural editing** — moving walls/roads/buildings by hand. v1 is
   generate + knobs + light annotation only.
 - **Elevation / terrain height** on sector maps.
+- **Tributaries and confluences** — branch networks and river merges.
+- **Shallow-water bands option** — rendering distinct shallow zones on water.
+- **Ships and harbor props** — ocean-going vessels, docks, shipping infrastructure.
 - **Transit lines** — rail/metro/monorail layer. Good v2 candidate for
   sector maps.
 - **3D anything.**
