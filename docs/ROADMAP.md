@@ -67,6 +67,15 @@ core (clipping, insetting, filling non-rectangular shapes).
 - **Road/building id format overflow** — ids are fixed-width
   (`A99`/`S999`/`BLD999999`); a large enough sector (e.g. size 8) can
   exceed the padding and produce colliding/malformed ids.
+- **Massively extend flavor-pack name tables** — current tables are ~10
+  words each, so names repeat quickly across a map. Grow every table
+  (adj/place/corpA/corpB/street/venue) by an order of magnitude in both
+  packs, and add more patterns per name kind for variety.
+- **Name uniqueness check** — generator draws names independently, so
+  duplicates like two "Club Afterlife" on one map happen. Track used
+  names per sector and retry (or draw without replacement) so every
+  district/POI name is unique within a map. Deterministic retries only —
+  same seed must still give same names (`GENERATOR_VERSION` bump).
 
 ## Cross-cutting
 
