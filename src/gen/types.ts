@@ -2,17 +2,11 @@ import type { Pt, Rect } from './geometry'
 
 export const GENERATOR_VERSION = 1
 
-export type ZoneType =
-  | 'corp'
-  | 'residential'
-  | 'slum'
-  | 'industrial'
-  | 'entertainment'
-  | 'docks'
-
-export const ZONE_TYPES: readonly ZoneType[] = [
+export const ZONE_TYPES = [
   'corp', 'residential', 'slum', 'industrial', 'entertainment', 'docks',
-]
+] as const
+
+export type ZoneType = (typeof ZONE_TYPES)[number]
 
 export type RoadClass = 'highway' | 'arterial' | 'street'
 
