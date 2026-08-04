@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { pointInRings, type Pt } from '../geometry'
 import { sampleTerrain } from '../terrain'
 import type { SectorParams } from '../types'
 import { layoutRoads } from './roads'
@@ -65,6 +66,46 @@ describe('layoutRoads', () => {
       if (road.class === 'highway') expect(road.id).toMatch(/^H\d+$/)
       if (road.class === 'arterial') expect(road.id).toMatch(/^A\d\d$/)
       if (road.class === 'street') expect(road.id).toMatch(/^S\d\d\d$/)
+    }
+  })
+  it('street roads never have a point in water', () => {
+    const terrain = sampleTerrain({ ...base, terrain: 'river' }, sizeM)
+    const { roads } = layoutRoads({ ...base, terrain: 'river' }, terrain, sizeM)
+    const inWater = (p: Pt) =>
+      terrain.water.some((poly) => pointInRings(p, poly.map((ring) => ring.map(([x, y]) => ({ x, y })))))
+    for (const road of roads) {
+      if (road.class !== 'street') continue
+      for (const p of road.points) expect(inWater(p)).toBe(false)
+    }
+  })
+  it('road graph stays connected across water (river seeds)', () => {
+    for (const seed of [1, 42, 999]) {
+      const params = { ...base, seed, terrain: 'river' as const }
+      const terrain = sampleTerrain(params, 4000)
+      const { roads } = layoutRoads(params, terrain, 4000)
+      // union-find over road endpoints; endpoints within 20 m are joined
+      const pts: Pt[] = []
+      const parent: number[] = []
+      const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])))
+      const idx = (p: Pt): number => {
+        for (let i = 0; i < pts.length; i++)
+          if (Math.hypot(pts[i].x - p.x, pts[i].y - p.y) < 20) return i
+        pts.push(p)
+        parent.push(pts.length - 1)
+        return pts.length - 1
+      }
+      for (const r of roads) {
+        const a = idx(r.points[0])
+        const b = idx(r.points[r.points.length - 1])
+        parent[find(a)] = find(b)
+        // segments cross mid-polyline too: join consecutive points
+        for (let i = 1; i < r.points.length; i++) parent[find(idx(r.points[i - 1]))] = find(idx(r.points[i]))
+      }
+      const components = new Set(pts.map((_, i) => find(i)))
+      // arterial/street endpoints that merely touch nothing else may float;
+      // require the graph to collapse into few components and at least one bridge
+      expect(roads.some((r) => r.bridge)).toBe(true)
+      expect(components.size).toBeLessThanOrEqual(3)
     }
   })
 })

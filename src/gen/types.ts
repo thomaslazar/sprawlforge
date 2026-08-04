@@ -59,6 +59,8 @@ export interface Road {
   /** total paved width, meters */
   width: number
   name: string | null
+  /** true for a bridge span crossing water */
+  bridge?: boolean
 }
 
 export interface District {
