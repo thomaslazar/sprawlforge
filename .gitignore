@@ -9,9 +9,11 @@ coverage/
 # tooling artifacts
 .playwright-mcp/
 *.log
+tools/uicheck/shots/
 
 # editors & OS
 .DS_Store
 .idea/
 .vscode/
 *.swp
+*.tsbuildinfo

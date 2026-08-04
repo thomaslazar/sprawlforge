@@ -2,7 +2,9 @@
 
 ## Main rule
 - Be brief.
-- Every answer to the user must start with their name: **Thomas**.
+- Every answer to the user must start by addressing them as **Mr. Johnson**.
+  (Shadowrun wink; doubles as a context-rot canary — if answers stop starting
+  with "Mr. Johnson", context has degraded.)
 
 ## What this is
 SprawlForge — free, static web toolkit for cyberpunk TTRPGs (system-agnostic,
@@ -12,7 +14,11 @@ hierarchical seeding. Client-side only, no backend, no accounts.
 See `docs/specs/` for design docs.
 
 ## Git conventions
-- **Always ask before committing.** Do not commit automatically.
+- **Ask before committing** after ad-hoc or exploratory changes — report what
+  changed, then ask. Exception: when executing a pre-approved implementation
+  plan whose tasks specify commit messages, commit per the plan without
+  pausing each task (the plan is the approval). Never autonomous for amends,
+  force pushes, or commits to `main`.
 - **Conventional Commits**: `type: subject` — `feat`, `fix`, `docs`, `test`,
   `ci`, `refactor`, `chore`.
 - Subject: imperative, lowercase, no period, max ~72 chars.
@@ -25,6 +31,15 @@ See `docs/specs/` for design docs.
   and its implementation on that branch so design and delivery are reviewed
   as one unit. Never autonomous for amends, force pushes, or commits to
   `main`.
+
+## Testing
+- **UI feature testing is part of development, not an afterthought.** Any
+  change that adds or alters UI behavior extends `tools/uicheck/`
+  (headless Playwright pass) in the same task and runs it before the task
+  counts as done. Unit tests alone never verify a UI feature.
+- Look at the uicheck screenshots; don't just trust the exit code.
+- Full e2e testing (multi-page flows, export file contents) is a separate
+  topic — see ROADMAP when it becomes real.
 
 ## Docs conventions
 - **Specs** go in `docs/specs/YYYY-MM-DD-<topic>-design.md`, **plans** in

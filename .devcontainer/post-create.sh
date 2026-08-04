@@ -1,0 +1,49 @@
+#!/bin/bash
+# Post-create setup for the sprawlforge devcontainer.
+set -euo pipefail
+
+# --- Claude Code session path symlink ---
+# Claude Code indexes sessions by project path. The host path differs from
+# the container path (/workspaces/sprawlforge), so we symlink so sessions
+# are shared in and out of the container.
+CONTAINER_KEY=$(pwd | sed 's|/|-|g')
+ln -sfn ~/.claude/projects/-Users-ibn-Development-Sprawlforge \
+  ~/.claude/projects/"$CONTAINER_KEY" 2>/dev/null || true
+
+# Ensure directories Claude Code expects exist
+mkdir -p ~/.claude/plugins/cache
+
+# Set peon-ping to use the frieren pack (matching the Mac's config)
+python3 -c "
+import json, os
+cfg_path = os.path.expanduser('~/.claude/hooks/peon-ping/config.json')
+with open(cfg_path) as f:
+    cfg = json.load(f)
+cfg['default_pack'] = 'frieren'
+cfg['desktop_notifications'] = False
+with open(cfg_path, 'w') as f:
+    json.dump(cfg, f, indent=2)
+" 2>/dev/null || true
+
+# --- Claude Code statusline ---
+# Install the statusline script and register it in settings.json.
+install -m 755 .devcontainer/statusline.sh ~/.claude/statusline.sh
+SETTINGS=~/.claude/settings.json
+[ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
+tmp=$(mktemp)
+jq --arg cmd "$HOME/.claude/statusline.sh" \
+  '. + {statusLine: {type: "command", command: $cmd}}' \
+  "$SETTINGS" > "$tmp" && mv "$tmp" "$SETTINGS"
+
+# --- Superpowers setup ---
+# Structured development workflow (brainstorming, planning, TDD, debugging, code review).
+claude plugin marketplace add obra/superpowers 2>/dev/null || true
+claude plugin install superpowers@superpowers-dev 2>/dev/null || true
+
+# --- Ponytail: general code-simplicity discipline (YAGNI, reuse, minimal diff) ---
+claude plugin marketplace add DietrichGebert/ponytail 2>/dev/null || true
+claude plugin install ponytail@ponytail 2>/dev/null || true
+
+# --- answer-first: output-style skill (lead with the answer, cut preamble) ---
+claude plugin marketplace add thomaslazar/answer-first 2>/dev/null || true
+claude plugin install answer-first@razal-skills 2>/dev/null || true
