@@ -6,19 +6,19 @@ const sizeM = 4000
 
 describe('traceRiver', () => {
   it('returns null when the kind has no river', () => {
-    expect(traceRiver(makeFieldBase(42, 'coastal', sizeM), 42, sizeM)).toBeNull()
+    expect(traceRiver(makeFieldBase(42, 'coastal'), 42, sizeM)).toBeNull()
   })
   it('is deterministic', () => {
-    const a = traceRiver(makeFieldBase(42, 'river', sizeM), 42, sizeM)
-    const b = traceRiver(makeFieldBase(42, 'river', sizeM), 42, sizeM)
+    const a = traceRiver(makeFieldBase(42, 'river'), 42, sizeM)
+    const b = traceRiver(makeFieldBase(42, 'river'), 42, sizeM)
     expect(a).toEqual(b)
   })
   it('river kind: course crosses the sector window and ends at the metro boundary', () => {
     for (const seed of [1, 42, 999]) {
-      const base = makeFieldBase(seed, 'river', sizeM)
+      const base = makeFieldBase(seed, 'river')
       const r = traceRiver(base, seed, sizeM)!
       expect(r.course.length).toBeGreaterThan(10)
-      const win = sectorWindow(sizeM)
+      const win = sectorWindow(sizeM, 'river', seed)
       const inWindow = r.course.some(
         (p) => p.x >= win.x && p.x <= win.x + win.w && p.y >= win.y && p.y <= win.y + win.h,
       )
@@ -33,7 +33,7 @@ describe('traceRiver', () => {
   })
   it('estuary: course ends in the sea', () => {
     for (const seed of [1, 42, 999]) {
-      const base = makeFieldBase(seed, 'estuary', sizeM)
+      const base = makeFieldBase(seed, 'estuary')
       const r = traceRiver(base, seed, sizeM)!
       const end = r.course[r.course.length - 1]
       expect(base.heightRaw(end.x, end.y)).toBeLessThan(0)

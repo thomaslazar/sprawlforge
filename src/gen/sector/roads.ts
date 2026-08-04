@@ -17,11 +17,11 @@ function cutToRoad(cut: Cut, id: string, cls: Road['class'], width: number): Roa
 }
 
 // Bounding box of the land multipolygon — the one slab districts lay out
-// into. Precise waterline clipping of streets/blocks/buildings is Task 7+.
-function landSlabs(terrain: Terrain, sizeM: number): Rect[] {
-  const sector: Rect = { x: 0, y: 0, w: sizeM, h: sizeM }
+// into before roads, blocks and buildings each clip to the actual waterline.
+function landSlabs(terrain: Terrain): Rect[] {
   const rings = terrain.land.flat()
-  if (rings.length === 0) return [sector]
+  // no land at all (window entirely underwater) — nothing to lay roads on
+  if (rings.length === 0) return []
   let minX = Infinity
   let minY = Infinity
   let maxX = -Infinity
@@ -67,10 +67,14 @@ export function layoutRoads(
   terrain: Terrain,
   sizeM: number,
 ): { roads: Road[]; districtRects: Rect[]; blocksByDistrict: Rect[][] } {
+  // no longer needed now that landSlabs reads bounds straight off
+  // terrain.land, but kept in the public signature — callers pass it
+  // positionally and future waterline-aware slab logic will want it back
+  void sizeM
   const rng = mulberry32(hashSeed(params.seed, 'roads'))
   const roads: Road[] = []
 
-  const slabs = splitByHighway(landSlabs(terrain, sizeM), params, rng, roads)
+  const slabs = splitByHighway(landSlabs(terrain), params, rng, roads)
 
   const districtRects: Rect[] = []
   let a = 0

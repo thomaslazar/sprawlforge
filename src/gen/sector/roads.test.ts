@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { pointInRings, type Pt } from '../geometry'
 import { sampleTerrain } from '../terrain'
 import { distToPolyline } from '../terrain/rivers'
-import type { SectorParams } from '../types'
+import type { SectorParams, Terrain } from '../types'
 import { layoutRoads } from './roads'
 
 const base: SectorParams = {
@@ -60,6 +60,20 @@ describe('layoutRoads', () => {
       expect(d.x + d.w).toBeLessThanOrEqual(b.maxX + 1e-6)
       expect(d.y + d.h).toBeLessThanOrEqual(b.maxY + 1e-6)
     }
+  })
+  it('tolerates an all-water window (I5): no land yields no districts, no crash', () => {
+    const allWater: Terrain = {
+      kind: 'coastal',
+      metroSeed: 1,
+      water: [[[[0, 0], [sizeM, 0], [sizeM, sizeM], [0, sizeM]]]],
+      land: [],
+      river: null,
+    }
+    expect(() => layoutRoads(base, allWater, sizeM)).not.toThrow()
+    const r = layoutRoads(base, allWater, sizeM)
+    expect(r.districtRects).toEqual([])
+    expect(r.blocksByDistrict).toEqual([])
+    expect(r.roads).toEqual([])
   })
   it('road ids are stable and prefixed by class', () => {
     const r = layoutRoads(base, noWater, sizeM)

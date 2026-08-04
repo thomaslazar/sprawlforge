@@ -16,7 +16,7 @@ export function sampleTerrain(params: SectorParams, sizeM: number): Terrain {
   const metroSeed = hashSeed(params.seed, 'metro-ctx')
   const kind = resolveTerrainKind(params)
   const field = makeTerrainField(metroSeed, kind, sizeM)
-  const win = sectorWindow(sizeM)
+  const win = sectorWindow(sizeM, kind, metroSeed)
   const { water, land } = contourWater(field.height, win, GRID_N)
 
   let river: Terrain['river'] = null

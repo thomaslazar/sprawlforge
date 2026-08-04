@@ -45,7 +45,7 @@ export function nearestOnPolyline(p: Pt, line: Pt[]): { dist: number; t01: numbe
 export function traceRiver(base: TerrainFieldBase, metroSeed: number, sizeM: number): River | null {
   if (!base.hasRiver) return null
   const rng = mulberry32(hashSeed(metroSeed, 'river'))
-  const win = sectorWindow(sizeM) // window position is size-independent (centered)
+  const win = sectorWindow(sizeM, base.kind, metroSeed)
 
   // start: highest of K samples on the window's far side from the water
   let start: Pt = { x: METRO_SIZE / 2, y: METRO_SIZE / 2 }
@@ -78,9 +78,12 @@ export function traceRiver(base: TerrainFieldBase, metroSeed: number, sizeM: num
     }
   }
 
-  // steer through the window center so the sector actually sees the river
-  const via: Pt = { x: METRO_SIZE / 2 + (rng.next() - 0.5) * win.w * 0.5,
-                    y: METRO_SIZE / 2 + (rng.next() - 0.5) * win.h * 0.5 }
+  // steer through the window center so the sector actually sees the river —
+  // tight spread (0.25, not 0.5): a wider via was occasionally landing the
+  // whole crossing near a window edge, leaving too short an in-window arc
+  // to clear the smoke test's water floor (seeds 36/55 at sizeM 4000)
+  const via: Pt = { x: METRO_SIZE / 2 + (rng.next() - 0.5) * win.w * 0.25,
+                    y: METRO_SIZE / 2 + (rng.next() - 0.5) * win.h * 0.25 }
 
   const phase = rng.next() * Math.PI * 2
   const course: Pt[] = [start]
@@ -132,7 +135,7 @@ export function makeTerrainField(
   kind: TerrainKind,
   sizeM: number,
 ): TerrainField {
-  const base = makeFieldBase(metroSeed, kind, sizeM)
+  const base = makeFieldBase(metroSeed, kind)
   const river = traceRiver(base, metroSeed, sizeM)
   const height = (x: number, y: number): number => {
     const h = base.heightRaw(x, y)
