@@ -68,6 +68,49 @@ describe('renderSector', () => {
     id, buildingId: `BLD${id}`, districtId: 'D01', type, name, at: { x, y },
   })
 
+  const wetModel: SectorModel = {
+    meta: { seed: 1, generatorVersion: GENERATOR_VERSION, params: base, sizeM: 1000, metroSeed: 1 },
+    terrain: {
+      kind: 'coastal',
+      metroSeed: 1,
+      water: [[[[250, 250], [750, 250], [750, 750], [250, 750]]]],
+      land: [[[[0, 0], [1000, 0], [1000, 1000], [0, 1000]]]],
+      river: null,
+    },
+    roads: [
+      {
+        id: 'R01',
+        class: 'arterial',
+        points: [{ x: 500, y: 0 }, { x: 500, y: 1000 }],
+        width: 25,
+        name: 'Bridge Road',
+        bridge: true,
+      },
+    ],
+    districts: [],
+    blocks: [],
+    buildings: [],
+    pois: [],
+  }
+
+  it('renders shallow band and shore glow via clip paths', () => {
+    const svg = renderSector(wetModel, getTheme('neon'))
+    expect(svg).toContain('id="water-clip"')
+    expect(svg).toContain('id="land-clip"')
+    expect(svg).toContain(getTheme('neon').waterShallow)
+    expect(svg).toContain('feGaussianBlur')
+  })
+
+  it('renders bridge deck and shadow', () => {
+    const svg = renderSector(wetModel, getTheme('neon'))
+    expect(svg).toContain(getTheme('neon').bridge.deck)
+    expect(svg).toContain(getTheme('neon').bridge.shadow)
+  })
+
+  it('never renders wave ornaments', () => {
+    expect(renderSector(wetModel, getTheme('neon'))).not.toMatch(/wave/i)
+  })
+
   it('nudges a colliding poi label to another side instead of dropping it', () => {
     const svg = renderSector(
       handModel([poi('P01', 'Alpha Tower', 500, 500), poi('P02', 'Beta Tower', 500, 500)]),

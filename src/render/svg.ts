@@ -65,24 +65,53 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   out.push(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S} ${S}" font-family="system-ui, sans-serif">`,
   )
+
+  // Build water and land paths for defs
+  const waterD = model.terrain.water
+    .map((poly) => poly.map((ring) => `M${ring.map(([x, y]) => `${n(x)},${n(y)}`).join('L')}Z`).join(' '))
+    .join(' ')
+  const landD = model.terrain.land
+    .map((poly) => poly.map((ring) => `M${ring.map(([x, y]) => `${n(x)},${n(y)}`).join('L')}Z`).join(' '))
+    .join(' ')
+
+  out.push('<defs>')
+  out.push(`<path id="water-shape" d="${waterD}" fill-rule="evenodd"/>`)
+  out.push(`<clipPath id="water-clip"><use href="#water-shape"/></clipPath>`)
+  out.push(`<clipPath id="land-clip"><path d="${landD}" fill-rule="evenodd"/></clipPath>`)
+  out.push(`<filter id="shoreblur"><feGaussianBlur stdDeviation="${n(S * 0.004)}"/></filter>`)
+
   if (theme.glow) {
     out.push(
-      '<defs><filter id="glow" x="-50%" y="-50%" width="200%" height="200%">',
+      '<filter id="glow" x="-50%" y="-50%" width="200%" height="200%">',
       '<feGaussianBlur stdDeviation="8" result="b"/>',
       '<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>',
-      '</filter></defs>',
+      '</filter>',
     )
   }
+  out.push('</defs>')
+
   const glowAttr = theme.glow ? ' filter="url(#glow)"' : ''
 
   out.push(`<rect x="0" y="0" width="${S}" height="${S}" fill="${theme.bg}"/>`)
 
+  // Water fill
   for (const poly of model.terrain.water) {
     const d = poly
       .map((ring) => `M${ring.map(([x, y]) => `${n(x)},${n(y)}`).join('L')}Z`)
       .join(' ')
     out.push(`<path d="${d}" fill="${theme.water}" fill-rule="evenodd"/>`)
   }
+
+  // Shallow band
+  out.push(
+    `<use href="#water-shape" fill="none" stroke="${theme.waterShallow}" stroke-width="${n(S * 0.02)}" clip-path="url(#water-clip)"/>`,
+  )
+
+  // Shore glow
+  out.push(
+    `<use href="#water-shape" fill="none" stroke="${theme.shoreGlow}" stroke-width="${n(S * 0.015)}" filter="url(#shoreblur)" clip-path="url(#land-clip)"/>`,
+  )
+
   if (model.terrain.river) {
     const pts = model.terrain.river.course.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
     out.push(
@@ -109,6 +138,21 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     const glow = road.class === 'street' ? '' : glowAttr
     out.push(
       `<polyline points="${pts}" fill="none" stroke="${theme.road[road.class]}" stroke-width="${road.width}"${glow}/>`,
+    )
+  }
+
+  // Bridge decks above roads
+  for (const road of model.roads) {
+    if (!road.bridge) continue
+    const pts = road.points.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
+    // Shadow (offset +S*0.002 in y)
+    const shadowPts = road.points.map((p) => `${n(p.x)},${n(p.y + S * 0.002)}`).join(' ')
+    out.push(
+      `<polyline points="${shadowPts}" fill="none" stroke="${theme.bridge.shadow}" stroke-width="${n(road.width * 1.3)}" clip-path="url(#water-clip)"/>`,
+    )
+    // Deck (square caps)
+    out.push(
+      `<polyline points="${pts}" fill="none" stroke="${theme.bridge.deck}" stroke-width="${road.width}" stroke-linecap="square"/>`,
     )
   }
 
