@@ -29,7 +29,7 @@ describe('contourWater', () => {
     expect(area(land)).toBeGreaterThan(1000 * 1000 - circle * 1.07)
   })
   it('half-plane coast: water on one side, land+water tile the window', () => {
-    const sample = (x: number) => (x - 600) / 1000 // water where x > 600? no: height<0 where x<600
+    const sample = (x: number) => (x - 600) / 1000 // height < 0 (water) where x < 600
     const { water, land } = contourWater(sample, win, 128)
     expect(area(water)).toBeGreaterThan(1000 * 600 * 0.97)
     expect(area(water)).toBeLessThan(1000 * 600 * 1.03)
@@ -66,6 +66,11 @@ describe('contourWater', () => {
     const { water: wetWater } = contourWater(wetCenter, saddleWin, 1)
     expect(wetWater.length).toBe(1) // single connected hexagon
     expect(area(wetWater)).toBeGreaterThan(area(dryWater)) // markedly larger
+  })
+  it('corner exactly on the 0-contour does not throw (degenerate crossing, C1)', () => {
+    // a plane crossing height 0 exactly at grid corner i=5 (x=500) when n=10
+    const sample = (x: number) => x - 500
+    expect(() => contourWater(sample, win, 10)).not.toThrow()
   })
   it('water area grows monotonically with the threshold (spec §7)', () => {
     const sample = (x: number, y: number) => (Math.hypot(x - 500, y - 500) - 250) / 1000

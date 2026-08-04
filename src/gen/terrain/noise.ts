@@ -2,21 +2,31 @@ import { hashSeed, mulberry32 } from '../rng'
 
 const smooth = (t: number) => t * t * (3 - 2 * t)
 
-/** deterministic lattice value in [0,1) for integer coordinates */
-function latticeValue(seed: number, ix: number, iy: number): number {
-  return mulberry32(hashSeed(seed, ix, iy)).next()
-}
-
 export function valueNoise2D(seed: number): (x: number, y: number) => number {
+  // Perf: hashSeed + mulberry32 setup per corner sample dominated generate
+  // time (a 128² contour grid revisits the same lattice points across many
+  // (x,y) samples). Memoize per noise instance — a 128² sample touches at
+  // most ~17k distinct lattice points per octave, so the cache stays small;
+  // nothing is ever evicted.
+  const cache = new Map<string, number>()
+  const latticeValue = (ix: number, iy: number): number => {
+    const key = `${ix},${iy}`
+    let v = cache.get(key)
+    if (v === undefined) {
+      v = mulberry32(hashSeed(seed, ix, iy)).next()
+      cache.set(key, v)
+    }
+    return v
+  }
   return (x, y) => {
     const ix = Math.floor(x)
     const iy = Math.floor(y)
     const fx = smooth(x - ix)
     const fy = smooth(y - iy)
-    const v00 = latticeValue(seed, ix, iy)
-    const v10 = latticeValue(seed, ix + 1, iy)
-    const v01 = latticeValue(seed, ix, iy + 1)
-    const v11 = latticeValue(seed, ix + 1, iy + 1)
+    const v00 = latticeValue(ix, iy)
+    const v10 = latticeValue(ix + 1, iy)
+    const v01 = latticeValue(ix, iy + 1)
+    const v11 = latticeValue(ix + 1, iy + 1)
     return (v00 * (1 - fx) + v10 * fx) * (1 - fy) + (v01 * (1 - fx) + v11 * fx) * fy
   }
 }
