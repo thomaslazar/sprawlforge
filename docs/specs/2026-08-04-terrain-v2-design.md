@@ -85,16 +85,31 @@ virtual metro context from `hashSeed(sectorSeed, 'metro-ctx')` and
 course, "inland" away from water. Same code path as linked sectors, only
 the anchor differs.
 
-## 3. Knobs & URL
+## 3. Tags instead of sliders
 
-- The v1 `coast` / `river` booleans are replaced by:
-  - **terrain preset** select: `auto | inland | coastal | bay | river city |
-    estuary | island | lakes`
-  - **water level** slider (0..1, shifts the threshold)
-- Old URLs with `coast=1` / `river=1` map to the nearest preset
-  (`coast=1&river=1` → `estuary`), so shared v1 links still resolve.
-- `GENERATOR_VERSION` → 2. All maps change once; the version lives in
-  `meta` and the UI may surface "generated with v2" later.
+All numeric knobs disappear behind **template tags** — clickable chips in
+the UI, a comma list in the URL. Internally the generator keeps taking
+`SectorParams` numerics; a fixed, deterministic tag→value table maps
+between them. Tags come in **exclusion groups** (selecting one deselects
+its siblings):
+
+| Group    | Tags                                                    | Maps to |
+|----------|---------------------------------------------------------|---------|
+| terrain  | `inland \| coastal \| bay \| estuary \| island \| lakes` (none = auto) | window anchor + gradient family + water threshold |
+| size     | `small \| medium \| large`                              | sector edge km |
+| density  | `sparse \| dense \| packed`                             | density |
+| power    | `corp-run \| balanced \| fringe`                        | corpDominance |
+| activity | `quiet \| lively`                                       | poiDensity |
+
+- URL: `?seed=4711&tags=coastal,large,dense,corp-run&pack=…&theme=…` —
+  `seed`, `pack` and `theme` stay explicit params; everything numeric is
+  tag-derived. Unselected groups use their default.
+- The v1 water-level slider idea is folded into the terrain tags.
+- **No backwards compatibility with the v1 URL scheme.** Pre-release,
+  no shared links exist; the old numeric params simply stop parsing.
+  Until a release-worthy state is declared, URL-scheme changes need no
+  migration path.
+- `GENERATOR_VERSION` → 2; the version lives in `meta`.
 
 ## 4. City adapts to terrain
 
