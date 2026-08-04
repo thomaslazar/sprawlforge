@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship the SprawlForge sector generator — a watabou-style, client-only web tool that procedurally generates a cyberpunk city sector (roads, zoned districts, buildings, named POIs) from a seed, rendered as themed SVG with PNG/SVG/PDF export.
+**Goal:** Ship the SprawlForge sector generator — a single-page, client-only web tool that procedurally generates a cyberpunk city sector (roads, zoned districts, buildings, named POIs) from a seed, rendered as themed SVG with PNG/SVG/PDF export.
 
 **Architecture:** Three hard layers in one Vite app. `src/gen/` is pure TypeScript (no React, no DOM): params + seed in, plain data model out, every step a pure function with its own derived RNG stream. `src/render/` turns the model into an SVG string using a theme object. `src/app/` is React: knob panel, URL-as-state, map viewport, export buttons.
 

@@ -34,7 +34,7 @@ core (clipping, insetting, filling non-rectangular shapes).
      (planned megacity fabric), separate irregular generator for
      slum/old-quarter districts (crooked dense lanes). Zone contrast as
      storytelling.
-   - **B: full Voronoi partition** — watabou-style organic everywhere.
+   - **B: full Voronoi partition** — fully organic street fabric everywhere.
      Only if A/C prove insufficient; several times their cost.
 
 ## Deferred (explicit v1 excludes — do not forget)

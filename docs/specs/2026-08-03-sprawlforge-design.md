@@ -10,8 +10,8 @@ System-agnostic at the core, Shadowrun-friendly through flavor packs. Public
 from day one, but with no accounts, no backend, and no server-side storage —
 all state lives in URLs and user-exported files.
 
-The model is Watabou's Procgen Arcana (https://watabou.github.io): each tool
-is its own page with a full-viewport map, a knob panel, and a reroll button.
+The model is the single-page generator tool: each tool is its own page with
+a full-viewport map, a knob panel, and a reroll button.
 Generate and tweak knobs — no structural editing, only light annotation on
 top of generated output.
 
@@ -24,7 +24,7 @@ top of generated output.
 | Battlemap | building interior / street combat scale  | 3     |
 | Node map  | abstract locations + connections (graph) | 4     |
 
-Sector ships first: it is the closest to the proven Watabou model and is the
+Sector ships first: it is the closest to the proven generator-page model and is the
 parent artifact for battlemap linkage. Metroplex second, because it is the
 sector's parent and proves out the linkage chain.
 

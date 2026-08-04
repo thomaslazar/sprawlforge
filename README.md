@@ -32,6 +32,17 @@ uses relative paths (`base: './'`), so any subpath works.
 - `docs/plans/` — implementation plans
 - `docs/ROADMAP.md` — deferred features
 
+## Credits & inspiration
+
+SprawlForge is heavily inspired by the wonderful procedural map generators
+of **Oleg Dolya (Watabou)** — the Medieval Fantasy City Generator, Perilous
+Shores, Village Generator and the rest of Procgen Arcana. If you like this
+kind of tool, go support the original:
+
+- Patreon: https://www.patreon.com/watawatabou
+- itch.io: https://watabou.itch.io
+- Procgen Arcana: https://watabou.github.io
+
 ## License
 
 MIT
