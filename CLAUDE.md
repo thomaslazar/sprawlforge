@@ -26,6 +26,9 @@ See `docs/specs/` for design docs.
 - Do NOT add `Co-Authored-By:` or "Generated with Claude Code" lines to any
   commit message or PR body.
 - After `gh pr create`, present the PR URL as a clickable link.
+- **Never auto-open PRs.** For insignificant changes (roadmap lines, typo
+  fixes), ask whether a PR is really needed before opening one — a direct
+  commit to `main` may be fine, but that's the user's call each time.
 - **Specs and implementation go on a dedicated branch**, merged into `main`
   via PR — never committed to `main` directly. Keep a spec's follow-up edits
   and its implementation on that branch so design and delivery are reviewed
