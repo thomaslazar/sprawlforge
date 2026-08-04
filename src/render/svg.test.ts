@@ -75,8 +75,15 @@ describe('renderSector', () => {
       kind: 'coastal',
       metroSeed: 1,
       water: [[[[250, 250], [750, 250], [750, 750], [250, 750]]]],
-      land: [[[[0, 0], [1000, 0], [1000, 1000], [0, 1000]]]],
-      river: null,
+      // land is the window MINUS the water square (outer ring + hole) —
+      // not the full window: a full-square land fixture made the district
+      // clip-path test vacuous, since fill would have looked identical
+      // whether or not the clip existed.
+      land: [[
+        [[0, 0], [1000, 0], [1000, 1000], [0, 1000]],
+        [[250, 250], [750, 250], [750, 750], [250, 750]],
+      ]],
+      river: { course: [{ x: 0, y: 500 }, { x: 1000, y: 500 }], width: 20 },
     },
     roads: [
       {
@@ -88,7 +95,9 @@ describe('renderSector', () => {
         bridge: true,
       },
     ],
-    districts: [],
+    // spans the full window, deliberately overlapping the water square —
+    // proves the land-clip actually confines the fill (C2)
+    districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, shore: true }],
     blocks: [],
     buildings: [],
     pois: [],
@@ -118,6 +127,21 @@ describe('renderSector', () => {
 
   it('never renders wave ornaments', () => {
     expect(renderSector(wetModel, getTheme('neon'))).not.toMatch(/wave/i)
+  })
+
+  it('clips district fills to the land shape and the river to the frame (C2/I3)', () => {
+    const svg = renderSector(wetModel, getTheme('neon'))
+    expect(svg).toContain('id="frame-clip"')
+    // district rects sit inside a land-clipped group, not painted bare
+    expect(svg).toMatch(/<g clip-path="url\(#land-clip\)">[\s\S]*<rect data-id="D01"[\s\S]*<\/g>/)
+    // the river polyline sits inside a frame-clipped group
+    expect(svg).toMatch(/<g clip-path="url\(#frame-clip\)">[\s\S]*<polyline[\s\S]*<\/g>/)
+  })
+
+  it('renders the water fill once via <use>, not once per polygon (T10)', () => {
+    const svg = renderSector(wetModel, getTheme('neon'))
+    expect(svg.match(/data-water=""/g)!.length).toBe(1)
+    expect(svg).toContain('<use href="#water-shape"')
   })
 
   it('nudges a colliding poi label to another side instead of dropping it', () => {

@@ -78,6 +78,9 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   out.push(`<path id="water-shape" d="${waterD}" fill-rule="evenodd"/>`)
   out.push(`<clipPath id="water-clip"><use href="#water-shape"/></clipPath>`)
   out.push(`<clipPath id="land-clip"><path d="${landD}" fill-rule="evenodd"/></clipPath>`)
+  // the [0,S]² viewport itself — clips features (river) that would
+  // otherwise overrun the frame edge (I3)
+  out.push(`<clipPath id="frame-clip"><rect x="0" y="0" width="${n(S)}" height="${n(S)}"/></clipPath>`)
   out.push(`<filter id="shoreblur"><feGaussianBlur stdDeviation="${n(S * 0.004)}"/></filter>`)
 
   if (theme.glow) {
@@ -94,13 +97,9 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
 
   out.push(`<rect x="0" y="0" width="${S}" height="${S}" fill="${theme.bg}"/>`)
 
-  // Water fill
-  for (const poly of model.terrain.water) {
-    const d = poly
-      .map((ring) => `M${ring.map(([x, y]) => `${n(x)},${n(y)}`).join('L')}Z`)
-      .join(' ')
-    out.push(`<path data-water="" d="${d}" fill="${theme.water}" fill-rule="evenodd"/>`)
-  }
+  // Water fill — reuses the water-shape path already built for the clips
+  // above instead of re-serializing the same rings a second time
+  out.push(`<use href="#water-shape" fill="${theme.water}" fill-rule="evenodd" data-water=""/>`)
 
   // Shallow band
   out.push(
@@ -114,17 +113,24 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
 
   if (model.terrain.river) {
     const pts = model.terrain.river.course.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
+    out.push(`<g clip-path="url(#frame-clip)">`)
     out.push(
       `<polyline points="${pts}" fill="none" stroke="${theme.water}" stroke-width="${n(model.terrain.river.width)}" stroke-linecap="round"/>`,
     )
+    out.push('</g>')
   }
 
+  // district rects are the land bounding box, not the land shape itself
+  // (see roads.ts landSlabs) — clip so a rect's corner never paints over
+  // water it doesn't actually cover (C2)
+  out.push('<g clip-path="url(#land-clip)">')
   for (const d of model.districts) {
     const r = d.bounds
     out.push(
       `<rect data-id="${d.id}" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" fill="${theme.districtFill[d.zone]}"/>`,
     )
   }
+  out.push('</g>')
 
   for (const b of model.buildings) {
     const pts = b.footprint.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
