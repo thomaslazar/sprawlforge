@@ -6,7 +6,8 @@ import { renderSector } from '../render/svg'
 import { getTheme } from '../render/theme'
 import { KnobPanel } from './KnobPanel'
 import { MapView } from './MapView'
-import { paramsFromSearch, paramsToSearch } from './params'
+import { stateFromSearch, stateToSearch, type AppState } from './params'
+import { resolveTags } from './tags'
 
 // ponytail: crypto.getRandomValues is the one non-seeded random — first-visit seed only
 function randomSeed(): number {
@@ -14,19 +15,24 @@ function randomSeed(): number {
 }
 
 export function App() {
-  const [params, setParams] = useState<SectorParams>(() =>
-    paramsFromSearch(window.location.search, randomSeed()),
+  const [state, setState] = useState<AppState>(() =>
+    stateFromSearch(window.location.search, randomSeed()),
   )
 
   useEffect(() => {
-    window.history.replaceState(null, '', paramsToSearch(params))
+    window.history.replaceState(null, '', stateToSearch(state))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const update = (p: SectorParams) => {
-    setParams(p)
-    window.history.replaceState(null, '', paramsToSearch(p))
+  const update = (s: AppState) => {
+    setState(s)
+    window.history.replaceState(null, '', stateToSearch(s))
   }
+
+  const params: SectorParams = useMemo(
+    () => ({ seed: state.seed, pack: state.pack, theme: state.theme, ...resolveTags(state.tags) }),
+    [state],
+  )
 
   // semantic zoom: labels re-render per zoom band (1|2|4|8) so more of them
   // fit as you zoom in; generation itself only depends on params
@@ -60,9 +66,9 @@ export function App() {
   return (
     <div style={{ display: 'flex', height: '100vh', margin: 0 }}>
       <KnobPanel
-        params={params}
+        state={state}
         onChange={update}
-        onReroll={() => update({ ...params, seed: hashSeed(params.seed, 'reroll') })}
+        onReroll={() => update({ ...state, seed: hashSeed(state.seed, 'reroll') })}
         onExport={onExport}
       />
       <MapView

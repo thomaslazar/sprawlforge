@@ -1,19 +1,28 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULTS, paramsFromSearch, paramsToSearch } from './params'
+import type { AppState } from './params'
+import { stateFromSearch, stateToSearch } from './params'
 
-describe('params codec', () => {
+describe('AppState codec', () => {
   it('round-trips', () => {
-    const p = { ...DEFAULTS, seed: 4711, size: 6, terrain: 'coastal' as const, pack: 'shadowrunish' }
-    expect(paramsFromSearch(paramsToSearch(p), 0)).toEqual(p)
+    const s: AppState = { seed: 4711, tags: ['coastal', 'large', 'piers'], pack: 'shadowrunish', theme: 'print' }
+    expect(stateFromSearch(stateToSearch(s), 0)).toEqual(s)
   })
-  it('empty search uses defaults and fallback seed', () => {
-    expect(paramsFromSearch('', 123)).toEqual({ ...DEFAULTS, seed: 123 })
+
+  it('empty search uses fallback seed and no tags', () => {
+    expect(stateFromSearch('', 123)).toEqual({ seed: 123, tags: [], pack: 'generic', theme: 'neon' })
   })
-  it('clamps and sanitizes garbage', () => {
-    const p = paramsFromSearch('?size=999&density=7&seed=abc&corp=-3', 55)
-    expect(p.seed).toBe(55)
-    expect(p.size).toBeLessThanOrEqual(8)
-    expect(p.density).toBeLessThanOrEqual(1)
-    expect(p.corpDominance).toBeGreaterThanOrEqual(0)
+
+  it('drops garbage tags', () => {
+    const s = stateFromSearch('?seed=1&tags=nonsense,large,piers', 0)
+    expect(s.tags).toEqual(['large', 'piers'])
+  })
+
+  it('ignores legacy numeric params entirely', () => {
+    const s = stateFromSearch('?coast=1&density=0.7&size=8&corp=0.9&poi=0.9&terrain=island', 55)
+    expect(s).toEqual({ seed: 55, tags: [], pack: 'generic', theme: 'neon' })
+  })
+
+  it('omits tags param from url when empty', () => {
+    expect(stateToSearch({ seed: 1, tags: [], pack: 'generic', theme: 'neon' })).not.toContain('tags')
   })
 })

@@ -13,9 +13,7 @@ const fail = (msg) => {
 }
 
 // fixed seed → reproducible assertions
-await page.goto(
-  `${BASE}/?seed=42&size=4&density=0.5&corp=0.5&poi=0.5&terrain=coastal&pack=generic&theme=neon`,
-)
+await page.goto(`${BASE}/?seed=42&tags=coastal,large&pack=generic&theme=neon`)
 await page.waitForSelector('svg')
 
 // whole map fits the viewport on load (no initial zoom-in)
@@ -29,9 +27,23 @@ if (buildings < 50) fail(`expected a dense map, got ${buildings} buildings`)
 const pois = await page.locator('svg circle[data-id^="P"]').count()
 if (pois < 1) fail('no POIs rendered')
 
-// knob → URL round trip
-await page.getByLabel(/Corp dominance/).fill('1')
-if (!page.url().includes('corp=1')) fail('slider did not update url')
+// tag chips reflect the URL on load
+if (!(await page.getByRole('button', { name: 'Coastal', pressed: true }).isVisible()))
+  fail('coastal chip not pressed from URL tags')
+if (!(await page.getByRole('button', { name: 'Large', pressed: true }).isVisible()))
+  fail('large chip not pressed from URL tags')
+
+// click a chip in another group → URL gains the tag
+await page.getByRole('button', { name: 'Packed' }).click()
+if (!page.url().includes('packed')) fail('clicking packed chip did not update url')
+if (!(await page.getByRole('button', { name: 'Packed', pressed: true }).isVisible()))
+  fail('packed chip not pressed after click')
+
+// click the now-active chip again → tag removed (back to group default)
+await page.getByRole('button', { name: 'Packed' }).click()
+if (page.url().includes('packed')) fail('clicking active packed chip did not remove tag')
+if (!(await page.getByRole('button', { name: 'Packed', pressed: false }).isVisible()))
+  fail('packed chip still pressed after deselect')
 
 // reroll changes the map
 const before = await page.locator('svg').innerHTML()

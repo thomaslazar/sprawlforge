@@ -1,42 +1,53 @@
-import { TERRAIN_KINDS, type SectorParams } from '../gen/types'
 import { packs } from '../gen/names/packs'
 import { themes } from '../render/theme'
+import type { AppState } from './params'
 import { t } from './strings'
+import { TAG_GROUPS, type Tag, type TagGroup } from './tags'
 
 interface Props {
-  params: SectorParams
-  onChange: (p: SectorParams) => void
+  state: AppState
+  onChange: (s: AppState) => void
   onReroll: () => void
   onExport: (kind: 'svg' | 'png' | 'pdf') => void
 }
 
-function Slider(props: {
-  label: string
-  value: number
-  min: number
-  max: number
-  step: number
-  onChange: (v: number) => void
-}) {
+function Chip({ label, pressed, onClick }: { label: string; pressed: boolean; onClick: () => void }) {
   return (
-    <label style={{ display: 'block', marginBottom: 12 }}>
-      {props.label}: {props.value}
-      <input
-        type="range"
-        min={props.min}
-        max={props.max}
-        step={props.step}
-        value={props.value}
-        onChange={(e) => props.onChange(Number(e.target.value))}
-        style={{ width: '100%' }}
-      />
-    </label>
+    <button
+      type="button"
+      aria-pressed={pressed}
+      onClick={onClick}
+      style={{
+        padding: '4px 10px',
+        marginRight: 6,
+        marginBottom: 6,
+        borderRadius: 999,
+        border: '1px solid #888',
+        background: pressed ? '#4a4af0' : 'transparent',
+        color: pressed ? '#fff' : 'inherit',
+        cursor: 'pointer',
+      }}
+    >
+      {label}
+    </button>
   )
 }
 
-export function KnobPanel({ params, onChange, onReroll, onExport }: Props) {
-  const set = <K extends keyof SectorParams>(key: K, value: SectorParams[K]) =>
-    onChange({ ...params, [key]: value })
+export function KnobPanel({ state, onChange, onReroll, onExport }: Props) {
+  const setSeed = (seed: number) => onChange({ ...state, seed })
+  const setPack = (pack: string) => onChange({ ...state, pack })
+  const setTheme = (theme: string) => onChange({ ...state, theme })
+
+  const toggleTag = (group: TagGroup, tag: Tag) => {
+    const active = state.tags.includes(tag)
+    const withoutGroup = state.tags.filter((tg) => !(TAG_GROUPS[group] as readonly string[]).includes(tg))
+    onChange({ ...state, tags: active ? withoutGroup : [...withoutGroup, tag] })
+  }
+
+  const togglePiers = () => {
+    const active = state.tags.includes('piers')
+    onChange({ ...state, tags: active ? state.tags.filter((tg) => tg !== 'piers') : [...state.tags, 'piers'] })
+  }
 
   return (
     <div style={{ width: 260, padding: 16, overflowY: 'auto' }}>
@@ -49,30 +60,33 @@ export function KnobPanel({ params, onChange, onReroll, onExport }: Props) {
         {t.knobs.seed}
         <input
           type="number"
-          value={params.seed}
-          onChange={(e) => set('seed', Number(e.target.value) >>> 0)}
+          value={state.seed}
+          onChange={(e) => setSeed(Number(e.target.value) >>> 0)}
           style={{ width: '100%' }}
         />
       </label>
-      <Slider label={t.knobs.size} value={params.size} min={2} max={8} step={1} onChange={(v) => set('size', v)} />
-      <Slider label={t.knobs.density} value={params.density} min={0} max={1} step={0.1} onChange={(v) => set('density', v)} />
-      <Slider label={t.knobs.corpDominance} value={params.corpDominance} min={0} max={1} step={0.1} onChange={(v) => set('corpDominance', v)} />
-      <Slider label={t.knobs.poiDensity} value={params.poiDensity} min={0} max={1} step={0.1} onChange={(v) => set('poiDensity', v)} />
-      <label style={{ display: 'block', marginBottom: 12 }}>
-        {t.knobs.terrain}
-        <select
-          value={params.terrain}
-          onChange={(e) => set('terrain', e.target.value as SectorParams['terrain'])}
-          style={{ width: '100%' }}
-        >
-          {['auto', ...TERRAIN_KINDS].map((k) => (
-            <option key={k} value={k}>{k}</option>
-          ))}
-        </select>
-      </label>
+      {(Object.keys(TAG_GROUPS) as TagGroup[]).map((group) => (
+        <div key={group} style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 4 }}>{t.tagGroups[group]}</div>
+          <div>
+            {TAG_GROUPS[group].map((tag) => (
+              <Chip
+                key={tag}
+                label={t.tags[tag]}
+                pressed={state.tags.includes(tag)}
+                onClick={() => toggleTag(group, tag)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 4 }}>{t.tagGroups.piers}</div>
+        <Chip label={t.tags.piers} pressed={state.tags.includes('piers')} onClick={togglePiers} />
+      </div>
       <label style={{ display: 'block', marginBottom: 12 }}>
         {t.knobs.pack}
-        <select value={params.pack} onChange={(e) => set('pack', e.target.value)} style={{ width: '100%' }}>
+        <select value={state.pack} onChange={(e) => setPack(e.target.value)} style={{ width: '100%' }}>
           {Object.values(packs).map((p) => (
             <option key={p.id} value={p.id}>{p.label}</option>
           ))}
@@ -80,7 +94,7 @@ export function KnobPanel({ params, onChange, onReroll, onExport }: Props) {
       </label>
       <label style={{ display: 'block', marginBottom: 12 }}>
         {t.knobs.theme}
-        <select value={params.theme} onChange={(e) => set('theme', e.target.value)} style={{ width: '100%' }}>
+        <select value={state.theme} onChange={(e) => setTheme(e.target.value)} style={{ width: '100%' }}>
           {Object.values(themes).map((th) => (
             <option key={th.id} value={th.id}>{th.label}</option>
           ))}

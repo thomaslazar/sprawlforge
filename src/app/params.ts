@@ -1,49 +1,34 @@
-import type { SectorParams } from '../gen/types'
+import type { Tag } from './tags'
+import { normalizeTags } from './tags'
 
-export const DEFAULTS: Omit<SectorParams, 'seed'> = {
-  size: 4,
-  density: 0.5,
-  corpDominance: 0.5,
-  poiDensity: 0.5,
-  terrain: 'auto',
-  piers: false,
+export interface AppState {
+  seed: number
+  tags: Tag[]
+  pack: string
+  theme: string
+}
+
+export const DEFAULT_STATE: Omit<AppState, 'seed'> = {
+  tags: [],
   pack: 'generic',
   theme: 'neon',
 }
 
-const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v))
-
-function num(sp: URLSearchParams, key: string, fallback: number, min: number, max: number): number {
-  const raw = Number(sp.get(key))
-  return Number.isFinite(raw) && sp.get(key) !== null ? clamp(raw, min, max) : fallback
-}
-
-export function paramsFromSearch(search: string, fallbackSeed: number): SectorParams {
+export function stateFromSearch(search: string, fallbackSeed: number): AppState {
   const sp = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search)
+  const seedRaw = Number(sp.get('seed'))
+  const seed = sp.get('seed') !== null && Number.isFinite(seedRaw) ? seedRaw >>> 0 : fallbackSeed
+  const tags = normalizeTags((sp.get('tags') ?? '').split(',').filter(Boolean))
   return {
-    seed: num(sp, 'seed', fallbackSeed, 0, 0xffffffff),
-    size: num(sp, 'size', DEFAULTS.size, 2, 8),
-    density: num(sp, 'density', DEFAULTS.density, 0, 1),
-    corpDominance: num(sp, 'corp', DEFAULTS.corpDominance, 0, 1),
-    poiDensity: num(sp, 'poi', DEFAULTS.poiDensity, 0, 1),
-    terrain: (sp.get('terrain') as SectorParams['terrain']) ?? 'auto',
-    piers: sp.get('piers') === '1',
-    pack: sp.get('pack') ?? DEFAULTS.pack,
-    theme: sp.get('theme') ?? DEFAULTS.theme,
+    seed,
+    tags,
+    pack: sp.get('pack') ?? DEFAULT_STATE.pack,
+    theme: sp.get('theme') ?? DEFAULT_STATE.theme,
   }
 }
 
-export function paramsToSearch(p: SectorParams): string {
-  const sp = new URLSearchParams({
-    seed: String(p.seed),
-    size: String(p.size),
-    density: String(p.density),
-    corp: String(p.corpDominance),
-    poi: String(p.poiDensity),
-    terrain: p.terrain,
-    piers: p.piers ? '1' : '0',
-    pack: p.pack,
-    theme: p.theme,
-  })
+export function stateToSearch(state: AppState): string {
+  const sp = new URLSearchParams({ seed: String(state.seed), pack: state.pack, theme: state.theme })
+  if (state.tags.length > 0) sp.set('tags', state.tags.join(','))
   return `?${sp.toString()}`
 }
