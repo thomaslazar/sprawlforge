@@ -78,6 +78,25 @@ No per-feature special-case geometry.
   explicitly excluded** (ROADMAP) — bridge placement at confluences is a
   known-unsolved problem class.
 
+### Water shaping
+
+A raw gradient-plus-noise field reads as one smooth sweep of water — real
+coasts, rivers and lakes aren't that tidy. Three refinements keep the same
+"field, sampled and contoured" model but roughen its edges: the height
+noise's *sample point* is run through a domain warp (two independent
+fractal noises perturbing x/y before lookup) so shoreline contours bend
+organically instead of tracing the noise lattice; the noise itself carries
+extra octaves reaching down to ~200-400m wavelengths, giving inlets and
+headlands at a scale the coarse gradient alone can't produce. Rivers swap
+their metronomic sine wobble for a noise-driven meander (varied bend
+radii, not a repeating S-curve) and carve at a noise-modulated width along
+their length, so channels pool and narrow instead of tapering as a single
+straight cone. Lake basins get an angularly-modulated radius (irregular
+shorelines instead of circles) plus a seeded secondary basin offset from
+the main one, composing into small lake clusters rather than a lone disc.
+All of it stays a pure function of the metro seed — no new seams, no
+per-feature geometry.
+
 ### Standalone sector tool
 
 The sector tool keeps working without a metroplex parent: it fabricates a

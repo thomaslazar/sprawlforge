@@ -133,10 +133,19 @@ function nearestOnSegment(p: Pt, a: Pt, b: Pt): { pt: Pt; d: number } {
   return { pt, d: Math.hypot(p.x - pt.x, p.y - pt.y) }
 }
 
-/** nearest water-ring edge to `mid`, returned as its direction vector (the local shoreline tangent) */
+/**
+ * Local shoreline tangent near `mid`: the nearest water-ring edge's
+ * direction, averaged with its ±2 neighbors on the same ring. A single
+ * marching-squares segment is a noisy tangent estimate — the contour
+ * stair-steps along axis-aligned grid cells, so one segment can point
+ * almost perpendicular to the shoreline's actual direction even though the
+ * shoreline itself runs diagonally. Averaging unit directions over the
+ * nearest 5 segments smooths that stair-step out.
+ */
 function nearestShorelineTangent(mid: Pt, terrain: Terrain): Pt | null {
   let bestD = Infinity
-  let tangent: Pt | null = null
+  let bestRing: Array<[number, number]> | null = null
+  let bestI = -1
   for (const poly of terrain.water) {
     for (const ring of poly) {
       for (let i = 0; i < ring.length; i++) {
@@ -145,12 +154,28 @@ function nearestShorelineTangent(mid: Pt, terrain: Terrain): Pt | null {
         const { d } = nearestOnSegment(mid, a, b)
         if (d < bestD) {
           bestD = d
-          tangent = { x: b.x - a.x, y: b.y - a.y }
+          bestRing = ring
+          bestI = i
         }
       }
     }
   }
-  return tangent
+  if (!bestRing || bestI < 0) return null
+  const ring = bestRing
+  const n = ring.length
+  let sx = 0
+  let sy = 0
+  for (let k = -2; k <= 2; k++) {
+    const i = ((bestI + k) % n + n) % n
+    const a = { x: ring[i][0], y: ring[i][1] }
+    const b = { x: ring[(i + 1) % n][0], y: ring[(i + 1) % n][1] }
+    const dx = b.x - a.x
+    const dy = b.y - a.y
+    const len = Math.hypot(dx, dy) || 1
+    sx += dx / len
+    sy += dy / len
+  }
+  return { x: sx, y: sy }
 }
 
 /** angle between two undirected lines, in [0, PI/2] (0 = parallel, PI/2 = perpendicular) */

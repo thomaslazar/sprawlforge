@@ -87,9 +87,14 @@ describe('layoutRoads', () => {
     // strong invariant: only the bridge deck may span water — every host
     // road (street, arterial, or highway) must be truncated/split at the
     // shoreline instead (the old code let arterials/highways draw straight
-    // through the water under a "bridge floats over it" excuse)
-    for (const seed of [1, 42, 119560026]) {
-      const params = { ...base, seed, river: true }
+    // through the water under a "bridge floats over it" excuse). Covers
+    // both a river cutting through inland, and a coastal shoreline — the
+    // two shapes of "water" the invariant has to hold against.
+    const cases = [
+      ...[1, 42, 119560026].map((seed) => ({ ...base, seed, river: true })),
+      ...[1, 42, 999].map((seed) => ({ ...base, seed, landform: 'coastal' as const })),
+    ]
+    for (const params of cases) {
       const terrain = sampleTerrain(params, sizeM)
       const { roads } = layoutRoads(params, terrain, sizeM)
       const inWater = (p: Pt) =>

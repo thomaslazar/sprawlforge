@@ -50,6 +50,25 @@ describe('placePois', () => {
     expect(pois.length).toBe(1)
     expect(pois[0].at).toEqual({ x: 4, y: 4 })
   })
+  it('anchors inside a concave (L-shaped) footprint — vertex mean would land outside it', () => {
+    // an L-shape: the plain vertex mean of these 6 corners is (10, 10),
+    // which sits in the L's missing notch (outside the shape); the shoelace
+    // centroid must land inside the polygon instead
+    const lShaped: Building = {
+      id: 'BLD010101', blockId: 'B0101', districtId: 'D01',
+      rect: { x: 0, y: 0, w: 20, h: 20 },
+      footprint: [
+        { x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 10 },
+        { x: 10, y: 10 }, { x: 10, y: 20 }, { x: 0, y: 20 },
+      ],
+    }
+    const pois = placePois(districts, [lShaped], pack, base)
+    expect(pois.length).toBe(1)
+    const { x, y } = pois[0].at
+    expect(x === 10 && y === 10).toBe(false) // not the vertex mean
+    // inside the L: either the top bar (y<10) or the left bar (x<10)
+    expect(y < 10 || x < 10).toBe(true)
+  })
   it('poiDensity raises count; buildings never reused', () => {
     const lo = placePois(districts, buildings, pack, { ...base, poiDensity: 0.1 })
     const hi = placePois(districts, buildings, pack, { ...base, poiDensity: 1 })
