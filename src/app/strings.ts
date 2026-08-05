@@ -7,6 +7,7 @@ export const strings = {
       pack: 'Flavor pack',
       theme: 'Theme',
       reroll: 'Reroll',
+      rerolling: 'Generating…',
     },
     tagGroups: {
       terrain: 'Terrain',
@@ -36,6 +37,7 @@ export const strings = {
       quiet: 'Quiet',
       lively: 'Lively',
       piers: 'Piers',
+      piersNeedsWater: 'Needs water — pick a wet terrain',
     },
     exports: {
       svg: 'Export SVG',

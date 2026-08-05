@@ -8,6 +8,7 @@ import { TAG_GROUPS, type Tag, type TagGroup } from './tags'
 interface Props {
   applied: AppState
   pendingTags: Tag[]
+  busy: boolean
   onChange: (s: AppState) => void
   onPendingTagsChange: (tags: Tag[]) => void
   onReroll: () => void
@@ -22,17 +23,23 @@ function Chip({
   pending,
   applied,
   onClick,
+  disabled,
+  title,
 }: {
   label: string
   pending: boolean
   applied: boolean
   onClick: () => void
+  disabled?: boolean
+  title?: string
 }) {
   return (
     <button
       type="button"
       aria-pressed={pending}
       onClick={onClick}
+      disabled={disabled}
+      title={title}
       style={{
         padding: '4px 10px',
         marginRight: 6,
@@ -42,7 +49,8 @@ function Chip({
         boxShadow: applied ? '0 0 0 2px #9fd8ff' : 'none',
         background: pending ? '#2323a0' : 'transparent',
         color: pending ? '#fff' : 'inherit',
-        cursor: 'pointer',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.4 : 1,
       }}
     >
       {label}
@@ -50,7 +58,7 @@ function Chip({
   )
 }
 
-export function KnobPanel({ applied, pendingTags, onChange, onPendingTagsChange, onReroll, onExport }: Props) {
+export function KnobPanel({ applied, pendingTags, busy, onChange, onPendingTagsChange, onReroll, onExport }: Props) {
   const setPack = (pack: string) => onChange({ ...applied, pack })
   const setTheme = (theme: string) => onChange({ ...applied, theme })
 
@@ -65,7 +73,10 @@ export function KnobPanel({ applied, pendingTags, onChange, onPendingTagsChange,
   const toggleTag = (group: TagGroup, tag: Tag) => {
     const active = pendingTags.includes(tag)
     const withoutGroup = pendingTags.filter((tg) => !(TAG_GROUPS[group] as readonly string[]).includes(tg))
-    onPendingTagsChange(active ? withoutGroup : [...withoutGroup, tag])
+    const next = active ? withoutGroup : [...withoutGroup, tag]
+    // inland implies no water — drop a staged piers chip along with it
+    const stagingInland = group === 'terrain' && tag === 'inland' && !active
+    onPendingTagsChange(stagingInland ? next.filter((tg) => tg !== 'piers') : next)
   }
 
   const togglePiers = () => {
@@ -73,12 +84,14 @@ export function KnobPanel({ applied, pendingTags, onChange, onPendingTagsChange,
     onPendingTagsChange(active ? pendingTags.filter((tg) => tg !== 'piers') : [...pendingTags, 'piers'])
   }
 
+  const piersDisabled = pendingTags.includes('inland')
+
   return (
     <div style={{ width: 260, padding: 16, overflowY: 'auto' }}>
       <h1 style={{ fontSize: 18 }}>{t.appTitle}</h1>
       <h2 style={{ fontSize: 14, opacity: 0.7 }}>{t.toolTitle}</h2>
-      <button onClick={onReroll} style={{ width: '100%', padding: 8, margin: '12px 0' }}>
-        {t.knobs.reroll}
+      <button onClick={onReroll} disabled={busy} style={{ width: '100%', padding: 8, margin: '12px 0' }}>
+        {busy ? t.knobs.rerolling : t.knobs.reroll}
       </button>
       <label style={{ display: 'block', marginBottom: 12 }}>
         {t.knobs.seed}
@@ -114,6 +127,8 @@ export function KnobPanel({ applied, pendingTags, onChange, onPendingTagsChange,
           pending={pendingTags.includes('piers')}
           applied={applied.tags.includes('piers')}
           onClick={togglePiers}
+          disabled={piersDisabled}
+          title={piersDisabled ? t.tags.piersNeedsWater : undefined}
         />
       </div>
       <label style={{ display: 'block', marginBottom: 12 }}>

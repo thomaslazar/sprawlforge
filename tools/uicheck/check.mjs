@@ -111,6 +111,31 @@ for (const [label, ext] of [
   await dl.saveAs(`${OUT}/export.${ext}`)
 }
 
+// piers chip gates on wet terrain: disabled + auto-unstaged under inland,
+// re-enabled by a wet terrain tag
+await page.goto(`${BASE}/?seed=42&tags=coastal`)
+await page.waitForSelector('svg')
+const piersChip = page.getByRole('button', { name: 'Piers' })
+await piersChip.click() // stage piers under coastal
+if ((await piersChip.getAttribute('aria-pressed')) !== 'true')
+  fail('piers chip did not stage under coastal')
+
+await page.getByRole('button', { name: 'Inland' }).click() // dry terrain staged
+if (!(await piersChip.isDisabled())) fail('piers chip not disabled when inland staged')
+if ((await piersChip.getAttribute('aria-pressed')) !== 'false')
+  fail('staging inland did not auto-unstage piers')
+
+await page.getByRole('button', { name: 'Coastal' }).click() // back to wet terrain
+if (await piersChip.isDisabled()) fail('piers chip stayed disabled after staging a wet terrain')
+
+// reroll busy feedback: catching the transient 'Generating…' label reliably
+// in headless CI is racy, so this only checks the observable before/after —
+// button returns to its normal label and the map actually changed.
+const svgBeforeBusyReroll = await page.locator('svg').innerHTML()
+await page.getByRole('button', { name: 'Reroll' }).click()
+await page.getByRole('button', { name: 'Reroll', exact: true }).waitFor({ timeout: 2000 })
+if ((await page.locator('svg').innerHTML()) === svgBeforeBusyReroll) fail('reroll did not change the map')
+
 // terrain sweep: every kind renders buildings, wet kinds show water, rivers have bridges
 for (const t of ['inland', 'river', 'coastal', 'bay', 'estuary', 'island', 'lakes']) {
   await page.goto(`${BASE}/?seed=42&tags=${t}`)

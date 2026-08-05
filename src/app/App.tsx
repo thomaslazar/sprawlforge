@@ -22,6 +22,17 @@ export function App() {
     stateFromSearch(window.location.search, randomSeed()),
   )
   const [pendingTags, setPendingTags] = useState<Tag[]>(applied.tags)
+  // generation is synchronous and blocks the main thread (~50-300ms) — stage
+  // the busy label/disable on click, then let it paint before the blocking
+  // work runs on the next tick
+  const [busy, setBusy] = useState(false)
+  const reroll = () => {
+    setBusy(true)
+    setTimeout(() => {
+      update({ ...applied, tags: pendingTags, seed: hashSeed(applied.seed, 'reroll') })
+      setBusy(false)
+    }, 20)
+  }
 
   useEffect(() => {
     window.history.replaceState(null, '', stateToSearch(applied))
@@ -79,9 +90,10 @@ export function App() {
       <KnobPanel
         applied={applied}
         pendingTags={pendingTags}
+        busy={busy}
         onChange={update}
         onPendingTagsChange={setPendingTags}
-        onReroll={() => update({ ...applied, tags: pendingTags, seed: hashSeed(applied.seed, 'reroll') })}
+        onReroll={reroll}
         onExport={onExport}
       />
       <MapView
