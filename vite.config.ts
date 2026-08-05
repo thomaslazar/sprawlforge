@@ -10,7 +10,7 @@ export default defineConfig({
     // onTaskUpdate" with all tests green)
     pool: 'forks',
     // the multi-seed terrain sweep takes minutes — excluded from the default
-    // fast loop; `npm run test:all` (used by CI) includes it
-    exclude: ['**/node_modules/**', '**/smoke.test.ts'],
+    // fast loop; `npm run test:all` (used by CI) sets VITEST_ALL to include it
+    exclude: ['**/node_modules/**', ...(process.env.VITEST_ALL ? [] : ['**/smoke.test.ts'])],
   },
 })

@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:all": "vitest run --exclude \"**/node_modules/**\""
+    "test:all": "VITEST_ALL=1 vitest run"
   },
   "dependencies": {
     "jspdf": "^4.2.1",
