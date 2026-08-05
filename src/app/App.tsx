@@ -7,7 +7,7 @@ import { getTheme } from '../render/theme'
 import { KnobPanel } from './KnobPanel'
 import { MapView } from './MapView'
 import { stateFromSearch, stateToSearch, type AppState } from './params'
-import { resolveTags, type Tag } from './tags'
+import { materializeTags, resolveTags, type Tag } from './tags'
 
 // ponytail: crypto.getRandomValues is the one non-seeded random — first-visit seed only
 function randomSeed(): number {
@@ -18,9 +18,10 @@ export function App() {
   // `applied` drives the visible map + URL. `pendingTags` is the chip
   // staging area — clicking a chip only ever touches this. Reroll is the
   // sole place pendingTags flows into applied (see terrain-v2 tag-staging).
-  const [applied, setApplied] = useState<AppState>(() =>
-    stateFromSearch(window.location.search, randomSeed()),
-  )
+  const [applied, setApplied] = useState<AppState>(() => {
+    const loaded = stateFromSearch(window.location.search, randomSeed())
+    return { ...loaded, tags: materializeTags(loaded.seed, loaded.tags) }
+  })
   const [pendingTags, setPendingTags] = useState<Tag[]>(applied.tags)
   // generation is synchronous and blocks the main thread (~50-300ms) — stage
   // the busy label/disable on click, then let it paint before the blocking
@@ -29,7 +30,10 @@ export function App() {
   const reroll = () => {
     setBusy(true)
     setTimeout(() => {
-      update({ ...applied, tags: pendingTags, seed: hashSeed(applied.seed, 'reroll') })
+      const seed = hashSeed(applied.seed, 'reroll')
+      const tags = materializeTags(seed, pendingTags)
+      setPendingTags(tags)
+      update({ ...applied, tags, seed })
       setBusy(false)
     }, 20)
   }

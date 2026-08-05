@@ -179,6 +179,21 @@ for (const { tags, shot, wet, bridge } of TERRAIN_SWEEP) {
   }
 }
 
+// bare URL (no tags) still auto-resolves a landform via resolveTerrain, but
+// the chips/URL must materialize that roll instead of showing nothing staged
+await page.goto(`${BASE}/?seed=42`)
+await page.waitForSelector('svg')
+const LANDFORM_LABELS = ['Inland', 'Coastal', 'Bay', 'Island']
+let pressedLandform = null
+for (const label of LANDFORM_LABELS) {
+  if ((await page.getByRole('button', { name: label }).getAttribute('aria-pressed')) === 'true') {
+    pressedLandform = label
+    break
+  }
+}
+if (!pressedLandform) fail('bare url: no landform chip pressed after materialization')
+if (!page.url().includes('tags=')) fail('bare url: url was not materialized with tags=')
+
 // small windows are the tight case for C3's window placement — confirm the
 // smallest size tag still shows water for a wet kind
 await page.goto(`${BASE}/?seed=42&tags=coastal,small`)

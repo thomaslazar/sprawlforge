@@ -1,3 +1,4 @@
+import { resolveTerrain } from '../gen/terrain'
 import type { SectorParams } from '../gen/types'
 
 export const TAG_GROUPS = {
@@ -48,4 +49,22 @@ export function normalizeTags(tags: string[]): Tag[] {
       if ((members as readonly string[]).includes(tag)) picked.set(group, tag as Tag)
   }
   return [...picked.values(), ...free]
+}
+
+/**
+ * Bare/partial tag sets (no landform tag) leave `landform: 'auto'` for the
+ * generator to roll from the seed — chips/URL would then show nothing while
+ * the map shows a fully-decided terrain. Resolve that roll once, here, and
+ * bake it into explicit tags so chips/URL/generation all agree. Reuses the
+ * generator's own resolveTerrain so the materialized tags reproduce the
+ * exact auto-resolved terrain byte-for-byte (its explicit-input path is a
+ * pure passthrough).
+ */
+export function materializeTags(seed: number, tags: Tag[]): Tag[] {
+  if (tags.some((tag) => (TAG_GROUPS.terrain as readonly string[]).includes(tag))) return tags
+  const params: SectorParams = { seed, pack: '', theme: '', ...resolveTags(tags) }
+  const { landform, river, lakes } = resolveTerrain(params)
+  return normalizeTags([
+    ...tags, landform, ...(river ? ['river'] : []), ...(lakes ? ['lakes'] : []),
+  ])
 }
