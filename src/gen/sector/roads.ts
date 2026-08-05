@@ -38,6 +38,11 @@ function joinArterialsAcrossHighway(roads: Road[]): Road[] {
     if (Math.abs(b.x - x) <= OVERPASS_EDGE_TOL) return { at: b, other: a }
     return null
   }
+  // connectors are their own 2-point roads — every water-clipping/truncation
+  // function assumes roads are straight 2-point segments, and merged 4-point
+  // polylines slipped through unclipped (rendered as diagonal roads crossing
+  // water). The originals stay untouched; only the short gap segment is new.
+  let n = 0
   for (const hw of highways) {
     const hx = hw.points[0].x
     const halfW = hw.width / 2
@@ -52,15 +57,18 @@ function joinArterialsAcrossHighway(roads: Road[]): Road[] {
         if (!rHit || Math.abs(lHit.at.y - rHit.at.y) > OVERPASS_PERP_TOL) continue
         merged.add(l)
         merged.add(r)
+        n += 1
         replaced.push({
           ...l,
-          points: [lHit.other, lHit.at, rHit.at, rHit.other],
+          id: `OP${String(n).padStart(2, '0')}`,
+          points: [lHit.at, rHit.at],
+          name: null,
         })
         break
       }
     }
   }
-  return [...roads.filter((r) => !merged.has(r)), ...replaced]
+  return [...roads, ...replaced]
 }
 
 const HIGHWAY_W = 32

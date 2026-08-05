@@ -34,6 +34,7 @@ export const strings = {
       balanced: 'Balanced',
       fringe: 'Fringe',
       quiet: 'Quiet',
+      normal: 'Normal',
       lively: 'Lively',
       piers: 'Piers',
       piersNeedsWater: 'Needs water — pick a wet terrain',

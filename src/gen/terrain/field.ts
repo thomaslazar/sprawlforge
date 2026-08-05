@@ -69,6 +69,9 @@ export function sectorWindow(sizeM: number, landform: Landform, metroSeed: numbe
 
 export interface TerrainFieldBase {
   heightRaw(x: number, y: number): number
+  /** height WITHOUT lake dips — the river tracer's stop condition, so rivers
+   * flow through lakes and only terminate at the actual sea */
+  heightSea(x: number, y: number): number
   landform: Landform
   hasSea: boolean
   hasRiver: boolean
@@ -197,6 +200,7 @@ export function makeFieldBase(
     }
   }
 
+  const preLakeGradient = gradient
   if (water.lakes) {
     const landGradient = gradient
     const lrng = mulberry32(hashSeed(metroSeed, 'lake-basin'))
@@ -224,13 +228,15 @@ export function makeFieldBase(
     }
   }
 
+  const noiseAt = (x: number, y: number) => {
+    const w = warp(x, y)
+    return amp * (noise(w.x / scale, w.y / scale) - 0.5)
+  }
   return {
     landform,
     hasSea: landform !== 'inland',
     hasRiver: water.river,
-    heightRaw: (x, y) => {
-      const w = warp(x, y)
-      return gradient(x, y) + amp * (noise(w.x / scale, w.y / scale) - 0.5)
-    },
+    heightRaw: (x, y) => gradient(x, y) + noiseAt(x, y),
+    heightSea: (x, y) => preLakeGradient(x, y) + noiseAt(x, y),
   }
 }

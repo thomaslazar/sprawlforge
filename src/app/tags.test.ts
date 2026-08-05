@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { generateSector } from '../gen/sector/generate'
 import { resolveTerrain } from '../gen/terrain'
 import type { SectorParams } from '../gen/types'
-import { DEFAULT_PARAMS, materializeTags, normalizeTags, resolveTags } from './tags'
+import { DEFAULT_PARAMS, TAG_GROUPS, materializeTags, normalizeTags, resolveTags } from './tags'
 
 describe('resolveTags', () => {
   it('empty tags = defaults', () => {
@@ -58,57 +58,71 @@ describe('normalizeTags', () => {
 })
 
 describe('materializeTags', () => {
-  it('landform present: unchanged', () => {
-    expect(materializeTags(1, ['coastal', 'river'])).toEqual(['coastal', 'river'])
+  const groupOf = (tag: string) =>
+    Object.entries(TAG_GROUPS).find(([, m]) => (m as readonly string[]).includes(tag))?.[0]
+
+  it('always yields exactly one tag per exclusion group', () => {
+    for (const seed of [1, 2, 42, 999]) {
+      const result = materializeTags(seed, [])
+      for (const group of Object.keys(TAG_GROUPS)) {
+        expect(result.filter((t) => groupOf(t) === group).length, `${group}@${seed}`).toBe(1)
+      }
+    }
   })
 
-  it('bare: gains the resolved landform, plus water per the seed roll', () => {
+  it('is deterministic and idempotent', () => {
+    const once = materializeTags(7, [])
+    expect(materializeTags(7, [])).toEqual(once)
+    expect(materializeTags(7, once)).toEqual(once)
+  })
+
+  it('staged tags are never overridden', () => {
+    const result = materializeTags(3, ['coastal', 'small', 'quiet'])
+    expect(result).toContain('coastal')
+    expect(result).toContain('small')
+    expect(result).toContain('quiet')
+  })
+
+  it('group rolls are independent: staging one group never shifts another', () => {
+    const bare = materializeTags(11, [])
+    const withSize = materializeTags(11, ['large'])
+    const density = (tags: string[]) => tags.find((t) => groupOf(t) === 'density')
+    const power = (tags: string[]) => tags.find((t) => groupOf(t) === 'power')
+    expect(density(withSize)).toBe(density(bare))
+    expect(power(withSize)).toBe(power(bare))
+  })
+
+  it('terrain materialization matches the generator resolution', () => {
     const seed = 1
     const { landform, river, lakes } = resolveTerrain({
       ...DEFAULT_PARAMS, seed, pack: '', theme: '',
     } as SectorParams)
-    const expected = [landform, ...(river ? ['river'] : []), ...(lakes ? ['lakes'] : [])]
-    expect(materializeTags(seed, [])).toEqual(expect.arrayContaining(expected))
-    expect(materializeTags(seed, []).length).toBe(expected.length)
+    const result = materializeTags(seed, [])
+    expect(result).toContain(landform)
+    expect(result.includes('river')).toBe(river)
+    expect(result.includes('lakes')).toBe(lakes)
   })
 
-  it('partial: river staged with no landform gains a landform and keeps river true', () => {
+  it('partial: river staged with no landform gains a landform and keeps river', () => {
     const seed = 2
-    const { landform, lakes } = resolveTerrain({
+    const { landform } = resolveTerrain({
       ...DEFAULT_PARAMS, seed, pack: '', theme: '', river: true,
     } as SectorParams)
     const result = materializeTags(seed, ['river'])
-    expect(result).toEqual(
-      expect.arrayContaining([landform, 'river', ...(lakes ? ['lakes'] : [])]),
-    )
-    expect(result.length).toBe(2 + (lakes ? 1 : 0))
+    expect(result).toContain(landform)
+    expect(result).toContain('river')
   })
 })
 
-describe('materialization keeps generation byte-identical', () => {
-  const asParams = (seed: number, tags: Parameters<typeof resolveTags>[0]): SectorParams => ({
-    seed, pack: 'generic', theme: 'neon', ...resolveTags(tags),
-  })
-  // meta.params is a verbatim echo of the input SectorParams, so it trivially
-  // differs (landform: 'auto' vs the materialized explicit value) — strip it
-  // and compare everything the generator actually produced from it.
-  const stripParamsEcho = (m: ReturnType<typeof generateSector>) => ({
-    ...m, meta: { ...m.meta, params: undefined },
-  })
-
-  it('generateSector(bare/auto) deep-equals generateSector(materialized explicit tags)', () => {
+describe('materialized tags drive generation honestly', () => {
+  it('the generated terrain matches the materialized terrain tags', () => {
     for (const seed of [1, 2, 42]) {
-      const auto = asParams(seed, [])
-      const materialized = asParams(seed, materializeTags(seed, []))
-      expect(stripParamsEcho(generateSector(materialized))).toEqual(stripParamsEcho(generateSector(auto)))
+      const tags = materializeTags(seed, [])
+      const params: SectorParams = { seed, pack: 'generic', theme: 'neon', ...resolveTags(tags) }
+      const model = generateSector(params)
+      expect(tags).toContain(model.terrain.landform)
+      expect(tags.includes('river')).toBe(model.terrain.river)
+      expect(tags.includes('lakes')).toBe(model.terrain.lakes)
     }
-  }, 30000)
-
-  it('holds for a partial (river-only) staged set too', () => {
-    for (const seed of [7, 99]) {
-      const auto = asParams(seed, ['river'])
-      const materialized = asParams(seed, materializeTags(seed, ['river']))
-      expect(stripParamsEcho(generateSector(materialized))).toEqual(stripParamsEcho(generateSector(auto)))
-    }
-  }, 30000)
+  }, 60000)
 })

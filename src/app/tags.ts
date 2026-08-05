@@ -1,3 +1,4 @@
+import { hashSeed, mulberry32 } from '../gen/rng'
 import { resolveTerrain } from '../gen/terrain'
 import type { SectorParams } from '../gen/types'
 
@@ -6,8 +7,9 @@ export const TAG_GROUPS = {
   size: ['small', 'medium', 'large'],
   density: ['sparse', 'dense', 'packed'],
   power: ['corp-run', 'balanced', 'fringe'],
-  activity: ['quiet', 'lively'],
+  activity: ['quiet', 'normal', 'lively'],
 } as const
+
 
 export type TagGroup = keyof typeof TAG_GROUPS
 // river/lakes/piers are free toggles: independently selectable, no group,
@@ -22,7 +24,7 @@ const TAG_EFFECTS: Record<string, Partial<SectorParams>> = {
   small: { size: 2 }, medium: { size: 4 }, large: { size: 6 },
   sparse: { density: 0.25 }, dense: { density: 0.6 }, packed: { density: 0.9 },
   'corp-run': { corpDominance: 0.85 }, balanced: { corpDominance: 0.5 }, fringe: { corpDominance: 0.15 },
-  quiet: { poiDensity: 0.25 }, lively: { poiDensity: 0.7 },
+  quiet: { poiDensity: 0.25 }, normal: { poiDensity: 0.5 }, lively: { poiDensity: 0.7 },
   river: { river: true }, lakes: { lakes: true }, piers: { piers: true },
 }
 
@@ -61,10 +63,21 @@ export function normalizeTags(tags: string[]): Tag[] {
  * pure passthrough).
  */
 export function materializeTags(seed: number, tags: Tag[]): Tag[] {
-  if (tags.some((tag) => (TAG_GROUPS.terrain as readonly string[]).includes(tag))) return tags
-  const params: SectorParams = { seed, pack: '', theme: '', ...resolveTags(tags) }
-  const { landform, river, lakes } = resolveTerrain(params)
-  return normalizeTags([
-    ...tags, landform, ...(river ? ['river'] : []), ...(lakes ? ['lakes'] : []),
-  ])
+  let out = [...tags]
+  if (!tags.some((tag) => (TAG_GROUPS.terrain as readonly string[]).includes(tag))) {
+    const params: SectorParams = { seed, pack: '', theme: '', ...resolveTags(tags) }
+    const { landform, river, lakes } = resolveTerrain(params)
+    out = [...out, landform as Tag, ...(river ? ['river' as Tag] : []), ...(lakes ? ['lakes' as Tag] : [])]
+  }
+  // every other unstaged group gets a seeded-random tag — a bare URL is a
+  // full surprise-me roll, same philosophy as the terrain resolution; each
+  // group draws from its own stream so staging one group never shifts another
+  for (const group of Object.keys(TAG_GROUPS) as TagGroup[]) {
+    if (group === 'terrain') continue
+    const members = TAG_GROUPS[group] as readonly string[]
+    if (out.some((tag) => members.includes(tag))) continue
+    const rng = mulberry32(hashSeed(seed, 'tag-roll', group))
+    out.push(rng.pick(members) as Tag)
+  }
+  return normalizeTags(out)
 }

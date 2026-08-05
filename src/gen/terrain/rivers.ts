@@ -64,7 +64,7 @@ export function traceRiver(base: TerrainFieldBase, metroSeed: number, sizeM: num
   let bestH = -Infinity
   for (let k = 0; k < 60; k++) {
     const p = { x: rng.next() * METRO_SIZE, y: rng.next() * METRO_SIZE }
-    const h = base.heightRaw(p.x, p.y)
+    const h = base.heightSea(p.x, p.y)
     if (h > bestH) {
       bestH = h
       start = p
@@ -81,7 +81,7 @@ export function traceRiver(base: TerrainFieldBase, metroSeed: number, sizeM: num
         { x: t, y: 0 }, { x: t, y: METRO_SIZE },
         { x: 0, y: t }, { x: METRO_SIZE, y: t },
       ]) {
-        const h = base.heightRaw(p.x, p.y)
+        const h = base.heightSea(p.x, p.y)
         if (h < low) {
           low = h
           dest = p
@@ -103,10 +103,12 @@ export function traceRiver(base: TerrainFieldBase, metroSeed: number, sizeM: num
   let p = { ...start }
   let passedVia = false
   for (let s = 0; s < MAX_STEPS; s++) {
-    if (base.heightRaw(p.x, p.y) < -0.05) break // reached the sea
+    // heightSea, not heightRaw: a lake dip is below sea level too — rivers
+    // must flow THROUGH lakes and stop only at the actual sea
+    if (base.heightSea(p.x, p.y) < -0.05) break
     if (p.x < 0 || p.y < 0 || p.x > METRO_SIZE || p.y > METRO_SIZE) break
-    const gx = (base.heightRaw(p.x + EPS, p.y) - base.heightRaw(p.x - EPS, p.y)) / (2 * EPS)
-    const gy = (base.heightRaw(p.x, p.y + EPS) - base.heightRaw(p.x, p.y - EPS)) / (2 * EPS)
+    const gx = (base.heightSea(p.x + EPS, p.y) - base.heightSea(p.x - EPS, p.y)) / (2 * EPS)
+    const gy = (base.heightSea(p.x, p.y + EPS) - base.heightSea(p.x, p.y - EPS)) / (2 * EPS)
     const gLen = Math.hypot(gx, gy) || 1
     const down = { x: -gx / gLen, y: -gy / gLen }
     if (!passedVia && Math.hypot(p.x - via.x, p.y - via.y) < STEP * 2) passedVia = true

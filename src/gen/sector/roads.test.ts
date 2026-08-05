@@ -119,8 +119,8 @@ describe('layoutRoads', () => {
       (r) =>
         !r.bridge &&
         r.class !== 'highway' &&
-        r.points.some((p) => p.x < hx - 20) &&
-        r.points.some((p) => p.x > hx + 20),
+        r.points.some((p) => p.x < hx - 10) &&
+        r.points.some((p) => p.x > hx + 10),
     )
     expect(crosses).toBe(true)
   })
