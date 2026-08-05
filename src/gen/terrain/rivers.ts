@@ -1,6 +1,6 @@
 import type { Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
-import type { TerrainKind } from '../types'
+import type { Landform } from '../types'
 import { METRO_SIZE, makeFieldBase, sectorWindow, type TerrainFieldBase } from './field'
 
 export interface River {
@@ -45,7 +45,7 @@ export function nearestOnPolyline(p: Pt, line: Pt[]): { dist: number; t01: numbe
 export function traceRiver(base: TerrainFieldBase, metroSeed: number, sizeM: number): River | null {
   if (!base.hasRiver) return null
   const rng = mulberry32(hashSeed(metroSeed, 'river'))
-  const win = sectorWindow(sizeM, base.kind, metroSeed)
+  const win = sectorWindow(sizeM, base.landform, metroSeed)
 
   // start: highest of K samples on the window's far side from the water
   let start: Pt = { x: METRO_SIZE / 2, y: METRO_SIZE / 2 }
@@ -132,10 +132,11 @@ const CHANNEL_H = -0.15
 
 export function makeTerrainField(
   metroSeed: number,
-  kind: TerrainKind,
+  landform: Landform,
+  water: { river: boolean; lakes: boolean },
   sizeM: number,
 ): TerrainField {
-  const base = makeFieldBase(metroSeed, kind)
+  const base = makeFieldBase(metroSeed, landform, water)
   const river = traceRiver(base, metroSeed, sizeM)
   const height = (x: number, y: number): number => {
     const h = base.heightRaw(x, y)

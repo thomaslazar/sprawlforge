@@ -170,7 +170,7 @@ function landingFor(
   const mid = at(a, b, (t0 + t1) / 2)
   let p = at(a, b, t0)
   let q = at(a, b, t1)
-  const river = terrain.river
+  const river = terrain.riverSlice
   if (river && distToPolyline(mid, river.course) < 2 * river.width) {
     // re-orient perpendicular to local flow
     let bestI = 0

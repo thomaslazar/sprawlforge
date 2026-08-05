@@ -4,7 +4,7 @@ import { deriveDistricts, generateSector } from './generate'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  terrain: 'inland', piers: false, pack: 'generic', theme: 'neon',
+  landform: 'inland', river: false, lakes: false, piers: false, pack: 'generic', theme: 'neon',
 }
 
 describe('generateSector', () => {
@@ -22,9 +22,9 @@ describe('generateSector', () => {
     expect(m.meta.params).toEqual(base)
     expect(typeof m.meta.metroSeed).toBe('number')
   })
-  it('samples terrain and exposes its kind', () => {
+  it('samples terrain and exposes its landform', () => {
     const m = generateSector(base)
-    expect(m.terrain.kind).toBe('inland')
+    expect(m.terrain.landform).toBe('inland')
     expect(m.meta.metroSeed).toBe(m.terrain.metroSeed)
   })
   it('every district has a name; highways and arterials are named', () => {

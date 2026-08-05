@@ -1,6 +1,6 @@
 import type { Rect } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
-import type { TerrainKind } from '../types'
+import type { Landform } from '../types'
 import { fractalNoise2D } from './noise'
 
 export const METRO_SIZE = 32000
@@ -17,21 +17,21 @@ function seedDir(metroSeed: number): { x: number; y: number } {
 /**
  * The sector window into the metro-scale field: always sizeM×sizeM,
  * centered on the metro except where centering would leave the window dry
- * or all-land at small sizeM (C3, spec §2 restoration). coastal/estuary/bay
- * push the window along `dir` toward their feature; island pushes toward
- * its rim. This only moves the window's POSITION — heightRaw stays a pure
- * function of (x, y, metroSeed, kind) either way (see field.test.ts
- * "field is window-independent").
+ * or all-land at small sizeM (C3, spec §2 restoration). coastal pushes the
+ * window along `dir` toward the waterline; bay toward its pocket; island
+ * pushes toward its rim. This only moves the window's POSITION — heightRaw
+ * stays a pure function of (x, y, metroSeed, landform) either way (see
+ * field.test.ts "field is window-independent"). Water modifiers (river,
+ * lakes) never move the window.
  */
-export function sectorWindow(sizeM: number, kind: TerrainKind, metroSeed: number): Rect {
+export function sectorWindow(sizeM: number, landform: Landform, metroSeed: number): Rect {
   const cx = METRO_SIZE / 2
   const cy = METRO_SIZE / 2
   const dir = seedDir(metroSeed)
   // signed offset of the window center from the metro center, along `dir`
   let along = 0
-  switch (kind) {
-    case 'coastal':
-    case 'estuary': {
+  switch (landform) {
+    case 'coastal': {
       // A fixed target *fraction* of window area beyond the coastline
       // isn't enough: for a near-axis-aligned dir, that area can sit right
       // at the shallow edge of the gradient (barely past zero), and the
@@ -69,7 +69,7 @@ export function sectorWindow(sizeM: number, kind: TerrainKind, metroSeed: number
 
 export interface TerrainFieldBase {
   heightRaw(x: number, y: number): number
-  kind: TerrainKind
+  landform: Landform
   hasSea: boolean
   hasRiver: boolean
 }
@@ -93,28 +93,25 @@ const ISLAND_RADIUS = 1520 // 0.38 * 4000
 // (0.275) so noise alone can never dry the whole window out
 const COAST_DEPTH_MARGIN = 1600
 
-// Lakes reuse the shared height noise but at a finer lattice frequency: at
-// NOISE_SCALE (6000m/unit) the sector window sits inside ~1 lattice cell, so
-// the whole window shares one broad, seed-biased offset (some seeds land on
-// a locally-high cell, others locally-low) — no amp/gradient constant can
-// carve small pockets out of that per-seed bias. At 1200m/unit several
-// lattice cells span the window, giving multiple independent local minima
-// per seed, so a small consistent water fraction (found by sweeping
-// gradient/scale against seeds 1, 42, 999) survives across seeds.
-const LAKE_NOISE_SCALE = 1200
-const LAKE_GRADIENT = 0.15
-const LAKE_AMP = 0.75
-// Guaranteed basin (I6): the broad gradient above still leaves ~7% of seeds
-// with no pool at all (noise never dips the local cell below 0). Subtract
-// one seeded radial dip so a basin always exists. Depth must beat the
-// baseline *and* the worst-case noise excursion (LAKE_AMP/2) even right at
-// the dip center, with enough margin that the resulting wet radius clears
-// the smoke test's 1% floor — see smoke.test.ts.
+// Lakes modifier (I6): subtract a seeded radial dip from whichever
+// landform's gradient is already in play, so a basin always exists
+// regardless of landform. Depth must beat the baseline *and* the
+// worst-case noise excursion (amp/2) even right at the dip center, with
+// enough margin that the resulting wet radius clears the smoke test's 1%
+// floor — see smoke.test.ts. Positioned near the metro center (± spread),
+// same as v2's standalone 'lakes' kind — inland's window is always
+// centered there, so the dip is guaranteed visible for inland+lakes; for
+// other landforms the dip may land outside a pushed window, which is fine
+// since those landforms already guarantee their own water.
 const LAKE_DIP_RADIUS = 600
 const LAKE_DIP_DEPTH = 1.3
 const LAKE_DIP_SPREAD = 400 // dip center stays within this of the metro center
 
-export function makeFieldBase(metroSeed: number, kind: TerrainKind): TerrainFieldBase {
+export function makeFieldBase(
+  metroSeed: number,
+  landform: Landform,
+  water: { river: boolean; lakes: boolean },
+): TerrainFieldBase {
   const noise = fractalNoise2D(hashSeed(metroSeed, 'height'))
   const cx = METRO_SIZE / 2
   const cy = METRO_SIZE / 2
@@ -122,15 +119,13 @@ export function makeFieldBase(metroSeed: number, kind: TerrainKind): TerrainFiel
 
   let gradient: (x: number, y: number) => number
   let amp = NOISE_AMP
-  let scale = NOISE_SCALE
-  switch (kind) {
+  const scale = NOISE_SCALE
+  switch (landform) {
     case 'inland':
-    case 'river':
       gradient = () => 0.5
       amp = 0.45 // dips can't reach 0.5-0.45/2 → never water
       break
-    case 'coastal':
-    case 'estuary': {
+    case 'coastal': {
       // waterline ~70% toward one side of the window
       gradient = (x, y) => -((x - cx) * dir.x + (y - cy) * dir.y - COAST_ANCHOR) / 4000
       break
@@ -146,27 +141,26 @@ export function makeFieldBase(metroSeed: number, kind: TerrainKind): TerrainFiel
       amp = 0.35
       break
     }
-    case 'lakes': {
-      const lrng = mulberry32(hashSeed(metroSeed, 'lake-basin'))
-      const langle = lrng.next() * Math.PI * 2
-      const lr = lrng.next() * LAKE_DIP_SPREAD
-      const dc = { x: cx + Math.cos(langle) * lr, y: cy + Math.sin(langle) * lr }
-      gradient = (x, y) => {
-        const d = Math.hypot(x - dc.x, y - dc.y)
-        const t = Math.max(0, 1 - d / LAKE_DIP_RADIUS)
-        const s = t * t * (3 - 2 * t) // smooth falloff, no basin-edge crease
-        return LAKE_GRADIENT - LAKE_DIP_DEPTH * s
-      }
-      amp = LAKE_AMP
-      scale = LAKE_NOISE_SCALE
-      break
+  }
+
+  if (water.lakes) {
+    const landGradient = gradient
+    const lrng = mulberry32(hashSeed(metroSeed, 'lake-basin'))
+    const langle = lrng.next() * Math.PI * 2
+    const lr = lrng.next() * LAKE_DIP_SPREAD
+    const dc = { x: cx + Math.cos(langle) * lr, y: cy + Math.sin(langle) * lr }
+    gradient = (x, y) => {
+      const d = Math.hypot(x - dc.x, y - dc.y)
+      const t = Math.max(0, 1 - d / LAKE_DIP_RADIUS)
+      const s = t * t * (3 - 2 * t) // smooth falloff, no basin-edge crease
+      return landGradient(x, y) - LAKE_DIP_DEPTH * s
     }
   }
 
   return {
-    kind,
-    hasSea: kind === 'coastal' || kind === 'estuary' || kind === 'bay' || kind === 'island',
-    hasRiver: kind === 'river' || kind === 'estuary',
+    landform,
+    hasSea: landform !== 'inland',
+    hasRiver: water.river,
     heightRaw: (x, y) => gradient(x, y) + amp * (noise(x / scale, y / scale) - 0.5),
   }
 }

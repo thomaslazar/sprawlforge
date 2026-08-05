@@ -1,6 +1,6 @@
 import type { Pt, Rect } from './geometry'
 
-export const GENERATOR_VERSION = 2
+export const GENERATOR_VERSION = 3
 
 export const ZONE_TYPES = [
   'corp', 'residential', 'slum', 'industrial', 'entertainment', 'docks',
@@ -8,11 +8,9 @@ export const ZONE_TYPES = [
 
 export type ZoneType = (typeof ZONE_TYPES)[number]
 
-export const TERRAIN_KINDS = [
-  'inland', 'river', 'coastal', 'bay', 'estuary', 'island', 'lakes',
-] as const
+export const LANDFORMS = ['inland', 'coastal', 'bay', 'island'] as const
 
-export type TerrainKind = (typeof TERRAIN_KINDS)[number]
+export type Landform = (typeof LANDFORMS)[number]
 
 export type RoadClass = 'highway' | 'arterial' | 'street'
 
@@ -26,8 +24,11 @@ export interface SectorParams {
   corpDominance: number
   /** 0..1 — POI frequency */
   poiDensity: number
-  /** terrain template; 'auto' resolves deterministically from the seed */
-  terrain: TerrainKind | 'auto'
+  /** base landform; 'auto' resolves deterministically from the seed */
+  landform: Landform | 'auto'
+  /** water modifiers — independent of landform and each other */
+  river: boolean
+  lakes: boolean
   /** pier/harbor decoration pass (spec §4, last task) */
   piers: boolean
   /** flavor pack id */
@@ -43,12 +44,17 @@ export interface RiverSlice {
 }
 
 export interface Terrain {
-  kind: TerrainKind
+  landform: Landform
+  /** resolved water modifiers (see SectorParams) */
+  river: boolean
+  lakes: boolean
   metroSeed: number
   /** window-local multipolygons, meters, origin top-left */
   water: Array<Array<Array<[number, number]>>>
   land: Array<Array<Array<[number, number]>>>
-  river: RiverSlice | null
+  /** river course geometry actually in-window; null even when `river` is true
+   * if the traced course never crosses this sector's window */
+  riverSlice: RiverSlice | null
 }
 
 export interface Road {

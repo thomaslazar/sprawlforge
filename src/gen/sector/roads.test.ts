@@ -7,7 +7,7 @@ import { layoutRoads } from './roads'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  terrain: 'inland', piers: false, pack: 'generic', theme: 'neon',
+  landform: 'inland', river: false, lakes: false, piers: false, pack: 'generic', theme: 'neon',
 }
 const sizeM = 4000
 const noWater = sampleTerrain(base, sizeM)
@@ -40,8 +40,8 @@ describe('layoutRoads', () => {
     expect(hi).toBeGreaterThan(lo)
   })
   it('coast keeps all districts within the land bounding box', () => {
-    const terrain = sampleTerrain({ ...base, terrain: 'coastal' }, sizeM)
-    const r = layoutRoads({ ...base, terrain: 'coastal' }, terrain, sizeM)
+    const terrain = sampleTerrain({ ...base, landform: 'coastal' }, sizeM)
+    const r = layoutRoads({ ...base, landform: 'coastal' }, terrain, sizeM)
     const b = landBounds(terrain)
     for (const d of r.districtRects) {
       expect(d.x).toBeGreaterThanOrEqual(b.minX - 1e-6)
@@ -51,8 +51,8 @@ describe('layoutRoads', () => {
     }
   })
   it('river keeps all districts within the land bounding box', () => {
-    const terrain = sampleTerrain({ ...base, terrain: 'river' }, sizeM)
-    const r = layoutRoads({ ...base, terrain: 'river' }, terrain, sizeM)
+    const terrain = sampleTerrain({ ...base, river: true }, sizeM)
+    const r = layoutRoads({ ...base, river: true }, terrain, sizeM)
     const b = landBounds(terrain)
     for (const d of r.districtRects) {
       expect(d.x).toBeGreaterThanOrEqual(b.minX - 1e-6)
@@ -63,11 +63,11 @@ describe('layoutRoads', () => {
   })
   it('tolerates an all-water window (I5): no land yields no districts, no crash', () => {
     const allWater: Terrain = {
-      kind: 'coastal',
+      landform: 'coastal', river: false, lakes: false,
       metroSeed: 1,
       water: [[[[0, 0], [sizeM, 0], [sizeM, sizeM], [0, sizeM]]]],
       land: [],
-      river: null,
+      riverSlice: null,
     }
     expect(() => layoutRoads(base, allWater, sizeM)).not.toThrow()
     const r = layoutRoads(base, allWater, sizeM)
@@ -84,8 +84,8 @@ describe('layoutRoads', () => {
     }
   })
   it('street roads never have a point in water', () => {
-    const terrain = sampleTerrain({ ...base, terrain: 'river' }, sizeM)
-    const { roads } = layoutRoads({ ...base, terrain: 'river' }, terrain, sizeM)
+    const terrain = sampleTerrain({ ...base, river: true }, sizeM)
+    const { roads } = layoutRoads({ ...base, river: true }, terrain, sizeM)
     const inWater = (p: Pt) =>
       terrain.water.some((poly) => pointInRings(p, poly.map((ring) => ring.map(([x, y]) => ({ x, y })))))
     for (const road of roads) {
@@ -95,7 +95,7 @@ describe('layoutRoads', () => {
   })
   it('road graph stays connected across water (river seeds)', () => {
     for (const seed of [1, 42, 999]) {
-      const params = { ...base, seed, terrain: 'river' as const }
+      const params = { ...base, seed, river: true }
       const terrain = sampleTerrain(params, 4000)
       const { roads } = layoutRoads(params, terrain, 4000)
       // union-find over road endpoints; endpoints within 20 m are joined

@@ -5,25 +5,25 @@ import { assignZones, zoneWeights } from './zoning'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  terrain: 'inland', piers: false, pack: 'generic', theme: 'neon',
+  landform: 'inland', river: false, lakes: false, piers: false, pack: 'generic', theme: 'neon',
 }
 const rects: Rect[] = Array.from({ length: 12 }, (_, i) => ({
   x: (i % 4) * 1000, y: Math.floor(i / 4) * 1000, w: 900, h: 900,
 }))
 
 const dryTerrain: Terrain = {
-  kind: 'inland',
+  landform: 'inland', river: false, lakes: false,
   metroSeed: 1,
   water: [],
   land: [[[[0, 0], [4000, 0], [4000, 4000], [0, 4000]]]],
-  river: null,
+  riverSlice: null,
 }
 const eastWater: Terrain = {
-  kind: 'coastal',
+  landform: 'coastal', river: false, lakes: false,
   metroSeed: 1,
   water: [[[[3000, 0], [4000, 0], [4000, 4000], [3000, 4000]]]],
   land: [[[[0, 0], [3000, 0], [3000, 4000], [0, 4000]]]],
-  river: null,
+  riverSlice: null,
 }
 
 describe('assignZones', () => {

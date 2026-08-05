@@ -5,6 +5,10 @@ import type { AppState } from './params'
 import { t } from './strings'
 import { TAG_GROUPS, type Tag, type TagGroup } from './tags'
 
+// river/lakes/piers: free toggles, no exclusion — presented together as a
+// water-themed chip row (piers is water-themed too: harbor decor).
+const WATER_TAGS: Tag[] = ['river', 'lakes', 'piers']
+
 interface Props {
   applied: AppState
   pendingTags: Tag[]
@@ -70,21 +74,26 @@ export function KnobPanel({ applied, pendingTags, busy, onChange, onPendingTagsC
     if (seed !== applied.seed) onChange({ ...applied, seed })
   }
 
+  const isDry = (tags: Tag[]): boolean =>
+    tags.includes('inland') && !tags.includes('river') && !tags.includes('lakes')
+  // piers need water — auto-unstage a staged piers chip the moment the
+  // staged combo goes explicitly dry (inland, no river, no lakes)
+  const dryGate = (tags: Tag[]): Tag[] => (isDry(tags) ? tags.filter((tg) => tg !== 'piers') : tags)
+
   const toggleTag = (group: TagGroup, tag: Tag) => {
     const active = pendingTags.includes(tag)
     const withoutGroup = pendingTags.filter((tg) => !(TAG_GROUPS[group] as readonly string[]).includes(tg))
     const next = active ? withoutGroup : [...withoutGroup, tag]
-    // inland implies no water — drop a staged piers chip along with it
-    const stagingInland = group === 'terrain' && tag === 'inland' && !active
-    onPendingTagsChange(stagingInland ? next.filter((tg) => tg !== 'piers') : next)
+    onPendingTagsChange(dryGate(next))
   }
 
-  const togglePiers = () => {
-    const active = pendingTags.includes('piers')
-    onPendingTagsChange(active ? pendingTags.filter((tg) => tg !== 'piers') : [...pendingTags, 'piers'])
+  const toggleWaterTag = (tag: Tag) => {
+    const active = pendingTags.includes(tag)
+    const next = active ? pendingTags.filter((tg) => tg !== tag) : [...pendingTags, tag]
+    onPendingTagsChange(dryGate(next))
   }
 
-  const piersDisabled = pendingTags.includes('inland')
+  const piersDisabled = isDry(pendingTags)
 
   return (
     <div style={{ width: 260, padding: 16, overflowY: 'auto' }}>
@@ -121,15 +130,20 @@ export function KnobPanel({ applied, pendingTags, busy, onChange, onPendingTagsC
         </div>
       ))}
       <div style={{ marginBottom: 12 }}>
-        <div style={{ marginBottom: 4 }}>{t.tagGroups.piers}</div>
-        <Chip
-          label={t.tags.piers}
-          pending={pendingTags.includes('piers')}
-          applied={applied.tags.includes('piers')}
-          onClick={togglePiers}
-          disabled={piersDisabled}
-          title={piersDisabled ? t.tags.piersNeedsWater : undefined}
-        />
+        <div style={{ marginBottom: 4 }}>{t.tagGroups.water}</div>
+        <div>
+          {WATER_TAGS.map((tag) => (
+            <Chip
+              key={tag}
+              label={t.tags[tag]}
+              pending={pendingTags.includes(tag)}
+              applied={applied.tags.includes(tag)}
+              onClick={() => toggleWaterTag(tag)}
+              disabled={tag === 'piers' ? piersDisabled : undefined}
+              title={tag === 'piers' && piersDisabled ? t.tags.piersNeedsWater : undefined}
+            />
+          ))}
+        </div>
       </div>
       <label style={{ display: 'block', marginBottom: 12 }}>
         {t.knobs.pack}

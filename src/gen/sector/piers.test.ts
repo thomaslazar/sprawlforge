@@ -5,13 +5,13 @@ import { placePiers } from './piers'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  terrain: 'coastal', piers: true, pack: 'generic', theme: 'neon',
+  landform: 'coastal', river: false, lakes: false, piers: true, pack: 'generic', theme: 'neon',
 }
 const eastWater: Terrain = {
-  kind: 'coastal', metroSeed: 1,
+  landform: 'coastal', river: false, lakes: false, metroSeed: 1,
   water: [[[[3000, 0], [4000, 0], [4000, 4000], [3000, 4000]]]],
   land: [[[[0, 0], [3000, 0], [3000, 4000], [0, 4000]]]],
-  river: null,
+  riverSlice: null,
 }
 const docksDistrict: District = {
   id: 'D01', zone: 'docks', name: 'The Docks', shore: true,

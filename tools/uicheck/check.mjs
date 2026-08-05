@@ -111,8 +111,9 @@ for (const [label, ext] of [
   await dl.saveAs(`${OUT}/export.${ext}`)
 }
 
-// piers chip gates on wet terrain: disabled + auto-unstaged under inland,
-// re-enabled by a wet terrain tag
+// piers chip gates on wet terrain: disabled + auto-unstaged when explicitly
+// dry (inland, no river, no lakes), re-enabled by any water modifier or
+// landform other than inland
 await page.goto(`${BASE}/?seed=42&tags=coastal`)
 await page.waitForSelector('svg')
 const piersChip = page.getByRole('button', { name: 'Piers' })
@@ -128,6 +129,11 @@ if ((await piersChip.getAttribute('aria-pressed')) !== 'false')
 await page.getByRole('button', { name: 'Coastal' }).click() // back to wet terrain
 if (await piersChip.isDisabled()) fail('piers chip stayed disabled after staging a wet terrain')
 
+await page.getByRole('button', { name: 'Inland' }).click() // dry again
+if (!(await piersChip.isDisabled())) fail('piers chip not disabled when inland re-staged')
+await page.getByRole('button', { name: 'Lakes' }).click() // inland + lakes: no longer dry
+if (await piersChip.isDisabled()) fail('piers chip stayed disabled for inland+lakes')
+
 // reroll busy feedback: catching the transient 'Generating…' label reliably
 // in headless CI is racy, so this only checks the observable before/after —
 // button returns to its normal label and the map actually changed.
@@ -136,29 +142,40 @@ await page.getByRole('button', { name: 'Reroll' }).click()
 await page.getByRole('button', { name: 'Reroll', exact: true }).waitFor({ timeout: 2000 })
 if ((await page.locator('svg').innerHTML()) === svgBeforeBusyReroll) fail('reroll did not change the map')
 
-// terrain sweep: every kind renders buildings, wet kinds show water, rivers have bridges
-for (const t of ['inland', 'river', 'coastal', 'bay', 'estuary', 'island', 'lakes']) {
-  await page.goto(`${BASE}/?seed=42&tags=${t}`)
+// terrain sweep: the 4 landforms alone, plus composable combos —
+// every entry renders buildings, wet entries show water, river combos
+// have bridges (composable terrain: landform + independent water toggles)
+const TERRAIN_SWEEP = [
+  { tags: 'inland', shot: 'inland', wet: false, bridge: false },
+  { tags: 'coastal', shot: 'coastal', wet: true, bridge: false },
+  { tags: 'bay', shot: 'bay', wet: true, bridge: false },
+  { tags: 'island', shot: 'island', wet: true, bridge: false },
+  { tags: 'coastal,river', shot: 'coastal-river', wet: true, bridge: true },
+  { tags: 'inland,lakes', shot: 'inland-lakes', wet: true, bridge: false },
+  { tags: 'island,river', shot: 'island-river', wet: true, bridge: true },
+]
+for (const { tags, shot, wet, bridge } of TERRAIN_SWEEP) {
+  await page.goto(`${BASE}/?seed=42&tags=${tags}`)
   await page.waitForSelector('svg')
-  await page.screenshot({ path: `${OUT}/terrain-${t}.png` })
+  await page.screenshot({ path: `${OUT}/terrain-${shot}.png` })
 
   const bld = await page.locator('svg polygon[data-id^="BLD"]').count()
-  if (bld < 1) fail(`terrain ${t}: no buildings rendered`)
+  if (bld < 1) fail(`terrain ${tags}: no buildings rendered`)
 
-  if (t !== 'inland') {
+  if (wet) {
     const water = await page.locator('svg [data-water]').count()
-    if (water < 1) fail(`terrain ${t}: no water rendered`)
+    if (water < 1) fail(`terrain ${tags}: no water rendered`)
     // presence alone isn't enough (rec 4) — [data-water] is a <use> onto
     // #water-shape; a real multi-ring water body serializes to a long path,
     // an empty/degenerate one wouldn't
     const waterD = await page.locator('svg #water-shape').getAttribute('d')
     if (!waterD || waterD.length <= 100)
-      fail(`terrain ${t}: water-shape path looks empty (${waterD?.length ?? 0} chars)`)
+      fail(`terrain ${tags}: water-shape path looks empty (${waterD?.length ?? 0} chars)`)
   }
 
-  if (t === 'river') {
+  if (bridge) {
     const bridges = await page.locator('svg [data-bridge]').count()
-    if (bridges < 1) fail('terrain river: no bridge rendered')
+    if (bridges < 1) fail(`terrain ${tags}: no bridge rendered`)
   }
 }
 

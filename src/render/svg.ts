@@ -111,11 +111,11 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     `<use href="#water-shape" fill="none" stroke="${theme.shoreGlow}" stroke-width="${n(S * 0.015)}" filter="url(#shoreblur)" clip-path="url(#land-clip)"/>`,
   )
 
-  if (model.terrain.river) {
-    const pts = model.terrain.river.course.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
+  if (model.terrain.riverSlice) {
+    const pts = model.terrain.riverSlice.course.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
     out.push(`<g clip-path="url(#frame-clip)">`)
     out.push(
-      `<polyline points="${pts}" fill="none" stroke="${theme.water}" stroke-width="${n(model.terrain.river.width)}" stroke-linecap="round"/>`,
+      `<polyline points="${pts}" fill="none" stroke="${theme.water}" stroke-width="${n(model.terrain.riverSlice.width)}" stroke-linecap="round"/>`,
     )
     out.push('</g>')
   }

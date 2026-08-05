@@ -5,7 +5,7 @@ import { placePois } from './pois'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  terrain: 'inland', piers: false, pack: 'generic', theme: 'neon',
+  landform: 'inland', river: false, lakes: false, piers: false, pack: 'generic', theme: 'neon',
 }
 const districts: District[] = [
   { id: 'D01', zone: 'corp', name: 'Test Heights', bounds: { x: 0, y: 0, w: 600, h: 600 }, shore: false, labelAt: { x: 300, y: 300 } },

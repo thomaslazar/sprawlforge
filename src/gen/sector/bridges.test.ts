@@ -4,13 +4,13 @@ import { clipRoadsToLand, inWater, planBridges, truncateOverSpanRoads, truncateU
 
 // hand terrain: vertical river band x∈[450,550] in a 1000² window
 const banded: Terrain = {
-  kind: 'river', metroSeed: 1,
+  landform: 'inland', river: true, lakes: false, metroSeed: 1,
   water: [[[[450, 0], [550, 0], [550, 1000], [450, 1000]]]],
   land: [
     [[[0, 0], [450, 0], [450, 1000], [0, 1000]]],
     [[[550, 0], [1000, 0], [1000, 1000], [550, 1000]]],
   ],
-  river: { course: [{ x: 500, y: -100 }, { x: 500, y: 1100 }], width: 100 },
+  riverSlice: { course: [{ x: 500, y: -100 }, { x: 500, y: 1100 }], width: 100 },
 }
 const road = (id: string, cls: Road['class'], y: number): Road => ({
   id, class: cls, points: [{ x: 0, y }, { x: 1000, y }], width: cls === 'street' ? 9 : 18, name: null,
@@ -52,7 +52,10 @@ describe('planBridges', () => {
       .toEqual(planBridges([road('A01', 'arterial', 300)], banded))
   })
   it('no bridges on dry terrain', () => {
-    const dry: Terrain = { kind: 'inland', metroSeed: 1, water: [], land: [[[[0, 0], [1000, 0], [1000, 1000], [0, 1000]]]], river: null }
+    const dry: Terrain = {
+      landform: 'inland', river: false, lakes: false, metroSeed: 1,
+      water: [], land: [[[[0, 0], [1000, 0], [1000, 1000], [0, 1000]]]], riverSlice: null,
+    }
     expect(planBridges([road('A01', 'arterial', 300)], dry)).toEqual([])
   })
 })
@@ -60,13 +63,13 @@ describe('planBridges', () => {
 // hand terrain: a 600 m water band — wider than arterial's MAX_SPAN (450) but
 // narrower than highway's (900)
 const wideBand: Terrain = {
-  kind: 'river', metroSeed: 1,
+  landform: 'inland', river: true, lakes: false, metroSeed: 1,
   water: [[[[200, 0], [800, 0], [800, 1000], [200, 1000]]]],
   land: [
     [[[0, 0], [200, 0], [200, 1000], [0, 1000]]],
     [[[800, 0], [1000, 0], [1000, 1000], [800, 1000]]],
   ],
-  river: null,
+  riverSlice: null,
 }
 
 describe('truncateOverSpanRoads', () => {
@@ -92,11 +95,11 @@ describe('truncateOverSpanRoads', () => {
 // so any "landing" beyond the water's start is still in open water (the
 // coastal/diagonal-corner case from the bug report, simplified to a band).
 const edgeWater: Terrain = {
-  kind: 'coastal',
+  landform: 'coastal', river: false, lakes: false,
   metroSeed: 1,
   water: [[[[805, 0], [1500, 0], [1500, 1000], [805, 1000]]]],
   land: [[[[0, 0], [805, 0], [805, 1000], [0, 1000]]]],
-  river: null,
+  riverSlice: null,
 }
 
 describe('unlandable crossings (bridge would end in open water)', () => {

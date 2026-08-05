@@ -6,7 +6,7 @@ import { getTheme, themes } from './theme'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  terrain: 'coastal', piers: false, pack: 'generic', theme: 'neon',
+  landform: 'coastal', river: false, lakes: false, piers: false, pack: 'generic', theme: 'neon',
 }
 const model = generateSector(base)
 
@@ -52,11 +52,11 @@ describe('renderSector', () => {
   const handModel = (pois: SectorModel['pois']): SectorModel => ({
     meta: { seed: 1, generatorVersion: GENERATOR_VERSION, params: base, sizeM: 1000, metroSeed: 1 },
     terrain: {
-      kind: 'inland',
+      landform: 'inland', river: false, lakes: false,
       metroSeed: 1,
       water: [],
       land: [[[[0, 0], [1000, 0], [1000, 1000], [0, 1000]]]],
-      river: null,
+      riverSlice: null,
     },
     roads: [],
     districts: [],
@@ -72,7 +72,7 @@ describe('renderSector', () => {
   const wetModel: SectorModel = {
     meta: { seed: 1, generatorVersion: GENERATOR_VERSION, params: base, sizeM: 1000, metroSeed: 1 },
     terrain: {
-      kind: 'coastal',
+      landform: 'coastal', river: true, lakes: false,
       metroSeed: 1,
       water: [[[[250, 250], [750, 250], [750, 750], [250, 750]]]],
       // land is the window MINUS the water square (outer ring + hole) —
@@ -83,7 +83,7 @@ describe('renderSector', () => {
         [[0, 0], [1000, 0], [1000, 1000], [0, 1000]],
         [[250, 250], [750, 250], [750, 750], [250, 750]],
       ]],
-      river: { course: [{ x: 0, y: 500 }, { x: 1000, y: 500 }], width: 20 },
+      riverSlice: { course: [{ x: 0, y: 500 }, { x: 1000, y: 500 }], width: 20 },
     },
     roads: [
       {
