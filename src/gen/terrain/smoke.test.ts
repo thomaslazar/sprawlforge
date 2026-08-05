@@ -28,12 +28,19 @@ function waterArea(water: Array<Array<Array<[number, number]>>>): number {
 
 const WATER_FLOOR = 0.01 // 1% of window area
 
+// One it() per kind/size, and the seed loops yield the event loop every few
+// iterations: hours of near-continuous synchronous CPU starve the vitest
+// worker's RPC heartbeat ("Timeout calling onTaskUpdate" with all tests
+// green) because pending RPC replies never get processed between blocks.
+const breathe = () => new Promise<void>((resolve) => setImmediate(resolve))
+
 describe('sampleTerrain smoke', () => {
-  it('every kind, seeds 0..99 at default size 4000: no throw; wet kinds clear the water floor', () => {
-    const sizeM = 4000
-    const failures: string[] = []
-    for (const kind of TERRAIN_KINDS) {
+  describe.each([...TERRAIN_KINDS])('%s, seeds 0..99 at default size 4000', (kind) => {
+    it('never throws; wet kinds clear the water floor', async () => {
+      const sizeM = 4000
+      const failures: string[] = []
       for (let seed = 0; seed < 100; seed++) {
+        if (seed % 5 === 4) await breathe()
         let t
         try {
           t = sampleTerrain({ ...base, terrain: kind, seed }, sizeM)
@@ -46,28 +53,31 @@ describe('sampleTerrain smoke', () => {
           if (frac < WATER_FLOOR) failures.push(`${kind}/${seed}: water frac ${frac.toFixed(4)} < floor`)
         }
       }
-    }
-    expect(failures).toEqual([])
-  }, 120_000) // 700 sampleTerrain calls (7 kinds × 100 seeds) — well past the 5s default
+      expect(failures).toEqual([])
+    }, 60_000) // 100 sampleTerrain calls
+  })
 
-  it('coastal/island/river at sizes 2000 and 6000, seeds 0..24: no throw; wet kinds clear the water floor', () => {
-    const failures: string[] = []
-    for (const kind of ['coastal', 'island', 'river'] as const) {
-      for (const sizeM of [2000, 6000]) {
-        for (let seed = 0; seed < 25; seed++) {
-          let t
-          try {
-            t = sampleTerrain({ ...base, terrain: kind, seed }, sizeM)
-          } catch (err) {
-            failures.push(`${kind}/${sizeM}/${seed}: threw ${(err as Error).message}`)
-            continue
-          }
-          const frac = waterArea(t.water) / (sizeM * sizeM)
-          if (frac < WATER_FLOOR)
-            failures.push(`${kind}/${sizeM}/${seed}: water frac ${frac.toFixed(4)} < floor`)
+  describe.each([
+    ['coastal', 2000], ['coastal', 6000],
+    ['island', 2000], ['island', 6000],
+    ['river', 2000], ['river', 6000],
+  ] as const)('%s at size %d, seeds 0..24', (kind, sizeM) => {
+    it('never throws and clears the water floor', async () => {
+      const failures: string[] = []
+      for (let seed = 0; seed < 25; seed++) {
+        if (seed % 5 === 4) await breathe()
+        let t
+        try {
+          t = sampleTerrain({ ...base, terrain: kind, seed }, sizeM)
+        } catch (err) {
+          failures.push(`${kind}/${sizeM}/${seed}: threw ${(err as Error).message}`)
+          continue
         }
+        const frac = waterArea(t.water) / (sizeM * sizeM)
+        if (frac < WATER_FLOOR)
+          failures.push(`${kind}/${sizeM}/${seed}: water frac ${frac.toFixed(4)} < floor`)
       }
-    }
-    expect(failures).toEqual([])
-  }, 60_000) // 150 sampleTerrain calls (3 kinds × 2 sizes × 25 seeds)
+      expect(failures).toEqual([])
+    }, 30_000) // 25 sampleTerrain calls
+  })
 })
