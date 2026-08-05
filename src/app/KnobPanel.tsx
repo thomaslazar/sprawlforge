@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { packs } from '../gen/names/packs'
 import { themes } from '../render/theme'
 import type { AppState } from './params'
@@ -5,17 +6,32 @@ import { t } from './strings'
 import { TAG_GROUPS, type Tag, type TagGroup } from './tags'
 
 interface Props {
-  state: AppState
+  applied: AppState
+  pendingTags: Tag[]
   onChange: (s: AppState) => void
+  onPendingTagsChange: (tags: Tag[]) => void
   onReroll: () => void
   onExport: (kind: 'svg' | 'png' | 'pdf') => void
 }
 
-function Chip({ label, pressed, onClick }: { label: string; pressed: boolean; onClick: () => void }) {
+// two independent visual channels: `pending` (staged chip selection, darker
+// fill) and `applied` (what the visible map was actually built with, a
+// lighter ring) — they can disagree until the next Reroll.
+function Chip({
+  label,
+  pending,
+  applied,
+  onClick,
+}: {
+  label: string
+  pending: boolean
+  applied: boolean
+  onClick: () => void
+}) {
   return (
     <button
       type="button"
-      aria-pressed={pressed}
+      aria-pressed={pending}
       onClick={onClick}
       style={{
         padding: '4px 10px',
@@ -23,8 +39,9 @@ function Chip({ label, pressed, onClick }: { label: string; pressed: boolean; on
         marginBottom: 6,
         borderRadius: 999,
         border: '1px solid #888',
-        background: pressed ? '#4a4af0' : 'transparent',
-        color: pressed ? '#fff' : 'inherit',
+        boxShadow: applied ? '0 0 0 2px #9fd8ff' : 'none',
+        background: pending ? '#2323a0' : 'transparent',
+        color: pending ? '#fff' : 'inherit',
         cursor: 'pointer',
       }}
     >
@@ -33,20 +50,27 @@ function Chip({ label, pressed, onClick }: { label: string; pressed: boolean; on
   )
 }
 
-export function KnobPanel({ state, onChange, onReroll, onExport }: Props) {
-  const setSeed = (seed: number) => onChange({ ...state, seed })
-  const setPack = (pack: string) => onChange({ ...state, pack })
-  const setTheme = (theme: string) => onChange({ ...state, theme })
+export function KnobPanel({ applied, pendingTags, onChange, onPendingTagsChange, onReroll, onExport }: Props) {
+  const setPack = (pack: string) => onChange({ ...applied, pack })
+  const setTheme = (theme: string) => onChange({ ...applied, theme })
+
+  // seed regenerates the map (expensive) — apply on commit only, not per keystroke
+  const [seedInput, setSeedInput] = useState(String(applied.seed))
+  useEffect(() => setSeedInput(String(applied.seed)), [applied.seed])
+  const commitSeed = () => {
+    const seed = Number(seedInput) >>> 0
+    if (seed !== applied.seed) onChange({ ...applied, seed })
+  }
 
   const toggleTag = (group: TagGroup, tag: Tag) => {
-    const active = state.tags.includes(tag)
-    const withoutGroup = state.tags.filter((tg) => !(TAG_GROUPS[group] as readonly string[]).includes(tg))
-    onChange({ ...state, tags: active ? withoutGroup : [...withoutGroup, tag] })
+    const active = pendingTags.includes(tag)
+    const withoutGroup = pendingTags.filter((tg) => !(TAG_GROUPS[group] as readonly string[]).includes(tg))
+    onPendingTagsChange(active ? withoutGroup : [...withoutGroup, tag])
   }
 
   const togglePiers = () => {
-    const active = state.tags.includes('piers')
-    onChange({ ...state, tags: active ? state.tags.filter((tg) => tg !== 'piers') : [...state.tags, 'piers'] })
+    const active = pendingTags.includes('piers')
+    onPendingTagsChange(active ? pendingTags.filter((tg) => tg !== 'piers') : [...pendingTags, 'piers'])
   }
 
   return (
@@ -60,8 +84,10 @@ export function KnobPanel({ state, onChange, onReroll, onExport }: Props) {
         {t.knobs.seed}
         <input
           type="number"
-          value={state.seed}
-          onChange={(e) => setSeed(Number(e.target.value) >>> 0)}
+          value={seedInput}
+          onChange={(e) => setSeedInput(e.target.value)}
+          onBlur={commitSeed}
+          onKeyDown={(e) => e.key === 'Enter' && commitSeed()}
           style={{ width: '100%' }}
         />
       </label>
@@ -73,7 +99,8 @@ export function KnobPanel({ state, onChange, onReroll, onExport }: Props) {
               <Chip
                 key={tag}
                 label={t.tags[tag]}
-                pressed={state.tags.includes(tag)}
+                pending={pendingTags.includes(tag)}
+                applied={applied.tags.includes(tag)}
                 onClick={() => toggleTag(group, tag)}
               />
             ))}
@@ -82,11 +109,16 @@ export function KnobPanel({ state, onChange, onReroll, onExport }: Props) {
       ))}
       <div style={{ marginBottom: 12 }}>
         <div style={{ marginBottom: 4 }}>{t.tagGroups.piers}</div>
-        <Chip label={t.tags.piers} pressed={state.tags.includes('piers')} onClick={togglePiers} />
+        <Chip
+          label={t.tags.piers}
+          pending={pendingTags.includes('piers')}
+          applied={applied.tags.includes('piers')}
+          onClick={togglePiers}
+        />
       </div>
       <label style={{ display: 'block', marginBottom: 12 }}>
         {t.knobs.pack}
-        <select value={state.pack} onChange={(e) => setPack(e.target.value)} style={{ width: '100%' }}>
+        <select value={applied.pack} onChange={(e) => setPack(e.target.value)} style={{ width: '100%' }}>
           {Object.values(packs).map((p) => (
             <option key={p.id} value={p.id}>{p.label}</option>
           ))}
@@ -94,7 +126,7 @@ export function KnobPanel({ state, onChange, onReroll, onExport }: Props) {
       </label>
       <label style={{ display: 'block', marginBottom: 12 }}>
         {t.knobs.theme}
-        <select value={state.theme} onChange={(e) => setTheme(e.target.value)} style={{ width: '100%' }}>
+        <select value={applied.theme} onChange={(e) => setTheme(e.target.value)} style={{ width: '100%' }}>
           {Object.values(themes).map((th) => (
             <option key={th.id} value={th.id}>{th.label}</option>
           ))}

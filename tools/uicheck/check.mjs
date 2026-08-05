@@ -33,23 +33,36 @@ if (!(await page.getByRole('button', { name: 'Coastal', pressed: true }).isVisib
 if (!(await page.getByRole('button', { name: 'Large', pressed: true }).isVisible()))
   fail('large chip not pressed from URL tags')
 
-// click a chip in another group → URL gains the tag
+// click a chip in another group → stages the tag (pressed) but does NOT
+// regenerate: no url change, no map change, until Reroll
+const urlBeforeStage = page.url()
+const svgBeforeStage = await page.locator('svg').innerHTML()
 await page.getByRole('button', { name: 'Packed' }).click()
-if (!page.url().includes('packed')) fail('clicking packed chip did not update url')
 if (!(await page.getByRole('button', { name: 'Packed', pressed: true }).isVisible()))
   fail('packed chip not pressed after click')
+if (page.url() !== urlBeforeStage) fail('clicking a chip changed the url before reroll')
+if ((await page.locator('svg').innerHTML()) !== svgBeforeStage)
+  fail('clicking a chip regenerated the map before reroll')
 
-// click the now-active chip again → tag removed (back to group default)
+// reroll applies the staged tag: url gains it, map changes
+await page.getByRole('button', { name: 'Reroll' }).click()
+if (!page.url().includes('packed')) fail('reroll did not apply staged packed tag to url')
+const svgAfterReroll = await page.locator('svg').innerHTML()
+if (svgAfterReroll === svgBeforeStage) fail('reroll did not change map')
+
+// click the now-active chip again → stages removal (unpressed), again no
+// regen/url change until the next Reroll
 await page.getByRole('button', { name: 'Packed' }).click()
-if (page.url().includes('packed')) fail('clicking active packed chip did not remove tag')
 if (!(await page.getByRole('button', { name: 'Packed', pressed: false }).isVisible()))
   fail('packed chip still pressed after deselect')
+if (!page.url().includes('packed')) fail('deselecting a chip changed the url before reroll')
+if ((await page.locator('svg').innerHTML()) !== svgAfterReroll)
+  fail('deselecting a chip regenerated the map before reroll')
 
-// reroll changes the map
-const before = await page.locator('svg').innerHTML()
+// reroll applies the staged removal: url loses it, map changes again
 await page.getByRole('button', { name: 'Reroll' }).click()
-const after = await page.locator('svg').innerHTML()
-if (before === after) fail('reroll did not change map')
+if (page.url().includes('packed')) fail('reroll did not apply staged tag removal to url')
+if ((await page.locator('svg').innerHTML()) === svgAfterReroll) fail('reroll did not change map')
 
 // pan/zoom survives repeated dense drags (regression: ref race unmounted the app)
 const map = await page.locator('svg').boundingBox()

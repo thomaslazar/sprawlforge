@@ -7,7 +7,7 @@ import { getTheme } from '../render/theme'
 import { KnobPanel } from './KnobPanel'
 import { MapView } from './MapView'
 import { stateFromSearch, stateToSearch, type AppState } from './params'
-import { resolveTags } from './tags'
+import { resolveTags, type Tag } from './tags'
 
 // ponytail: crypto.getRandomValues is the one non-seeded random — first-visit seed only
 function randomSeed(): number {
@@ -15,17 +15,21 @@ function randomSeed(): number {
 }
 
 export function App() {
-  const [state, setState] = useState<AppState>(() =>
+  // `applied` drives the visible map + URL. `pendingTags` is the chip
+  // staging area — clicking a chip only ever touches this. Reroll is the
+  // sole place pendingTags flows into applied (see terrain-v2 tag-staging).
+  const [applied, setApplied] = useState<AppState>(() =>
     stateFromSearch(window.location.search, randomSeed()),
   )
+  const [pendingTags, setPendingTags] = useState<Tag[]>(applied.tags)
 
   useEffect(() => {
-    window.history.replaceState(null, '', stateToSearch(state))
+    window.history.replaceState(null, '', stateToSearch(applied))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const update = (s: AppState) => {
-    setState(s)
+    setApplied(s)
     window.history.replaceState(null, '', stateToSearch(s))
   }
 
@@ -33,12 +37,12 @@ export function App() {
   // from the generation-relevant fields so a theme switch never re-runs the
   // generator (M5: it used to regenerate the whole sector on every swap)
   const genParams = useMemo(
-    () => ({ seed: state.seed, pack: state.pack, ...resolveTags(state.tags) }),
-    [state.seed, state.pack, state.tags],
+    () => ({ seed: applied.seed, pack: applied.pack, ...resolveTags(applied.tags) }),
+    [applied.seed, applied.pack, applied.tags],
   )
   const params: SectorParams = useMemo(
-    () => ({ ...genParams, theme: state.theme }),
-    [genParams, state.theme],
+    () => ({ ...genParams, theme: applied.theme }),
+    [genParams, applied.theme],
   )
 
   // semantic zoom: labels re-render per zoom band (1|2|4|8) so more of them
@@ -73,9 +77,11 @@ export function App() {
   return (
     <div style={{ display: 'flex', height: '100vh', margin: 0 }}>
       <KnobPanel
-        state={state}
+        applied={applied}
+        pendingTags={pendingTags}
         onChange={update}
-        onReroll={() => update({ ...state, seed: hashSeed(state.seed, 'reroll') })}
+        onPendingTagsChange={setPendingTags}
+        onReroll={() => update({ ...applied, tags: pendingTags, seed: hashSeed(applied.seed, 'reroll') })}
         onExport={onExport}
       />
       <MapView
