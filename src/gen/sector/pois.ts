@@ -1,7 +1,18 @@
+import type { Pt } from '../geometry'
 import type { FlavorPack } from '../names/names'
 import { generateName } from '../names/names'
 import { hashSeed, mulberry32 } from '../rng'
 import type { Building, District, Poi, SectorParams } from '../types'
+
+// rect center can land in water for a shore-clipped footprint (the rect is
+// the pre-clip bounding box); the footprint centroid always sits on the
+// actual (clipped) shape, so anchor there instead.
+function footprintCentroid(pts: Pt[]): Pt {
+  return {
+    x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+    y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
+  }
+}
 
 export function placePois(
   districts: District[],
@@ -34,10 +45,7 @@ export function placePois(
         districtId: district.id,
         type: typeDef.type,
         name: generateName(rng.pick(typeDef.namePatterns), pack.tables, rng),
-        at: {
-          x: building.rect.x + building.rect.w / 2,
-          y: building.rect.y + building.rect.h / 2,
-        },
+        at: footprintCentroid(building.footprint),
       })
     }
   }

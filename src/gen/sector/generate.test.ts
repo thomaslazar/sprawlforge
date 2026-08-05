@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { GENERATOR_VERSION, type Block, type District, type SectorParams } from '../types'
+import { pointInRings } from '../geometry'
+import { GENERATOR_VERSION, type Block, type District, type SectorParams, type Terrain } from '../types'
 import { deriveDistricts, generateSector } from './generate'
 
 const base: SectorParams = {
@@ -51,6 +52,14 @@ describe('generateSector', () => {
       expect(b.blockId.slice(1, 3)).toBe(b.districtId.slice(1))
     }
     for (const p of m.pois) expect(buildingIds.has(p.buildingId)).toBe(true)
+  })
+  it('never anchors a poi in water (coastal, shore-clipped buildings)', () => {
+    const inWater = (t: Terrain, p: { x: number; y: number }) =>
+      t.water.some((poly) => pointInRings(p, poly.map((ring) => ring.map(([x, y]) => ({ x, y })))))
+    for (const seed of [1, 42, 119560026]) {
+      const m = generateSector({ ...base, seed, landform: 'coastal' })
+      for (const p of m.pois) expect(inWater(m.terrain, p.at)).toBe(false)
+    }
   })
   it('shadowrunish pack changes names but not geometry', () => {
     const a = generateSector(base)

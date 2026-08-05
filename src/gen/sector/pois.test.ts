@@ -37,6 +37,19 @@ describe('placePois', () => {
       })
     }
   })
+  it('anchors at the footprint centroid, not the rect center (shore-clipped buildings)', () => {
+    // a shore-clipped building's rect is the pre-clip bounding box — its
+    // center (10,10) can sit in water even though the clipped footprint
+    // (centroid (4,4)) is entirely on land
+    const clipped: Building = {
+      id: 'BLD010101', blockId: 'B0101', districtId: 'D01',
+      rect: { x: 0, y: 0, w: 20, h: 20 },
+      footprint: [{ x: 0, y: 0 }, { x: 8, y: 0 }, { x: 8, y: 8 }, { x: 0, y: 8 }],
+    }
+    const pois = placePois(districts, [clipped], pack, base)
+    expect(pois.length).toBe(1)
+    expect(pois[0].at).toEqual({ x: 4, y: 4 })
+  })
   it('poiDensity raises count; buildings never reused', () => {
     const lo = placePois(districts, buildings, pack, { ...base, poiDensity: 0.1 })
     const hi = placePois(districts, buildings, pack, { ...base, poiDensity: 1 })
