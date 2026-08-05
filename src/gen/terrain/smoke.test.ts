@@ -32,7 +32,7 @@ const WATER_FLOOR = 0.01 // 1% of window area
 // iterations: hours of near-continuous synchronous CPU starve the vitest
 // worker's RPC heartbeat ("Timeout calling onTaskUpdate" with all tests
 // green) because pending RPC replies never get processed between blocks.
-const breathe = () => new Promise<void>((resolve) => setImmediate(resolve))
+const breathe = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 
 describe('sampleTerrain smoke', () => {
   describe.each([...TERRAIN_KINDS])('%s, seeds 0..99 at default size 4000', (kind) => {
