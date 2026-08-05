@@ -97,7 +97,7 @@ describe('renderSector', () => {
     ],
     // spans the full window, deliberately overlapping the water square —
     // proves the land-clip actually confines the fill (C2)
-    districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, shore: true }],
+    districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, shore: true, labelAt: { x: 500, y: 500 } }],
     blocks: [],
     buildings: [],
     pois: [],

@@ -65,6 +65,8 @@ export function assignZones(districtRects: Rect[], params: SectorParams, terrain
       name: '',
       bounds,
       shore,
+      // placeholder until generate.ts recomputes it from surviving blocks
+      labelAt: { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 },
     }
   })
 }

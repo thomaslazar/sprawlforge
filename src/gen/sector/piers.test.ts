@@ -16,6 +16,7 @@ const eastWater: Terrain = {
 const docksDistrict: District = {
   id: 'D01', zone: 'docks', name: 'The Docks', shore: true,
   bounds: { x: 2500, y: 1000, w: 500, h: 800 },
+  labelAt: { x: 2750, y: 1400 },
 }
 const waterRings = eastWater.water.map((poly) => poly.map((r) => r.map(([x, y]) => ({ x, y }))))
 const inWater = (p: { x: number; y: number }) => waterRings.some((rings) => pointInRings(p, rings))

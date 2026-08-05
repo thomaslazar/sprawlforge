@@ -8,9 +8,9 @@ const base: SectorParams = {
   terrain: 'inland', piers: false, pack: 'generic', theme: 'neon',
 }
 const districts: District[] = [
-  { id: 'D01', zone: 'corp', name: '', bounds: { x: 0, y: 0, w: 600, h: 600 }, shore: false },
-  { id: 'D02', zone: 'slum', name: '', bounds: { x: 700, y: 0, w: 600, h: 600 }, shore: false },
-  { id: 'D03', zone: 'residential', name: '', bounds: { x: 2800, y: 0, w: 400, h: 400 }, shore: true },
+  { id: 'D01', zone: 'corp', name: '', bounds: { x: 0, y: 0, w: 600, h: 600 }, shore: false, labelAt: { x: 300, y: 300 } },
+  { id: 'D02', zone: 'slum', name: '', bounds: { x: 700, y: 0, w: 600, h: 600 }, shore: false, labelAt: { x: 1000, y: 300 } },
+  { id: 'D03', zone: 'residential', name: '', bounds: { x: 2800, y: 0, w: 400, h: 400 }, shore: true, labelAt: { x: 3000, y: 200 } },
 ]
 const blocksByDistrict: Rect[][] = [
   [{ x: 10, y: 10, w: 280, h: 280 }, { x: 310, y: 10, w: 280, h: 280 }],

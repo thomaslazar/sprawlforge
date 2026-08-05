@@ -173,8 +173,8 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   const placedLabels: Box[] = []
 
   for (const d of model.districts) {
-    const cx = d.bounds.x + d.bounds.w / 2
-    const cy = d.bounds.y + d.bounds.h / 2
+    const cx = d.labelAt.x
+    const cy = d.labelAt.y
     // district labels always render — they anchor the map — but still
     // occupy space so later poi labels avoid them
     const raw = textBox(cx, cy, d.name, fontD, 'middle')

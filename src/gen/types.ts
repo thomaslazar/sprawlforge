@@ -69,6 +69,9 @@ export interface District {
   name: string
   bounds: Rect
   shore: boolean
+  /** area-weighted centroid of the district's surviving blocks — where the
+   * label anchors; unlike bounds' center, never falls in open water. */
+  labelAt: Pt
 }
 
 export interface Block {

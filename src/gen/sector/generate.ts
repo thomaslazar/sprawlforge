@@ -2,12 +2,34 @@ import { generateName } from '../names/names'
 import { getPack } from '../names/packs'
 import { hashSeed, mulberry32 } from '../rng'
 import { sampleTerrain } from '../terrain'
-import { GENERATOR_VERSION, type SectorModel, type SectorParams } from '../types'
+import { GENERATOR_VERSION, type Block, type District, type SectorModel, type SectorParams } from '../types'
 import { fillBuildings } from './buildings'
 import { placePiers } from './piers'
 import { placePois } from './pois'
 import { layoutRoads } from './roads'
 import { assignZones } from './zoning'
+
+/**
+ * Districts whose blocks all drowned to waterline clipping have nothing to
+ * anchor a label to — drop them (ids simply gap; they're identifiers, not
+ * indices — nothing downstream indexes by array position). Survivors get
+ * labelAt: the area-weighted centroid of their surviving blocks, so the
+ * label sits over land even when the district's bounds rect is mostly sea.
+ */
+export function deriveDistricts(districts: District[], blocks: Block[]): District[] {
+  return districts.flatMap((d) => {
+    const dBlocks = blocks.filter((b) => b.districtId === d.id)
+    if (dBlocks.length === 0) return []
+    let sx = 0, sy = 0, sArea = 0
+    for (const b of dBlocks) {
+      const area = b.rect.w * b.rect.h
+      sx += (b.rect.x + b.rect.w / 2) * area
+      sy += (b.rect.y + b.rect.h / 2) * area
+      sArea += area
+    }
+    return [{ ...d, labelAt: { x: sx / sArea, y: sy / sArea } }]
+  })
+}
 
 export function generateSector(params: SectorParams): SectorModel {
   const sizeM = params.size * 1000
@@ -34,8 +56,9 @@ export function generateSector(params: SectorParams): SectorModel {
   )
 
   const { blocks, buildings } = fillBuildings(namedDistricts, alignedBlocks, params, terrain)
-  const pois = placePois(namedDistricts, buildings, pack, params)
-  const piers = placePiers(namedDistricts, terrain, params)
+  const finalDistricts = deriveDistricts(namedDistricts, blocks)
+  const pois = placePois(finalDistricts, buildings, pack, params)
+  const piers = placePiers(finalDistricts, terrain, params)
 
   return {
     meta: {
@@ -47,7 +70,7 @@ export function generateSector(params: SectorParams): SectorModel {
     },
     terrain,
     roads: namedRoads,
-    districts: namedDistricts,
+    districts: finalDistricts,
     blocks,
     buildings,
     pois,
