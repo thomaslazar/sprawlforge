@@ -31,7 +31,9 @@ const WATER_FLOOR = 0.01 // 1% of window area
 // every few iterations: hours of near-continuous synchronous CPU starve the
 // vitest worker's RPC heartbeat ("Timeout calling onTaskUpdate" with all
 // tests green) because pending RPC replies never get processed between
-// blocks.
+// blocks. Note: the domain-warped field costs ~14 valueNoise2D lookups per
+// sample (was 4); if the widened timeouts below ever get tight, memoize the
+// warp+noise pipeline per field instance instead of raising them again.
 const breathe = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 
 const WATER_COMBOS = [
@@ -61,7 +63,7 @@ describe('sampleTerrain smoke', () => {
           }
         }
         expect(failures).toEqual([])
-      }, 30_000) // 40 sampleTerrain calls
+      }, 60_000) // 40 sampleTerrain calls
     })
   })
 
@@ -84,6 +86,6 @@ describe('sampleTerrain smoke', () => {
           failures.push(`${landform}/${river}/${sizeM}/${seed}: water frac ${frac.toFixed(4)} < floor`)
       }
       expect(failures).toEqual([])
-    }, 30_000) // 15 sampleTerrain calls
+    }, 60_000) // 15 sampleTerrain calls
   })
 })

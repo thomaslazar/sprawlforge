@@ -9,5 +9,8 @@ export default defineConfig({
     // starves the threads-pool RPC on slow CI runners ("Timeout calling
     // onTaskUpdate" with all tests green)
     pool: 'forks',
+    // the multi-seed terrain sweep takes minutes — excluded from the default
+    // fast loop; `npm run test:all` (used by CI) includes it
+    exclude: ['**/node_modules/**', '**/smoke.test.ts'],
   },
 })

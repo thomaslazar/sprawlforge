@@ -175,6 +175,13 @@ function nearestShorelineTangent(mid: Pt, terrain: Terrain): Pt | null {
     sx += dx / len
     sy += dy / len
   }
+  // at a sharp cusp the 5 unit tangents nearly cancel — the direction of a
+  // near-zero sum is noise, so report "no reliable tangent" (caller treats
+  // the crossing as not bridgeable, the conservative default). Threshold is
+  // deliberately low: on a small ring the ±2 window wraps and opposite edges
+  // structurally cancel down to ~1.0 while still leaving a valid dominant
+  // direction — only true cancellation (≈0) is unreliable.
+  if (Math.hypot(sx, sy) < 0.5) return null
   return { x: sx, y: sy }
 }
 
@@ -257,7 +264,8 @@ function crossingBridgeable(a: Pt, b: Pt, t0: number, t1: number, len: number, t
   const mid = at(a, b, (t0 + t1) / 2)
   if (isRiverCrossing(mid, terrain)) return true
   const tangent = nearestShorelineTangent(mid, terrain)
-  if (!tangent) return true
+  // no reliable tangent (cusp, degenerate ring): conservative — don't bridge
+  if (!tangent) return false
   return lineAngle({ x: q.x - p.x, y: q.y - p.y }, tangent) >= MIN_SHORE_ANGLE
 }
 
