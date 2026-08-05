@@ -1,4 +1,4 @@
-import type { Rect } from '../geometry'
+import type { Pt, Rect } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import type { Landform } from '../types'
 import { domainWarp2D, fractalNoise2D } from './noise'
@@ -127,6 +127,38 @@ const COAST_DEPTH_MARGIN = 1600
 const LAKE_DIP_RADIUS = 600
 const LAKE_DIP_DEPTH = 1.3
 const LAKE_DIP_SPREAD = 400 // dip center stays within this of the metro center
+// angular shoreline irregularity: r(theta) = R * (1 + LAKE_SHORE_AMP * wobble),
+// wobble in [-1,1) from a per-lake noise field sampled around the unit
+// circle — sampling at (cos theta * freq, sin theta * freq) is exact at
+// theta=0 and theta=2*PI (same point on the circle), so continuity is
+// structural, not a seam that needs patching.
+const LAKE_SHORE_AMP = 0.35
+const LAKE_SHORE_FREQ = 3 // ~3 lobes of noise variation around the shoreline
+// secondary basin (I3-ish two-lake composition): smaller, shallower, offset
+// from the main dip so lakes read as a chain/cluster rather than one circle
+const LAKE2_RADIUS_FACTOR = 0.6
+const LAKE2_DEPTH_FACTOR = 0.7
+const LAKE2_OFFSET_MIN = 1.2
+const LAKE2_OFFSET_MAX = 1.8
+
+// radial falloff (0 at/past R, smooth to 1 at center) for a single basin,
+// with R itself modulated by angle so the shoreline isn't a perfect circle
+function basinFalloff(
+  x: number,
+  y: number,
+  center: Pt,
+  radius: number,
+  shoreNoise: (x: number, y: number) => number,
+): number {
+  const dx = x - center.x
+  const dy = y - center.y
+  const d = Math.hypot(dx, dy)
+  const theta = Math.atan2(dy, dx)
+  const wobble = (shoreNoise(Math.cos(theta) * LAKE_SHORE_FREQ, Math.sin(theta) * LAKE_SHORE_FREQ) - 0.5) * 2
+  const effR = radius * (1 + LAKE_SHORE_AMP * wobble)
+  const t = Math.max(0, 1 - d / effR)
+  return t * t * (3 - 2 * t) // smooth falloff, no basin-edge crease
+}
 
 export function makeFieldBase(
   metroSeed: number,
@@ -170,12 +202,25 @@ export function makeFieldBase(
     const lrng = mulberry32(hashSeed(metroSeed, 'lake-basin'))
     const langle = lrng.next() * Math.PI * 2
     const lr = lrng.next() * LAKE_DIP_SPREAD
-    const dc = { x: cx + Math.cos(langle) * lr, y: cy + Math.sin(langle) * lr }
+    const dc: Pt = { x: cx + Math.cos(langle) * lr, y: cy + Math.sin(langle) * lr }
+    const shoreNoise1 = fractalNoise2D(hashSeed(metroSeed, 'lake-shore', 0))
+
+    // secondary basin: seeded offset 1.2-1.8R from the main dip, smaller
+    // and shallower — draws its own shoreline noise so it doesn't just look
+    // like a scaled copy of the main basin
+    const l2angle = lrng.next() * Math.PI * 2
+    const l2offset = LAKE2_OFFSET_MIN + lrng.next() * (LAKE2_OFFSET_MAX - LAKE2_OFFSET_MIN)
+    const dc2: Pt = {
+      x: dc.x + Math.cos(l2angle) * LAKE_DIP_RADIUS * l2offset,
+      y: dc.y + Math.sin(l2angle) * LAKE_DIP_RADIUS * l2offset,
+    }
+    const shoreNoise2 = fractalNoise2D(hashSeed(metroSeed, 'lake-shore', 1))
+
     gradient = (x, y) => {
-      const d = Math.hypot(x - dc.x, y - dc.y)
-      const t = Math.max(0, 1 - d / LAKE_DIP_RADIUS)
-      const s = t * t * (3 - 2 * t) // smooth falloff, no basin-edge crease
-      return landGradient(x, y) - LAKE_DIP_DEPTH * s
+      const s1 = basinFalloff(x, y, dc, LAKE_DIP_RADIUS, shoreNoise1)
+      const s2 = basinFalloff(x, y, dc2, LAKE_DIP_RADIUS * LAKE2_RADIUS_FACTOR, shoreNoise2)
+      const dip = LAKE_DIP_DEPTH * s1 + LAKE_DIP_DEPTH * LAKE2_DEPTH_FACTOR * s2
+      return landGradient(x, y) - dip
     }
   }
 
