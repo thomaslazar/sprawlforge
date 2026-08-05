@@ -89,6 +89,15 @@ core (clipping, insetting, filling non-rectangular shapes).
 
 ## Cross-cutting
 
+- **Composable terrain tags (tag cloud)** — the terrain group is currently
+  fully exclusive, but real combos make sense: inland+lakes, island+river,
+  coastal+bay+river. Rework into a base landform group (inland | coastal |
+  bay | island — exclusive) plus independent water modifiers (river, lakes
+  — free toggles); `estuary` dissolves into coastal+river. UI becomes a
+  tag cloud with partial exclusivity. Generator: gradient
+  families compose with river/lake passes instead of one kind switch.
+  Tags that imply others (piers ⇒ some water) get dependency handling.
+
 - **App styling** — the UI currently has no design at all: components use
   ad-hoc inline `style={{…}}` props (KnobPanel, MapView, App, error
   boundary) and browser-default widgets. Replace with a proper stylesheet
