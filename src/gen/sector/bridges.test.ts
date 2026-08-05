@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Road, Terrain } from '../types'
-import { clipRoadsToLand, inWater, planBridges, truncateOverSpanRoads } from './bridges'
+import { clipRoadsToLand, inWater, planBridges, truncateOverSpanRoads, truncateUnlandableRoads } from './bridges'
 
 // hand terrain: vertical river band x∈[450,550] in a 1000² window
 const banded: Terrain = {
@@ -84,5 +84,44 @@ describe('truncateOverSpanRoads', () => {
     const bridges = planBridges(truncated, wideBand)
     expect(bridges.length).toBe(1)
     expect(bridges[0].class).toBe('highway')
+  })
+})
+
+// hand terrain: water fills the map's right edge and keeps going past it —
+// a road that enters here never re-emerges onto land before the map bound,
+// so any "landing" beyond the water's start is still in open water (the
+// coastal/diagonal-corner case from the bug report, simplified to a band).
+const edgeWater: Terrain = {
+  kind: 'coastal',
+  metroSeed: 1,
+  water: [[[[805, 0], [1500, 0], [1500, 1000], [805, 1000]]]],
+  land: [[[[0, 0], [805, 0], [805, 1000], [0, 1000]]]],
+  river: null,
+}
+
+describe('unlandable crossings (bridge would end in open water)', () => {
+  it('planBridges refuses to bridge a crossing whose landing is still in water', () => {
+    const grounded = clipRoadsToLand([road('A01', 'arterial', 300)], edgeWater)
+    const spanTruncated = truncateOverSpanRoads(grounded, edgeWater)
+    // span (200m) is well within arterial's MAX_SPAN, so the old code would
+    // have bridged this — but the far landing sits at the map edge, in water
+    expect(planBridges(spanTruncated, edgeWater)).toEqual([])
+  })
+  it('truncateUnlandableRoads cuts the host road at the waterline instead', () => {
+    const grounded = clipRoadsToLand([road('A01', 'arterial', 300)], edgeWater)
+    const spanTruncated = truncateOverSpanRoads(grounded, edgeWater)
+    const truncated = truncateUnlandableRoads(spanTruncated, edgeWater)
+    expect(truncated.length).toBe(1)
+    for (const r of truncated) for (const p of r.points) expect(inWater(edgeWater, p)).toBe(false)
+    expect(planBridges(truncated, edgeWater)).toEqual([])
+  })
+  it('leaves a genuinely bridgeable crossing (both banks landable) untouched', () => {
+    // sanity check: truncateUnlandableRoads must not disturb the existing
+    // both-banks river crossing that planBridges already bridges correctly
+    const grounded = clipRoadsToLand([road('A01', 'arterial', 300)], banded)
+    const spanTruncated = truncateOverSpanRoads(grounded, banded)
+    const truncated = truncateUnlandableRoads(spanTruncated, banded)
+    expect(truncated).toEqual(spanTruncated)
+    expect(planBridges(truncated, banded).length).toBe(1)
   })
 })

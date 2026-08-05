@@ -1,7 +1,7 @@
 import { bspSplit, type Cut, type Rect } from '../geometry'
 import { hashSeed, mulberry32, type Rng } from '../rng'
 import type { Road, SectorParams, Terrain } from '../types'
-import { clipRoadsToLand, planBridges, truncateOverSpanRoads } from './bridges'
+import { clipRoadsToLand, planBridges, truncateOverSpanRoads, truncateUnlandableRoads } from './bridges'
 
 const HIGHWAY_W = 32
 const ARTERIAL_W = 18
@@ -100,7 +100,8 @@ export function layoutRoads(
   }
 
   const grounded = clipRoadsToLand(roads, terrain)
-  const truncated = truncateOverSpanRoads(grounded, terrain)
+  const spanTruncated = truncateOverSpanRoads(grounded, terrain)
+  const truncated = truncateUnlandableRoads(spanTruncated, terrain)
   const bridges = planBridges(truncated, terrain)
   return { roads: [...truncated, ...bridges], districtRects, blocksByDistrict }
 }
