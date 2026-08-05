@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fractalNoise2D, valueNoise2D } from './noise'
+import { domainWarp2D, fractalNoise2D, valueNoise2D } from './noise'
 
 describe('valueNoise2D', () => {
   it('is deterministic per seed', () => {
@@ -18,6 +18,21 @@ describe('valueNoise2D', () => {
       expect(Math.abs(v - prev)).toBeLessThan(0.08) // no jumps at 0.01 steps
       prev = v
     }
+  })
+})
+
+describe('domainWarp2D', () => {
+  it('is deterministic per seed and displaces within amp', () => {
+    const warp = domainWarp2D(7, 900, 4500)
+    const a = warp(1000, 2000)
+    expect(a).toEqual(domainWarp2D(7, 900, 4500)(1000, 2000))
+    expect(Math.abs(a.x - 1000)).toBeLessThanOrEqual(900)
+    expect(Math.abs(a.y - 2000)).toBeLessThanOrEqual(900)
+    expect(domainWarp2D(8, 900, 4500)(1000, 2000)).not.toEqual(a)
+  })
+  it('amp 0 is a no-op (identity warp)', () => {
+    const warp = domainWarp2D(7, 0, 4500)
+    expect(warp(1234, 5678)).toEqual({ x: 1234, y: 5678 })
   })
 })
 

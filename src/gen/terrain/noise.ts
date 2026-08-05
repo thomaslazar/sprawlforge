@@ -31,6 +31,22 @@ export function valueNoise2D(seed: number): (x: number, y: number) => number {
   }
 }
 
+/**
+ * Warps (x,y) through two independent fractal noises so downstream sampling
+ * (height noise) picks up organic, non-axis-aligned distortion instead of
+ * looking like a lattice was stretched. amp/scale are in the same units as
+ * x/y (world metres) — scale is the warp noise's own lattice size, amp is
+ * the max displacement.
+ */
+export function domainWarp2D(seed: number, amp: number, scale: number) {
+  const nx = fractalNoise2D(hashSeed(seed, 'warp-x'))
+  const ny = fractalNoise2D(hashSeed(seed, 'warp-y'))
+  return (x: number, y: number): { x: number; y: number } => ({
+    x: x + amp * (nx(x / scale, y / scale) - 0.5) * 2,
+    y: y + amp * (ny(x / scale, y / scale) - 0.5) * 2,
+  })
+}
+
 export function fractalNoise2D(seed: number, octaves = 4, lacunarity = 2, gain = 0.5) {
   const layers = Array.from({ length: octaves }, (_, i) =>
     valueNoise2D(hashSeed(seed, 'oct', i)),

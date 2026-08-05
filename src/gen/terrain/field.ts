@@ -1,7 +1,7 @@
 import type { Rect } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import type { Landform } from '../types'
-import { fractalNoise2D } from './noise'
+import { domainWarp2D, fractalNoise2D } from './noise'
 
 export const METRO_SIZE = 32000
 
@@ -77,6 +77,27 @@ export interface TerrainFieldBase {
 // calibration constants — tune together with the field tests, never silently
 const NOISE_SCALE = 6000 // m per noise lattice unit
 const NOISE_AMP = 0.55
+// Octave count sets the finest wavelength the height field carries: each
+// octave halves the lattice cell size (lacunarity 2), so octave i's world
+// wavelength is NOISE_SCALE / 2^i. At the old default (4 octaves) that
+// bottoms out at 6000/8 = 750m — too coarse for shoreline-scale detail
+// (inlets/headlands read as one smooth sweep). 6 octaves adds 6000/16 =
+// 375m and 6000/32 ≈ 190m, landing new detail in the ~300-800m band the
+// coastline needs without touching NOISE_AMP: fractalNoise2D normalizes by
+// the summed octave weights, so adding higher (smaller-weight) octaves
+// barely shifts the overall amplitude, only the roughness.
+const NOISE_OCTAVES = 6
+// Domain-warp the noise sample point (not the gradient) so shoreline
+// contours stop being lattice-aligned ripples and read as organic bends.
+// amp/scale are world metres: amp ~ how far a sample point gets displaced,
+// scale ~ the warp's own lattice size (bigger scale = broader, gentler
+// bends). The spec's starting guess (900/4500) was visually too subtle at
+// sector scale (sizeM 2000-6000) — coasts/islands still read as one smooth
+// sweep with a faint wobble. 2200/1300 (a tighter, larger displacement)
+// produces actual headlands/inlets while field.test.ts's water-fraction
+// ranges still hold with margin (checked across seeds/sizes during tuning).
+const WARP_AMP = 2200
+const WARP_SCALE = 1300
 
 // Gradient anchors are fixed metro-scale distances, not sizeM-derived, so
 // heightRaw(x, y) depends only on the metro seed and kind — never on which
@@ -112,7 +133,8 @@ export function makeFieldBase(
   landform: Landform,
   water: { river: boolean; lakes: boolean },
 ): TerrainFieldBase {
-  const noise = fractalNoise2D(hashSeed(metroSeed, 'height'))
+  const noise = fractalNoise2D(hashSeed(metroSeed, 'height'), NOISE_OCTAVES)
+  const warp = domainWarp2D(hashSeed(metroSeed, 'warp'), WARP_AMP, WARP_SCALE)
   const cx = METRO_SIZE / 2
   const cy = METRO_SIZE / 2
   const dir = seedDir(metroSeed)
@@ -161,6 +183,9 @@ export function makeFieldBase(
     landform,
     hasSea: landform !== 'inland',
     hasRiver: water.river,
-    heightRaw: (x, y) => gradient(x, y) + amp * (noise(x / scale, y / scale) - 0.5),
+    heightRaw: (x, y) => {
+      const w = warp(x, y)
+      return gradient(x, y) + amp * (noise(w.x / scale, w.y / scale) - 0.5)
+    },
   }
 }
