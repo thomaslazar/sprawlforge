@@ -59,11 +59,13 @@ No per-feature special-case geometry.
 - Traced at **metroplex level**: gradient descent from a high region with
   meander noise, stored as a coarse world-space polyline. Deterministic
   from `hashSeed(metroSeed, 'river')`.
-- **Destination rule:** the trace ends at the sea when the field has one;
-  in a landlocked metro it ends at the **lowest point on the metro
-  boundary** — the river flows through the city and off the map, as real
-  inland rivers do. A metro can therefore be: dry, river-only, coast-only,
-  or both (estuary).
+- **Destination rule:** the trace ends at the sea when the landform has
+  one (any non-inland landform); in a landlocked metro (inland) it ends at
+  the **lowest point on the metro boundary** — the river flows through the
+  city and off the map, as real inland rivers do. Landform and the river
+  toggle are independent, so a metro can be: dry, river-only (inland +
+  river), coast-only, or both — **estuary is simply coastal + river**, no
+  special case.
 - The course is **carved into the heightfield** (heights lowered along the
   path, width tapering downstream). Relief follows the river, not the
   other way round — this ordering avoids the classic
@@ -90,19 +92,21 @@ the anchor differs.
 All numeric knobs disappear behind **template tags** — clickable chips in
 the UI, a comma list in the URL. Internally the generator keeps taking
 `SectorParams` numerics; a fixed, deterministic tag→value table maps
-between them. Tags come in **exclusion groups** (selecting one deselects
-its siblings):
+between them. Landform tags come in an **exclusion group** (selecting one
+deselects its siblings); water is two **independent toggles** on top of any
+landform, so features compose — inland+lakes, island+river,
+coastal+river+lakes all resolve directly instead of needing their own kind:
 
-| Group    | Tags                                                    | Maps to |
-|----------|---------------------------------------------------------|---------|
-| terrain  | `inland \| river \| coastal \| bay \| estuary \| island \| lakes` (none = auto) | window anchor + gradient family + water threshold |
-| size     | `small \| medium \| large`                              | sector edge km |
-| density  | `sparse \| dense \| packed`                             | density |
-| power    | `corp-run \| balanced \| fringe`                        | corpDominance |
-| activity | `quiet \| lively`                                       | poiDensity |
+| Group    | Tags                                     | Maps to |
+|----------|-------------------------------------------|---------|
+| terrain  | `inland \| coastal \| bay \| island` (none = auto) | window anchor + gradient family |
+| water    | `river`, `lakes` (free toggles, independent of terrain and each other) | river trace / lake-basin modifier |
+| size     | `small \| medium \| large`                | sector edge km |
+| density  | `sparse \| dense \| packed`               | density |
+| power    | `corp-run \| balanced \| fringe`          | corpDominance |
+| activity | `quiet \| lively`                         | poiDensity |
 
-`river` is the landlocked river-city tag — river present, no sea (destination
-rule §2).
+**Estuary is simply `coastal` + `river`** — no dedicated tag or kind.
 
 - URL: `?seed=4711&tags=coastal,large,dense,corp-run&pack=…&theme=…` —
   `seed`, `pack` and `theme` stay explicit params; everything numeric is
@@ -112,7 +116,8 @@ rule §2).
   no shared links exist; the old numeric params simply stop parsing.
   Until a release-worthy state is declared, URL-scheme changes need no
   migration path.
-- `GENERATOR_VERSION` → 2; the version lives in `meta`.
+- `GENERATOR_VERSION` → 2 (→ 3 with the composable-terrain landform+water
+  rework above); the version lives in `meta`.
 
 ## 4. City adapts to terrain
 
