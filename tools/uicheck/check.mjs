@@ -152,10 +152,14 @@ const TERRAIN_SWEEP = [
   { tags: 'island', shot: 'island', wet: true, bridge: false },
   { tags: 'coastal,river', shot: 'coastal-river', wet: true, bridge: true },
   { tags: 'inland,lakes', shot: 'inland-lakes', wet: true, bridge: false },
-  { tags: 'island,river', shot: 'island-river', wet: true, bridge: true },
+  // honest bridge geometry (no sideways "pull onto network" hack — see
+  // bridges.ts) means not every river/coast crossing is bridgeable; seed 42
+  // happens to have no genuinely two-bank-landable crossing on this island
+  // shape, so this entry pins a seed known to produce one instead
+  { tags: 'island,river', shot: 'island-river', wet: true, bridge: true, seed: 12 },
 ]
-for (const { tags, shot, wet, bridge } of TERRAIN_SWEEP) {
-  await page.goto(`${BASE}/?seed=42&tags=${tags}`)
+for (const { tags, shot, wet, bridge, seed = 42 } of TERRAIN_SWEEP) {
+  await page.goto(`${BASE}/?seed=${seed}&tags=${tags}`)
   await page.waitForSelector('svg')
   await page.screenshot({ path: `${OUT}/terrain-${shot}.png` })
 

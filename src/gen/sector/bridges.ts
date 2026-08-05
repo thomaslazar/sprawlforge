@@ -6,13 +6,10 @@ const SAMPLE = 10
 const MAX_SPAN: Record<'highway' | 'arterial', number> = { highway: 900, arterial: 450 }
 const LANDING = 15
 const MIN_STREET_PIECE = 40
-// A landing within this distance of another road counts as touching it (matches the
-// T-junction tolerance the connectivity model uses — see roads.test.ts).
-const NETWORK_REACH_TOL = 30
-// ponytail: fixed cap, not a real nearest-road search bounded by block geometry — a
-// landing further than this from anything stays isolated. Revisit if that ever fires
-// on a real seed (observed worst case so far: ~100 m).
-const NETWORK_REACH_MAX = 300
+// minimum angle (radians) between a sea bridge and the local shoreline
+// tangent — below this the crossing reads as "running along the coast"
+// rather than crossing it, so it gets truncated instead of bridged.
+const MIN_SHORE_ANGLE = Math.PI / 4 // 45°
 
 export const inWater = (terrain: Terrain, p: Pt): boolean =>
   terrain.water.some((poly) => pointInRings(p, poly.map((ring) => ring.map(([x, y]) => ({ x, y })))))
@@ -75,11 +72,12 @@ function splitRoad(
   return pieces
 }
 
-export function clipRoadsToLand(roads: Road[], terrain: Terrain): Road[] {
+/** split every road matching `include` at every water interval it crosses */
+function splitAllWater(roads: Road[], terrain: Terrain, include: (r: Road) => boolean): Road[] {
   if (terrain.water.length === 0) return roads
   const out: Road[] = []
   for (const road of roads) {
-    if (road.class !== 'street') {
+    if (!include(road)) {
       out.push(road)
       continue
     }
@@ -92,6 +90,10 @@ export function clipRoadsToLand(roads: Road[], terrain: Terrain): Road[] {
     pieces.forEach((points, i) => out.push({ ...road, id: `${road.id}-${i + 1}`, points }))
   }
   return out
+}
+
+export function clipRoadsToLand(roads: Road[], terrain: Terrain): Road[] {
+  return splitAllWater(roads, terrain, (r) => r.class === 'street')
 }
 
 /**
@@ -131,47 +133,57 @@ function nearestOnSegment(p: Pt, a: Pt, b: Pt): { pt: Pt; d: number } {
   return { pt, d: Math.hypot(p.x - pt.x, p.y - pt.y) }
 }
 
-/**
- * A landing computed from water geometry alone (especially the perpendicular
- * re-orientation, which deliberately points across the river rather than
- * along the host road) can end up well clear of the street/arterial grid it
- * should meet on that bank. If the nearest other road is further than the
- * ordinary T-junction tolerance but still within reach, pull the landing
- * onto it — this only ever moves the bridge's own new endpoint, never
- * another road's geometry.
- */
-function reachNetwork(p: Pt, roads: Road[], skip: Road): Pt {
-  let best: { pt: Pt; d: number } | null = null
-  for (const other of roads) {
-    if (other === skip) continue
-    const { pt, d } = nearestOnSegment(p, other.points[0], other.points[other.points.length - 1])
-    if (!best || d < best.d) best = { pt, d }
+/** nearest water-ring edge to `mid`, returned as its direction vector (the local shoreline tangent) */
+function nearestShorelineTangent(mid: Pt, terrain: Terrain): Pt | null {
+  let bestD = Infinity
+  let tangent: Pt | null = null
+  for (const poly of terrain.water) {
+    for (const ring of poly) {
+      for (let i = 0; i < ring.length; i++) {
+        const a = { x: ring[i][0], y: ring[i][1] }
+        const b = { x: ring[(i + 1) % ring.length][0], y: ring[(i + 1) % ring.length][1] }
+        const { d } = nearestOnSegment(mid, a, b)
+        if (d < bestD) {
+          bestD = d
+          tangent = { x: b.x - a.x, y: b.y - a.y }
+        }
+      }
+    }
   }
-  return best && best.d > NETWORK_REACH_TOL && best.d <= NETWORK_REACH_MAX ? best.pt : p
+  return tangent
+}
+
+/** angle between two undirected lines, in [0, PI/2] (0 = parallel, PI/2 = perpendicular) */
+function lineAngle(u: Pt, v: Pt): number {
+  let diff = Math.abs(Math.atan2(u.y, u.x) - Math.atan2(v.y, v.x)) % Math.PI
+  if (diff > Math.PI / 2) diff = Math.PI - diff
+  return diff
+}
+
+function isRiverCrossing(mid: Pt, terrain: Terrain): boolean {
+  const river = terrain.riverSlice
+  return !!river && distToPolyline(mid, river.course) < 2 * river.width
 }
 
 /**
  * Compute a crossing's landing points: perpendicular-to-flow across a river,
- * or straight along the road direction otherwise — then pulled onto the
- * nearby road network if one is in reach. Shared by planBridges (to build
- * the bridge) and truncateUnlandableRoads (to check the crossing is even
- * bridgeable before committing to it).
+ * or straight along the road direction otherwise. Endpoints extend ONLY
+ * along the host road's own axis (or the river-perpendicular normal for a
+ * river crossing) — never bent sideways to reach some other road; a landing
+ * that misses the network stays a dead end (or gets truncated, see
+ * truncateUnlandableRoads/crossingBridgeable).
  */
-function landingFor(
-  a: Pt,
-  b: Pt,
-  t0: number,
-  t1: number,
-  len: number,
-  terrain: Terrain,
-  roads: Road[],
-  road: Road,
-): { p: Pt; q: Pt } {
+function landingFor(a: Pt, b: Pt, t0: number, t1: number, len: number, terrain: Terrain): { p: Pt; q: Pt } {
   const mid = at(a, b, (t0 + t1) / 2)
   let p = at(a, b, t0)
   let q = at(a, b, t1)
   const river = terrain.riverSlice
-  if (river && distToPolyline(mid, river.course) < 2 * river.width) {
+  // perpendicular reorientation only makes sense for a genuine two-bank
+  // crossing (dry sample on both raw sides); a water interval that reaches
+  // all the way to the road's own endpoint (t0<=0 or t1>=1) means the road
+  // just ends inside the water — there's no "far bank" to swing toward, so
+  // fall through to the straight branch, which correctly reports it unlandable
+  if (river && isRiverCrossing(mid, terrain) && t0 > 0 && t1 < 1) {
     // re-orient perpendicular to local flow
     let bestI = 0
     let bestD = Infinity
@@ -203,19 +215,34 @@ function landingFor(
     p = at(a, b, Math.max(0, t0 - LANDING / len))
     q = at(a, b, Math.min(1, t1 + LANDING / len))
   }
-  p = reachNetwork(p, roads, road)
-  q = reachNetwork(q, roads, road)
   return { p, q }
 }
 
 /**
- * A crossing whose landing computation still leaves an endpoint in water
- * (map edge / land-bbox edge near a diagonal coastline, or the river
- * extension loop capping out without reaching land) cannot be bridged.
- * Truncate the host at the waterline for that crossing instead — same
- * splitRoad mechanism truncateOverSpanRoads uses for over-span crossings.
- * Run this after truncateOverSpanRoads and before planBridges so the
- * crossings planBridges sees are only ever the landable ones.
+ * A crossing is bridgeable only if both landings clear the water AND — for a
+ * non-river (sea/lake) crossing — the bridge runs roughly perpendicular to
+ * the local shoreline (>= MIN_SHORE_ANGLE off the shore tangent). A crossing
+ * that would run nearly parallel to the coast (a road skimming a water
+ * finger) isn't a real crossing and doesn't get a bridge. River crossings
+ * are exempt: landingFor already re-orients them perpendicular to flow.
+ */
+function crossingBridgeable(a: Pt, b: Pt, t0: number, t1: number, len: number, terrain: Terrain): boolean {
+  const { p, q } = landingFor(a, b, t0, t1, len, terrain)
+  if (inWater(terrain, p) || inWater(terrain, q)) return false
+  const mid = at(a, b, (t0 + t1) / 2)
+  if (isRiverCrossing(mid, terrain)) return true
+  const tangent = nearestShorelineTangent(mid, terrain)
+  if (!tangent) return true
+  return lineAngle({ x: q.x - p.x, y: q.y - p.y }, tangent) >= MIN_SHORE_ANGLE
+}
+
+/**
+ * A crossing that can't be bridged (landing still in water, or — for a sea
+ * crossing — running too near-parallel to the shoreline) truncates the host
+ * at the waterline for that crossing instead. Same splitRoad mechanism
+ * truncateOverSpanRoads uses for over-span crossings. Run this after
+ * truncateOverSpanRoads and before planBridges so the crossings planBridges
+ * sees are only ever the landable, properly-angled ones.
  */
 export function truncateUnlandableRoads(roads: Road[], terrain: Terrain): Road[] {
   if (terrain.water.length === 0) return roads
@@ -228,20 +255,19 @@ export function truncateUnlandableRoads(roads: Road[], terrain: Terrain): Road[]
     const [a, b] = [road.points[0], road.points[road.points.length - 1]]
     const len = Math.hypot(b.x - a.x, b.y - a.y)
     const maxSpan = MAX_SPAN[road.class as 'highway' | 'arterial']
-    const unlandable: Array<[number, number]> = []
+    const unbridgeable: Array<[number, number]> = []
     for (const [t0, t1] of waterIntervals(terrain, a, b)) {
       const span = (t1 - t0) * len
       if (span > maxSpan) continue // already excised by truncateOverSpanRoads
-      const { p, q } = landingFor(a, b, t0, t1, len, terrain, roads, road)
-      if (inWater(terrain, p) || inWater(terrain, q)) unlandable.push([t0, t1])
+      if (!crossingBridgeable(a, b, t0, t1, len, terrain)) unbridgeable.push([t0, t1])
     }
-    if (unlandable.length === 0) {
+    if (unbridgeable.length === 0) {
       out.push(road)
       continue
     }
     const pieces = splitRoad(
       a, b, terrain,
-      (_span, t0, t1) => unlandable.some(([u0, u1]) => u0 === t0 && u1 === t1),
+      (_span, t0, t1) => unbridgeable.some(([u0, u1]) => u0 === t0 && u1 === t1),
       MIN_STREET_PIECE,
     )
     if (!pieces) {
@@ -249,6 +275,44 @@ export function truncateUnlandableRoads(roads: Road[], terrain: Terrain): Road[]
       continue
     }
     pieces.forEach((points, i) => out.push({ ...road, id: `${road.id}-${i + 1}`, points }))
+  }
+  return out
+}
+
+/**
+ * Split the host road at every crossing it still spans (after
+ * truncateOverSpanRoads + truncateUnlandableRoads, everything remaining on a
+ * highway/arterial is a crossing planBridges will bridge) so the road itself
+ * stops at the banks — only the bridge deck spans the water. Cuts land
+ * exactly on the bridge's own landing points (landingFor's p/q), not the
+ * raw waterline: a river crossing's landing is perpendicular-shifted off the
+ * road's straight line, so cutting at the raw waterline would leave a gap
+ * between the host stub and the bridge deck instead of a clean join.
+ */
+export function splitHostAtBridges(roads: Road[], terrain: Terrain): Road[] {
+  if (terrain.water.length === 0) return roads
+  const out: Road[] = []
+  for (const road of roads) {
+    if (road.class === 'street' || road.bridge) {
+      out.push(road)
+      continue
+    }
+    const [a, b] = [road.points[0], road.points[road.points.length - 1]]
+    const len = Math.hypot(b.x - a.x, b.y - a.y)
+    const intervals = waterIntervals(terrain, a, b)
+    if (intervals.length === 0) {
+      out.push(road)
+      continue
+    }
+    let cursor = a
+    const pieces: Array<[Pt, Pt]> = []
+    for (const [t0, t1] of intervals) {
+      const { p, q } = landingFor(a, b, t0, t1, len, terrain)
+      pieces.push([cursor, p])
+      cursor = q
+    }
+    pieces.push([cursor, b])
+    pieces.forEach(([x, y], i) => out.push({ ...road, id: `${road.id}-${i + 1}`, points: [x, y] }))
   }
   return out
 }
@@ -264,10 +328,10 @@ export function planBridges(roads: Road[], terrain: Terrain): Road[] {
     for (const [t0, t1] of waterIntervals(terrain, a, b)) {
       const span = (t1 - t0) * len
       if (span > MAX_SPAN[road.class as 'highway' | 'arterial']) continue
-      const { p, q } = landingFor(a, b, t0, t1, len, terrain, roads, road)
-      // a crossing that can't land on both banks isn't bridged — the host
-      // road gets truncated at the waterline instead (truncateUnlandableRoads)
-      if (inWater(terrain, p) || inWater(terrain, q)) continue
+      // a crossing that isn't bridgeable isn't bridged — the host road gets
+      // truncated at the waterline instead (truncateUnlandableRoads)
+      if (!crossingBridgeable(a, b, t0, t1, len, terrain)) continue
+      const { p, q } = landingFor(a, b, t0, t1, len, terrain)
       n += 1
       bridges.push({
         id: `BR${String(n).padStart(2, '0')}`,

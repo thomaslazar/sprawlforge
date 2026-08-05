@@ -140,6 +140,9 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   }
 
   for (const road of model.roads) {
+    // bridge decks are drawn in their own pass below (deck + shadow) — the
+    // road-class color never renders for a bridge span, or it'd double-draw
+    if (road.bridge) continue
     const pts = road.points.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
     const glow = road.class === 'street' ? '' : glowAttr
     out.push(

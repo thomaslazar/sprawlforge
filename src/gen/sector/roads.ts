@@ -1,7 +1,67 @@
-import { bspSplit, type Cut, type Rect } from '../geometry'
+import { bspSplit, type Cut, type Pt, type Rect } from '../geometry'
 import { hashSeed, mulberry32, type Rng } from '../rng'
 import type { Road, SectorParams, Terrain } from '../types'
-import { clipRoadsToLand, planBridges, truncateOverSpanRoads, truncateUnlandableRoads } from './bridges'
+import {
+  clipRoadsToLand,
+  planBridges,
+  splitHostAtBridges,
+  truncateOverSpanRoads,
+  truncateUnlandableRoads,
+} from './bridges'
+
+// tolerance on the endpoint-to-highway-edge distance (float slop from BSP
+// recursion, not a real search radius)
+const OVERPASS_EDGE_TOL = 3
+// how far apart (perpendicular to the highway) two facing endpoints may sit
+// and still count as "facing" — genre-accurate highways have limited,
+// roughly-aligned exits, not any two arterials on either side
+const OVERPASS_PERP_TOL = 20
+
+/**
+ * Arterials dead-end on both sides of the highway strip (bspSplit lays out
+ * each side's district grid independently) — that makes the highway an
+ * uncrossable wall. Where a road on the left touches the strip's left edge
+ * and a road on the right touches the right edge at roughly the same
+ * position, merge them into one continuous arterial across the gap. These
+ * are plain road continuity, not bridges — no deck, and highways keep their
+ * "limited exits" feel since only arterials (not streets) get joined.
+ */
+function joinArterialsAcrossHighway(roads: Road[]): Road[] {
+  const highways = roads.filter((r) => r.class === 'highway')
+  if (highways.length === 0) return roads
+  const merged = new Set<Road>()
+  const replaced: Road[] = []
+  const endInfo = (r: Road, x: number): { at: Pt; other: Pt } | null => {
+    const [a, b] = r.points
+    if (Math.abs(a.y - b.y) > 1) return null // only a horizontal road can face a vertical highway
+    if (Math.abs(a.x - x) <= OVERPASS_EDGE_TOL) return { at: a, other: b }
+    if (Math.abs(b.x - x) <= OVERPASS_EDGE_TOL) return { at: b, other: a }
+    return null
+  }
+  for (const hw of highways) {
+    const hx = hw.points[0].x
+    const halfW = hw.width / 2
+    const arterials = roads.filter((r) => r.class === 'arterial' && !merged.has(r))
+    for (const l of arterials) {
+      if (merged.has(l)) continue
+      const lHit = endInfo(l, hx - halfW)
+      if (!lHit) continue
+      for (const r of arterials) {
+        if (r === l || merged.has(r)) continue
+        const rHit = endInfo(r, hx + halfW)
+        if (!rHit || Math.abs(lHit.at.y - rHit.at.y) > OVERPASS_PERP_TOL) continue
+        merged.add(l)
+        merged.add(r)
+        replaced.push({
+          ...l,
+          points: [lHit.other, lHit.at, rHit.at, rHit.other],
+        })
+        break
+      }
+    }
+  }
+  return [...roads.filter((r) => !merged.has(r)), ...replaced]
+}
 
 const HIGHWAY_W = 32
 const ARTERIAL_W = 18
@@ -99,9 +159,13 @@ export function layoutRoads(
     blocksByDistrict.push(cells)
   }
 
-  const grounded = clipRoadsToLand(roads, terrain)
+  const overpassed = joinArterialsAcrossHighway(roads)
+
+  const grounded = clipRoadsToLand(overpassed, terrain)
   const spanTruncated = truncateOverSpanRoads(grounded, terrain)
   const truncated = truncateUnlandableRoads(spanTruncated, terrain)
   const bridges = planBridges(truncated, terrain)
-  return { roads: [...truncated, ...bridges], districtRects, blocksByDistrict }
+  // only the bridge deck may span the water — the host road stops at the banks
+  const hostSplit = splitHostAtBridges(truncated, terrain)
+  return { roads: [...hostSplit, ...bridges], districtRects, blocksByDistrict }
 }

@@ -113,6 +113,15 @@ describe('renderSector', () => {
     expect(svg).toContain('data-water=""')
   })
 
+  it('never double-draws a bridge road as a plain class-colored polyline (only the deck)', () => {
+    const svg = renderSector(wetModel, getTheme('neon'))
+    // wetModel's only road (R01) is bridge:true — the road loop must skip it
+    // entirely, so its class color (arterial) never appears as a polyline stroke
+    expect(svg).not.toContain(`stroke="${getTheme('neon').road.arterial}"`)
+    // wetModel's only other polyline is the river course; bridge adds shadow + deck
+    expect(svg.match(/<polyline/g)!.length).toBe(3)
+  })
+
   it('renders bridge deck and shadow', () => {
     const svg = renderSector(wetModel, getTheme('neon'))
     expect(svg).toContain(getTheme('neon').bridge.deck)

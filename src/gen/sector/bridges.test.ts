@@ -102,6 +102,62 @@ const edgeWater: Terrain = {
   riverSlice: null,
 }
 
+// hand terrain: a diagonal water "finger" whose shoreline (long edges) runs
+// at 60° to the x-axis. A road crossing nearly parallel to that shoreline
+// travels a long diagonal path through the water (not an honest crossing);
+// one crossing it near-perpendicular makes a short, honest crossing.
+const shoreAngle = (60 * Math.PI) / 180
+const shoreDir = { x: Math.cos(shoreAngle), y: Math.sin(shoreAngle) }
+const shoreNormal = { x: -shoreDir.y, y: shoreDir.x }
+const fingerCenter = { x: 500, y: 500 }
+const fingerHalfWidth = 20
+const fingerHalfLen = 1000
+const fingerCorner = (alongSign: number, acrossSign: number): [number, number] => [
+  fingerCenter.x + shoreDir.x * fingerHalfLen * alongSign + shoreNormal.x * fingerHalfWidth * acrossSign,
+  fingerCenter.y + shoreDir.y * fingerHalfLen * alongSign + shoreNormal.y * fingerHalfWidth * acrossSign,
+]
+const diagonalFinger: Terrain = {
+  landform: 'coastal', river: false, lakes: false, metroSeed: 1,
+  water: [[[fingerCorner(1, 1), fingerCorner(1, -1), fingerCorner(-1, -1), fingerCorner(-1, 1)]]],
+  land: [[[[0, 0], [1000, 0], [1000, 1000], [0, 1000]]]], // placeholder — bridges.ts never reads terrain.land
+  riverSlice: null,
+}
+const diagRoad = (id: string, angleDeg: number): Road => {
+  const rad = (angleDeg * Math.PI) / 180
+  const dir = { x: Math.cos(rad), y: Math.sin(rad) }
+  return {
+    id,
+    class: 'arterial',
+    points: [
+      { x: fingerCenter.x - dir.x * 700, y: fingerCenter.y - dir.y * 700 },
+      { x: fingerCenter.x + dir.x * 700, y: fingerCenter.y + dir.y * 700 },
+    ],
+    width: 18,
+    name: null,
+  }
+}
+
+describe('sea bridges roughly perpendicular to the shoreline', () => {
+  it('rejects a crossing nearly parallel to the coast (15° off shoreline): no bridge, road truncated', () => {
+    const road = diagRoad('A01', 45) // shoreline runs at 60° — 15° off it
+    const grounded = clipRoadsToLand([road], diagonalFinger)
+    const spanTruncated = truncateOverSpanRoads(grounded, diagonalFinger)
+    expect(spanTruncated).toEqual(grounded) // crossing is well within MAX_SPAN
+    expect(planBridges(spanTruncated, diagonalFinger)).toEqual([])
+    const truncated = truncateUnlandableRoads(spanTruncated, diagonalFinger)
+    expect(truncated.length).toBe(2)
+    for (const r of truncated) for (const p of r.points) expect(inWater(diagonalFinger, p)).toBe(false)
+  })
+  it('keeps a bridge for a crossing perpendicular to the coast (90° off shoreline)', () => {
+    const road = diagRoad('A02', -30) // perpendicular to the 60° shoreline tangent
+    const grounded = clipRoadsToLand([road], diagonalFinger)
+    const spanTruncated = truncateOverSpanRoads(grounded, diagonalFinger)
+    const bridges = planBridges(spanTruncated, diagonalFinger)
+    expect(bridges.length).toBe(1)
+    expect(bridges[0].class).toBe('arterial')
+  })
+})
+
 describe('unlandable crossings (bridge would end in open water)', () => {
   it('planBridges refuses to bridge a crossing whose landing is still in water', () => {
     const grounded = clipRoadsToLand([road('A01', 'arterial', 300)], edgeWater)

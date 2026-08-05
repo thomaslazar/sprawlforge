@@ -83,17 +83,85 @@ describe('layoutRoads', () => {
       if (road.class === 'street') expect(road.id).toMatch(/^S\d\d\d$/)
     }
   })
-  it('street roads never have a point in water', () => {
-    const terrain = sampleTerrain({ ...base, river: true }, sizeM)
-    const { roads } = layoutRoads({ ...base, river: true }, terrain, sizeM)
-    const inWater = (p: Pt) =>
-      terrain.water.some((poly) => pointInRings(p, poly.map((ring) => ring.map(([x, y]) => ({ x, y })))))
-    for (const road of roads) {
-      if (road.class !== 'street') continue
-      for (const p of road.points) expect(inWater(p)).toBe(false)
+  it('no non-bridge road of any class ever has a point in water', { timeout: 20000 }, () => {
+    // strong invariant: only the bridge deck may span water — every host
+    // road (street, arterial, or highway) must be truncated/split at the
+    // shoreline instead (the old code let arterials/highways draw straight
+    // through the water under a "bridge floats over it" excuse)
+    for (const seed of [1, 42, 119560026]) {
+      const params = { ...base, seed, river: true }
+      const terrain = sampleTerrain(params, sizeM)
+      const { roads } = layoutRoads(params, terrain, sizeM)
+      const inWater = (p: Pt) =>
+        terrain.water.some((poly) => pointInRings(p, poly.map((ring) => ring.map(([x, y]) => ({ x, y })))))
+      for (const road of roads) {
+        if (road.bridge) continue
+        for (const p of road.points) expect(inWater(p)).toBe(false)
+      }
     }
   })
-  it('road graph stays connected across water (river seeds)', () => {
+  it('joins at least one arterial across the highway gap (no uncrossable wall)', () => {
+    const params: SectorParams = {
+      seed: 119560026, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
+      landform: 'coastal', river: false, lakes: false, piers: false, pack: 'generic', theme: 'neon',
+    }
+    const terrain = sampleTerrain(params, sizeM)
+    const { roads } = layoutRoads(params, terrain, sizeM)
+    const hw = roads.find((r) => r.class === 'highway')
+    expect(hw).toBeDefined()
+    const hx = hw!.points[0].x
+    const crosses = roads.some(
+      (r) =>
+        !r.bridge &&
+        r.class !== 'highway' &&
+        r.points.some((p) => p.x < hx - 20) &&
+        r.points.some((p) => p.x > hx + 20),
+    )
+    expect(crosses).toBe(true)
+  })
+  it('every bridge is collinear with its host road, or perpendicular-ish to a river crossing', { timeout: 20000 }, () => {
+    const angleOf = (a: Pt, b: Pt) => Math.atan2(b.y - a.y, b.x - a.x)
+    const lineDiff = (a1: number, a2: number) => {
+      let diff = Math.abs(a1 - a2) % Math.PI
+      if (diff > Math.PI / 2) diff = Math.PI - diff
+      return diff
+    }
+    for (const seed of [1, 42, 119560026]) {
+      for (const [landform, river] of [
+        ['inland', true],
+        ['coastal', false],
+      ] as const) {
+        const params = { ...base, seed, landform, river }
+        const terrain = sampleTerrain(params, sizeM)
+        const { roads } = layoutRoads(params, terrain, sizeM)
+        for (const bridge of roads.filter((r) => r.bridge)) {
+          const [p, q] = bridge.points
+          const bridgeAngle = angleOf(p, q)
+          const host = roads.find(
+            (r) =>
+              !r.bridge &&
+              r.class === bridge.class &&
+              r.points.some((pt) => Math.hypot(pt.x - p.x, pt.y - p.y) < 1 || Math.hypot(pt.x - q.x, pt.y - q.y) < 1),
+          )
+          if (host) {
+            const hostAngle = angleOf(host.points[0], host.points[host.points.length - 1])
+            if (lineDiff(bridgeAngle, hostAngle) < (5 * Math.PI) / 180) continue // collinear — OK
+          }
+          // not collinear with any host piece — the only by-spec exception is
+          // a river crossing re-oriented perpendicular to local flow, which
+          // by construction lands near the river course itself
+          expect(terrain.riverSlice).not.toBeNull()
+          const course = terrain.riverSlice!.course
+          const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }
+          const nearRiver = course.some(
+            (_, i) => i < course.length - 1 && distToPolyline(mid, [course[i], course[i + 1]]) < 300,
+          )
+          expect(nearRiver).toBe(true)
+        }
+      }
+    }
+  })
+  it('road graph stays connected across water (river seeds)', { timeout: 20000 }, () => {
     for (const seed of [1, 42, 999]) {
       const params = { ...base, seed, river: true }
       const terrain = sampleTerrain(params, 4000)
@@ -132,11 +200,15 @@ describe('layoutRoads', () => {
           }
         }
       }
-      const components = new Set(pts.map((_, i) => find(i)))
-      // arterial/street endpoints that merely touch nothing else may float;
-      // require the graph to collapse into few components and at least one bridge
+      const sizes = new Map<number, number>()
+      pts.forEach((_, i) => sizes.set(find(i), (sizes.get(find(i)) ?? 0) + 1))
+      // honest bridge geometry (no sideways "pull onto the network" hack)
+      // means a handful of small, genuinely isolated stubs are expected —
+      // a short street clip near the shoreline, or a lone bridge into a
+      // pocket-sized block. The real invariant: the map isn't bisected into
+      // large disconnected halves — nearly everything sits in one component.
       expect(roads.some((r) => r.bridge)).toBe(true)
-      expect(components.size).toBeLessThanOrEqual(3)
+      expect(Math.max(...sizes.values()) / pts.length).toBeGreaterThan(0.9)
     }
   })
 })
