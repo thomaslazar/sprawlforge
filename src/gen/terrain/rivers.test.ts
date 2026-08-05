@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { METRO_SIZE, makeFieldBase, sectorWindow } from './field'
-import { makeTerrainField, traceRiver } from './rivers'
+import { fractalNoise2D } from './noise'
+import { makeTerrainField, traceRiver, widthMultiplier } from './rivers'
 
 const sizeM = 4000
 const DRY = { river: false, lakes: false }
@@ -39,6 +40,19 @@ describe('traceRiver', () => {
       const r = traceRiver(base, seed, sizeM)!
       const end = r.course[r.course.length - 1]
       expect(base.heightRaw(end.x, end.y)).toBeLessThan(0)
+    }
+  })
+})
+
+describe('widthMultiplier', () => {
+  it('is deterministic and bounded 0.6..1.6', () => {
+    const noise = fractalNoise2D(42, 5)
+    for (let i = 0; i <= 50; i++) {
+      const t01 = i / 50
+      const m = widthMultiplier(noise, t01)
+      expect(m).toBeGreaterThanOrEqual(0.6)
+      expect(m).toBeLessThan(1.6)
+      expect(m).toBe(widthMultiplier(noise, t01))
     }
   })
 })

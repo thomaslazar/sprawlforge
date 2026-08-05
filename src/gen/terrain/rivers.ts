@@ -2,6 +2,7 @@ import type { Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import type { Landform } from '../types'
 import { METRO_SIZE, makeFieldBase, sectorWindow, type TerrainFieldBase } from './field'
+import { fractalNoise2D } from './noise'
 
 export interface River {
   course: Pt[]
@@ -17,6 +18,17 @@ export interface TerrainField extends TerrainFieldBase {
 const STEP = 300
 const MAX_STEPS = 220
 const EPS = 150
+// meander wobble was a metronome (pure sine) — a noise-driven wobble gives
+// varied bend radii instead of identical S-curves every ~14 steps (2*PI/0.45).
+// 0.13 keeps roughly the same step-to-step wavelength as the old 0.45 phase
+// rate (a full noise-lattice unit spans ~1/0.13 ≈ 7.7 steps); amp is bigger
+// than the old sine's ±0.5 so bends read as more pronounced, not just noisier.
+const MEANDER_FREQ = 0.13
+const MEANDER_AMP = 0.65
+// carve width along the course varies 0.6..1.6x the tapered envelope (pools
+// and narrows) — riverSlice.width (bridges/renderer) stays the untouched
+// envelope mean; this only affects the carved channel shape.
+const WIDTH_MOD_FREQ = 6 // ~6 pool/narrow cycles over the full course
 
 export function distToPolyline(p: Pt, line: Pt[]): number {
   return nearestOnPolyline(p, line).dist
@@ -86,6 +98,7 @@ export function traceRiver(base: TerrainFieldBase, metroSeed: number, sizeM: num
                     y: METRO_SIZE / 2 + (rng.next() - 0.5) * win.h * 0.25 }
 
   const phase = rng.next() * Math.PI * 2
+  const meanderNoise = fractalNoise2D(hashSeed(metroSeed, 'river-meander'))
   const course: Pt[] = [start]
   let p = { ...start }
   let passedVia = false
@@ -104,8 +117,8 @@ export function traceRiver(base: TerrainFieldBase, metroSeed: number, sizeM: num
       const toT = { x: (target.x - p.x) / td, y: (target.y - p.y) / td }
       dir = { x: 0.45 * down.x + 0.55 * toT.x, y: 0.45 * down.y + 0.55 * toT.y }
     }
-    // meander wobble, perpendicular to travel
-    const wob = Math.sin(s * 0.45 + phase) * 0.5
+    // meander wobble, perpendicular to travel — noise-driven, not a metronome
+    const wob = (meanderNoise(s * MEANDER_FREQ, phase) - 0.5) * 2 * MEANDER_AMP
     const perp = { x: -dir.y, y: dir.x }
     const dl = Math.hypot(dir.x, dir.y) || 1
     p = {
@@ -130,6 +143,17 @@ export function traceRiver(base: TerrainFieldBase, metroSeed: number, sizeM: num
 
 const CHANNEL_H = -0.15
 
+/**
+ * Carve-width factor, bounded [0.6, 1.6) and deterministic per (noise, t01)
+ * — pools and narrows along the course. `noise` is the caller's precomputed
+ * fractalNoise2D instance (never construct one per call: makeTerrainField's
+ * height() runs per grid sample, and building a fresh noise field there
+ * would blow the sampling-speed budget — see rivers.test.ts).
+ */
+export function widthMultiplier(noise: (x: number, y: number) => number, t01: number): number {
+  return 0.6 + noise(t01 * WIDTH_MOD_FREQ, 0) // noise is bounded [0,1) → [0.6, 1.6)
+}
+
 export function makeTerrainField(
   metroSeed: number,
   landform: Landform,
@@ -138,12 +162,15 @@ export function makeTerrainField(
 ): TerrainField {
   const base = makeFieldBase(metroSeed, landform, water)
   const river = traceRiver(base, metroSeed, sizeM)
+  const widthNoise = river ? fractalNoise2D(hashSeed(metroSeed, 'river-width')) : null
   const height = (x: number, y: number): number => {
     const h = base.heightRaw(x, y)
     if (!river) return h
     const { dist: d, t01 } = nearestOnPolyline({ x, y }, river.course)
-    // width tapers monotonically downstream (spec §7)
-    const w = river.widthStart + (river.widthEnd - river.widthStart) * t01
+    // width tapers monotonically downstream (spec §7), modulated by
+    // pools/narrows on top — the taper envelope stays monotone, the
+    // modulation rides on it
+    const w = (river.widthStart + (river.widthEnd - river.widthStart) * t01) * widthMultiplier(widthNoise!, t01)
     if (d >= 3 * w) return h
     const t = Math.max(0, (d - w / 2) / (2.5 * w))
     const s = t * t * (3 - 2 * t)
