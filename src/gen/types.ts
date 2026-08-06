@@ -24,6 +24,8 @@ export interface SectorParams {
   corpDominance: number
   /** 0..1 — POI frequency */
   poiDensity: number
+  /** 0..1 — street-fabric organicness bias (planned ↔ sprawl) */
+  irregularity: number
   /** base landform; 'auto' resolves deterministically from the seed */
   landform: Landform | 'auto'
   /** water modifiers — independent of landform and each other */
@@ -77,7 +79,11 @@ export interface District {
   zone: ZoneType
   name: string
   bounds: Rect
+  /** district shape; bounds is its bbox */
+  poly: Pt[]
   shore: boolean
+  /** 0.05..0.95 — this district's street-fabric organicness */
+  irregularity: number
   /** area-weighted centroid of the district's surviving blocks — where the
    * label anchors; unlike bounds' center, never falls in open water. */
   labelAt: Pt

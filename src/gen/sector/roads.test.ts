@@ -6,7 +6,7 @@ import type { SectorParams, Terrain } from '../types'
 import { layoutRoads } from './roads'
 
 const base: SectorParams = {
-  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
+  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
   landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 const sizeM = 4000
@@ -107,7 +107,7 @@ describe('layoutRoads', () => {
   })
   it('joins at least one arterial across the highway gap (no uncrossable wall)', () => {
     const params: SectorParams = {
-      seed: 119560026, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
+      seed: 119560026, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
       landform: 'coastal', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
     }
     const terrain = sampleTerrain(params, sizeM)

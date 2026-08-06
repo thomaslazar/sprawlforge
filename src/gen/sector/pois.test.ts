@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest'
+import type { Pt, Rect } from '../geometry'
 import { getPack } from '../names/packs'
 import type { Building, District, SectorParams } from '../types'
 import { placePois } from './pois'
 
+const rectPoly = (r: Rect): Pt[] => [
+  { x: r.x, y: r.y }, { x: r.x + r.w, y: r.y },
+  { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h },
+]
+
 const base: SectorParams = {
-  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
+  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
   landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 const districts: District[] = [
-  { id: 'D01', zone: 'corp', name: 'Test Heights', bounds: { x: 0, y: 0, w: 600, h: 600 }, shore: false, labelAt: { x: 300, y: 300 } },
+  { id: 'D01', zone: 'corp', name: 'Test Heights', bounds: { x: 0, y: 0, w: 600, h: 600 }, poly: rectPoly({ x: 0, y: 0, w: 600, h: 600 }), irregularity: 0.5, shore: false, labelAt: { x: 300, y: 300 } },
 ]
 const buildings: Building[] = Array.from({ length: 30 }, (_, i) => ({
   id: `BLD0101${String(i + 1).padStart(2, '0')}`,

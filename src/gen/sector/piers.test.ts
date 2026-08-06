@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest'
+import type { Pt, Rect } from '../geometry'
 import { pointInRings } from '../geometry'
 import type { District, SectorParams, Terrain } from '../types'
 import { placePiers } from './piers'
 
+const rectPoly = (r: Rect): Pt[] => [
+  { x: r.x, y: r.y }, { x: r.x + r.w, y: r.y },
+  { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h },
+]
+
 const base: SectorParams = {
-  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
+  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
   landform: 'coastal', river: false, lakes: false, islands: false, piers: true, pack: 'generic', theme: 'neon',
 }
 const eastWater: Terrain = {
@@ -16,6 +22,8 @@ const eastWater: Terrain = {
 const docksDistrict: District = {
   id: 'D01', zone: 'docks', name: 'The Docks', shore: true,
   bounds: { x: 2500, y: 1000, w: 500, h: 800 },
+  poly: rectPoly({ x: 2500, y: 1000, w: 500, h: 800 }),
+  irregularity: 0.5,
   labelAt: { x: 2750, y: 1400 },
 }
 const waterRings = eastWater.water.map((poly) => poly.map((r) => r.map(([x, y]) => ({ x, y }))))

@@ -1,3 +1,4 @@
+import type { Pt, Rect } from '../geometry'
 import { generateName } from '../names/names'
 import { getPack } from '../names/packs'
 import { hashSeed, mulberry32 } from '../rng'
@@ -37,7 +38,12 @@ export function generateSector(params: SectorParams): SectorModel {
 
   const terrain = sampleTerrain(params, sizeM)
   const { roads, districtRects, blocksByDistrict } = layoutRoads(params, terrain, sizeM)
-  const districts = assignZones(districtRects, params, terrain)
+  // temporary adapter until Task 8 rewires layoutRoads to emit polygons directly
+  const rectPoly = (r: Rect): Pt[] => [
+    { x: r.x, y: r.y }, { x: r.x + r.w, y: r.y },
+    { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h },
+  ]
+  const districts = assignZones(districtRects.map(rectPoly), params, terrain)
 
   // re-align blocksByDistrict to the sorted district order
   const rectKey = (r: { x: number; y: number }) => `${r.x}:${r.y}`

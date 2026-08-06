@@ -19,6 +19,7 @@ describe('resolveTags', () => {
       density: 0.9,
       corpDominance: 0.85,
       poiDensity: 0.7,
+      irregularity: 0.5,
       piers: true,
     })
   })

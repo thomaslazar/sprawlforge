@@ -20,7 +20,7 @@ const blob = (): Pt[] =>
 // real coastal land ring from the terrain generator, scaled into the 1000-box
 function landRing(seed: number): Pt[] {
   const t = sampleTerrain(
-    { seed, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
+    { seed, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
       landform: 'coastal', river: false, lakes: false, islands: false,
       piers: false, pack: 'generic', theme: 'neon' },
     4000,

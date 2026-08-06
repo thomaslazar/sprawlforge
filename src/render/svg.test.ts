@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { generateSector } from '../gen/sector/generate'
+import type { Pt, Rect } from '../gen/geometry'
 import { GENERATOR_VERSION, type SectorModel, type SectorParams } from '../gen/types'
 import { renderSector } from './svg'
 import { getTheme, themes } from './theme'
 
+const rectPoly = (r: Rect): Pt[] => [
+  { x: r.x, y: r.y }, { x: r.x + r.w, y: r.y },
+  { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h },
+]
+
 const base: SectorParams = {
-  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
+  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
   landform: 'coastal', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 const model = generateSector(base)
@@ -97,7 +103,7 @@ describe('renderSector', () => {
     ],
     // spans the full window, deliberately overlapping the water square —
     // proves the land-clip actually confines the fill (C2)
-    districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, shore: true, labelAt: { x: 500, y: 500 } }],
+    districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, poly: rectPoly({ x: 0, y: 0, w: 1000, h: 1000 }), irregularity: 0.5, shore: true, labelAt: { x: 500, y: 500 } }],
     blocks: [],
     buildings: [],
     pois: [],

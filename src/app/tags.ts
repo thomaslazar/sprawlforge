@@ -32,7 +32,7 @@ const TAG_EFFECTS: Record<string, Partial<SectorParams>> = {
 
 export const DEFAULT_PARAMS: Omit<SectorParams, 'seed' | 'pack' | 'theme'> = {
   landform: 'auto', river: false, lakes: false, islands: false,
-  size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, piers: false,
+  size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, piers: false,
 }
 
 /** last tag of a group wins; unknown tags are ignored */

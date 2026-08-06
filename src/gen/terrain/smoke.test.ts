@@ -3,7 +3,7 @@ import { LANDFORMS, type Landform, type SectorParams } from '../types'
 import { sampleTerrain } from './index'
 
 const base: SectorParams = {
-  seed: 0, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
+  seed: 0, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
   landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 

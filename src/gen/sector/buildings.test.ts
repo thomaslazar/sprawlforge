@@ -1,16 +1,21 @@
 import { describe, expect, it } from 'vitest'
-import type { Rect } from '../geometry'
+import type { Pt, Rect } from '../geometry'
 import type { District, SectorParams, Terrain } from '../types'
 import { fillBuildings } from './buildings'
 
+const rectPoly = (r: Rect): Pt[] => [
+  { x: r.x, y: r.y }, { x: r.x + r.w, y: r.y },
+  { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h },
+]
+
 const base: SectorParams = {
-  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
+  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
   landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 const districts: District[] = [
-  { id: 'D01', zone: 'corp', name: '', bounds: { x: 0, y: 0, w: 600, h: 600 }, shore: false, labelAt: { x: 300, y: 300 } },
-  { id: 'D02', zone: 'slum', name: '', bounds: { x: 700, y: 0, w: 600, h: 600 }, shore: false, labelAt: { x: 1000, y: 300 } },
-  { id: 'D03', zone: 'residential', name: '', bounds: { x: 2800, y: 0, w: 400, h: 400 }, shore: true, labelAt: { x: 3000, y: 200 } },
+  { id: 'D01', zone: 'corp', name: '', bounds: { x: 0, y: 0, w: 600, h: 600 }, poly: rectPoly({ x: 0, y: 0, w: 600, h: 600 }), irregularity: 0.5, shore: false, labelAt: { x: 300, y: 300 } },
+  { id: 'D02', zone: 'slum', name: '', bounds: { x: 700, y: 0, w: 600, h: 600 }, poly: rectPoly({ x: 700, y: 0, w: 600, h: 600 }), irregularity: 0.5, shore: false, labelAt: { x: 1000, y: 300 } },
+  { id: 'D03', zone: 'residential', name: '', bounds: { x: 2800, y: 0, w: 400, h: 400 }, poly: rectPoly({ x: 2800, y: 0, w: 400, h: 400 }), irregularity: 0.5, shore: true, labelAt: { x: 3000, y: 200 } },
 ]
 const blocksByDistrict: Rect[][] = [
   [{ x: 10, y: 10, w: 280, h: 280 }, { x: 310, y: 10, w: 280, h: 280 }],

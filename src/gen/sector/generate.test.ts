@@ -4,7 +4,7 @@ import { GENERATOR_VERSION, type Block, type District, type SectorParams, type T
 import { deriveDistricts, generateSector } from './generate'
 
 const base: SectorParams = {
-  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
+  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
   landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 
@@ -77,7 +77,12 @@ const block = (id: string, districtId: string, rect: { x: number; y: number; w: 
   ],
 })
 const district = (id: string, bounds: { x: number; y: number; w: number; h: number }): District => ({
-  id, zone: 'corp', name: 'X', bounds, shore: false,
+  id, zone: 'corp', name: 'X', bounds,
+  poly: [
+    { x: bounds.x, y: bounds.y }, { x: bounds.x + bounds.w, y: bounds.y },
+    { x: bounds.x + bounds.w, y: bounds.y + bounds.h }, { x: bounds.x, y: bounds.y + bounds.h },
+  ],
+  irregularity: 0.5, shore: false,
   labelAt: { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 },
 })
 
