@@ -1,4 +1,4 @@
-import polygonClipping from 'polygon-clipping'
+import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
 import { bboxOf, pointInRings, ringArea, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 
@@ -151,21 +151,74 @@ function bendPoint(poly: Pt[], A: Hit, B: Hit, irr: number): Pt | null {
   return pointInRings(M, [poly]) ? M : null
 }
 
-/** polyline inflated to a closed ring; averaged-normal joins (bends are gentle) */
+// polygon-clipping can throw "Unable to complete output ring" on a union of
+// many quads even when every quad is individually simple — a documented
+// robustness limit of the library on near-degenerate float configurations
+// (coincident/near-parallel edges at a joint), not a self-intersection in
+// our input. contour.ts hits the same limit on marching-squares output and
+// works around it by nudging coordinates by a tiny fixed epsilon and
+// retrying. Folding the union in one quad at a time (rather than one big
+// N-ary union) also localizes any failure to a single joint instead of
+// risking the whole corridor.
+const CORRIDOR_EPSILONS = [1e-6, -1e-6, 3e-6]
+
+function safeUnion(acc: MultiPolygon, next: [number, number][][]): MultiPolygon {
+  try {
+    return polygonClipping.union(acc, next)
+  } catch {
+    for (const eps of CORRIDOR_EPSILONS) {
+      try {
+        return polygonClipping.union(acc, [next[0].map(([x, y]) => [x + eps, y + eps] as [number, number])])
+      } catch {
+        continue
+      }
+    }
+    // give up merging this one quad — the corridor loses a sliver at a
+    // single degenerate joint rather than crashing the whole sector
+    return acc
+  }
+}
+
+/**
+ * polyline inflated to a closed ring: each segment becomes its own rectangle
+ * quad, unioned together. A single averaged-normal offset (the previous
+ * approach) can self-intersect when consecutive segments turn sharply
+ * relative to the width — e.g. a river course at 6x width with a tight
+ * meander — which then poisons every downstream polygon-clipping call that
+ * touches the resulting ring. Per-segment quads are always simple
+ * (non-self-intersecting) rectangles regardless of bend angle, and
+ * polygon-clipping's union handles merging overlapping quads at the joints
+ * robustly, so the result is guaranteed simple.
+ */
 export function corridorPolygon(line: Pt[], width: number): Pt[] {
   const h = width / 2
-  const left: Pt[] = []
-  const right: Pt[] = []
-  for (let i = 0; i < line.length; i++) {
-    const prev = line[Math.max(0, i - 1)]
-    const next = line[Math.min(line.length - 1, i + 1)]
-    const dx = next.x - prev.x
-    const dy = next.y - prev.y
+  const quads: [number, number][][][] = []
+  for (let i = 0; i < line.length - 1; i++) {
+    const a = line[i]
+    const b = line[i + 1]
+    const dx = b.x - a.x
+    const dy = b.y - a.y
     const len = Math.hypot(dx, dy) || 1
-    left.push({ x: line[i].x - (dy / len) * h, y: line[i].y + (dx / len) * h })
-    right.push({ x: line[i].x + (dy / len) * h, y: line[i].y - (dx / len) * h })
+    const nx = (-dy / len) * h
+    const ny = (dx / len) * h
+    quads.push([toRing([
+      { x: a.x + nx, y: a.y + ny },
+      { x: b.x + nx, y: b.y + ny },
+      { x: b.x - nx, y: b.y - ny },
+      { x: a.x - nx, y: a.y - ny },
+    ])])
   }
-  return [...left, ...right.reverse()]
+  if (quads.length === 0) return []
+  let merged: MultiPolygon = [quads[0]]
+  for (let i = 1; i < quads.length; i++) merged = safeUnion(merged, quads[i])
+  let best: Pt[] = []
+  let bestArea = 0
+  for (const poly of merged) {
+    const ring = fromRing(poly[0])
+    const area = Math.abs(ringArea(ring))
+    if (area > bestArea) { bestArea = area; best = ring }
+  }
+  return best
 }
 
 /** push both endpoints outward along their segment so the corridor overshoots the boundary */

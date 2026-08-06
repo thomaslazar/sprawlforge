@@ -1,11 +1,32 @@
+import polygonClipping from 'polygon-clipping'
 import { describe, expect, it } from 'vitest'
 import { pointInRings, ringArea, type Pt } from '../geometry'
 import { mulberry32 } from '../rng'
-import { corridorPolygon, partitionPolygon } from './twisted'
+import { corridorPolygon, partitionPolygon, toRing } from './twisted'
 
 const square = (s: number): Pt[] => [
   { x: 0, y: 0 }, { x: s, y: 0 }, { x: s, y: s }, { x: 0, y: s },
 ]
+
+/** true if no two non-adjacent edges of the ring cross */
+function isSimple(ring: Pt[]): boolean {
+  const n = ring.length
+  const cross = (o: Pt, a: Pt, b: Pt) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+  const segIntersect = (p1: Pt, p2: Pt, p3: Pt, p4: Pt) => {
+    const d1 = cross(p3, p4, p1)
+    const d2 = cross(p3, p4, p2)
+    const d3 = cross(p1, p2, p3)
+    const d4 = cross(p1, p2, p4)
+    return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0))
+  }
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      if (j === i || j === i + 1 || (j + 1) % n === i || (i === 0 && j === n - 1)) continue
+      if (segIntersect(ring[i], ring[(i + 1) % n], ring[j], ring[(j + 1) % n])) return false
+    }
+  }
+  return true
+}
 
 /** 12-point blob around (500,500), radius 300–450, deterministic */
 const blob = (): Pt[] =>
@@ -97,8 +118,23 @@ describe('corridorPolygon', () => {
 
   it('handles a bent polyline', () => {
     const ring = corridorPolygon([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }], 10)
-    expect(ring).toHaveLength(6)
-    // averaged-normal join is a chamfer, not a square miter — observed 1707.1
-    expect(Math.abs(ringArea(ring))).toBeGreaterThan(1700)
+    // per-segment quads unioned at the joint — square-ish miter, not a raw sum of quads
+    expect(Math.abs(ringArea(ring))).toBeGreaterThan(1900)
+    expect(Math.abs(ringArea(ring))).toBeLessThan(2000)
+    expect(isSimple(ring)).toBe(true)
+  })
+
+  it('does not self-intersect on a sharp bend at large width (river-corridor shape)', () => {
+    // short segment relative to width — the failure mode that broke the old
+    // averaged-normal join (see generate.test.ts for the full crashing seed)
+    const line = [
+      { x: 0, y: 0 },
+      { x: 150, y: 0 },
+      { x: 165, y: 30 },
+      { x: 330, y: 45 },
+    ]
+    const ring = corridorPolygon(line, 360)
+    expect(isSimple(ring)).toBe(true)
+    expect(() => polygonClipping.union([toRing(ring)])).not.toThrow()
   })
 })

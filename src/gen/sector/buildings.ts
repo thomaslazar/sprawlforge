@@ -1,4 +1,4 @@
-import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
+import polygonClipping, { type MultiPolygon, type Polygon } from 'polygon-clipping'
 import { bboxOf, bspSplit, insetRect, pointInRings, ringArea, ringCentroid, rotatePt, type Pt, type Rect } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import type { Block, Building, District, SectorParams, Terrain, ZoneType } from '../types'
@@ -60,9 +60,35 @@ function largestRing(result: MultiPolygon): { pts: Pt[]; area: number } | null {
   return best ? { pts: best, area: bestArea } : null
 }
 
+// polygon-clipping can throw "Unable to complete output ring" on an input
+// that is individually simple (non-self-intersecting) but numerically hard
+// — e.g. an edge that crosses the clip ring at a near-tangential angle close
+// to one of its vertices. contour.ts hits the same library limit on
+// marching-squares output and works around it by nudging the input by a
+// tiny fixed epsilon and retrying; block/building footprints here are leaf
+// clips with no fallback geometry to fall back to, so on repeated failure
+// we treat it as "no footprint" (block/building dropped) rather than
+// crashing the whole sector over one coastal edge case.
+const INTERSECT_EPSILONS = [1e-6, -1e-6, 3e-6]
+
+function safeIntersection(ring: [number, number][], other: Polygon | MultiPolygon): MultiPolygon {
+  try {
+    return polygonClipping.intersection([ring], other)
+  } catch {
+    for (const eps of INTERSECT_EPSILONS) {
+      try {
+        return polygonClipping.intersection([ring.map(([x, y]) => [x + eps, y + eps] as [number, number])], other)
+      } catch {
+        continue
+      }
+    }
+    return []
+  }
+}
+
 /** intersection of one ring against another (single-ring) polygon */
 function clipRingToRing(ring: Pt[], other: Pt[]): { pts: Pt[]; area: number } | null {
-  return largestRing(polygonClipping.intersection([toRing(ring)], [toRing(other)]))
+  return largestRing(safeIntersection(toRing(ring), [toRing(other)]))
 }
 
 /** angle of a polygon's longest edge — buildings inherit this orientation */
@@ -102,7 +128,7 @@ export function fillBuildings(
     if (farFromWater && ring.every((p) => pointInRings(p, landRings))) {
       return { pts: ring, area: Math.abs(ringArea(ring)) }
     }
-    return largestRing(polygonClipping.intersection([toRing(ring)], terrain.land))
+    return largestRing(safeIntersection(toRing(ring), terrain.land))
   }
 
   districts.forEach((district, di) => {

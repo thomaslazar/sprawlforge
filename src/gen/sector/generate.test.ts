@@ -68,6 +68,25 @@ describe('generateSector', () => {
     expect(a.buildings).toEqual(b.buildings)
     expect(a.districts.map((d) => d.bounds)).toEqual(b.districts.map((d) => d.bounds))
   })
+  it('does not throw on seeds that used to break polygon-clipping on a river corridor', () => {
+    // inland/river/islands sector at high irregularity — the crash-reported
+    // tag combo (inland,small,dense,balanced,normal,sprawl,river,islands).
+    // 2882370099 is the originally-reported seed (crashed before a reroll);
+    // 4 and 40 also self-intersected in corridorPolygon's old averaged-normal
+    // river-corridor join (src/gen/partition/twisted.ts). 95 and 96 crashed
+    // via a second, independent bug: polygon-clipping choking on a
+    // legitimate-but-numerically-hard block/building clip in
+    // src/gen/sector/buildings.ts (fixed with the same epsilon-nudge-retry
+    // pattern contour.ts already uses for this class of library failure).
+    const params: SectorParams = {
+      seed: 0, size: 2, density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.85,
+      landform: 'inland', river: true, lakes: false, islands: true, piers: false,
+      pack: 'generic', theme: 'print',
+    }
+    for (const seed of [2882370099, 4, 40, 95, 96]) {
+      expect(() => generateSector({ ...params, seed })).not.toThrow()
+    }
+  })
 })
 
 const block = (id: string, districtId: string, rect: { x: number; y: number; w: number; h: number }): Block => {
