@@ -94,6 +94,16 @@ core (clipping, insetting, filling non-rectangular shapes).
   names per sector and retry (or draw without replacement) so every
   district/POI name is unique within a map. Deterministic retries only —
   same seed must still give same names (`GENERATOR_VERSION` bump).
+- **POI category filters** — toggle POI types on/off on the map by
+  category (e.g. pleasure/nightlife, corp headquarters, medical,
+  commerce, underworld — exact categories to be worked out). Flavor-pack
+  poi types get a category field; the UI gets per-category visibility
+  toggles. Display-layer only, no generation change.
+- **Cursor-anchored zoom** — wheel zoom should keep the point under the
+  mouse cursor fixed while zooming in/out; currently the view jumps
+  around because zoom scales from the transform origin.
+- **Cursor styling** — default pointer over the map; the grab hand only
+  while actually dragging (currently the hand shows permanently).
 
 ## Cross-cutting
 
