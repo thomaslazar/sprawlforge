@@ -11,6 +11,8 @@ coverage/
 .playwright-mcp/
 *.log
 tools/uicheck/shots/
+tools/partition-toy/shots/
+tools/partition-toy/app.log
 
 # editors & OS
 .DS_Store
