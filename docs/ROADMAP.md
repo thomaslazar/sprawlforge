@@ -4,7 +4,7 @@
 
 1. **Sector generator** — v1 per `docs/specs/2026-08-03-sprawlforge-design.md` ✅
 2. **Terrain v2 + organic map redesign** — phases 1+2 ✅; phase 3 (organic
-   streets) needs its own spec; see below
+   streets) ✅; see below
 3. **Metroplex generator** — parent of sectors, proves linkage chain.
    Candidate metroplex-scale landform: **city on an island** — a whole
    metro occupying an island, distinct from the sector-scale `islands`
@@ -36,16 +36,8 @@ core (clipping, insetting, filling non-rectangular shapes).
    (waterfront buildings reach the river's edge), dock zones biased to
    the shore, roads crossing water become bridges (rendered as such,
    network stays connected).
-3. **Organic street patterns** — options, in ascending effort:
-   - **A: perturbation pass** — keep BSP skeleton; jitter road
-     centerlines, rotate district lattices a few degrees, buildings
-     inherit rotation. Planned-city-that-aged look.
-   - **C: zone-hybrid** — perturbed grid for corp/industrial/residential
-     (planned megacity fabric), separate irregular generator for
-     slum/old-quarter districts (crooked dense lanes). Zone contrast as
-     storytelling.
-   - **B: full Voronoi partition** — fully organic street fabric everywhere.
-     Only if A/C prove insufficient; several times their cost.
+3. **Organic street patterns** ✅ — see
+   `docs/specs/2026-08-06-organic-streets-design.md`.
 
 ## Deferred (explicit v1 excludes — do not forget)
 
@@ -104,6 +96,10 @@ core (clipping, insetting, filling non-rectangular shapes).
   around because zoom scales from the transform origin.
 - **Cursor styling** — default pointer over the map; the grab hand only
   while actually dragging (currently the hand shows permanently).
+- **Curved highways** — the highway strip stays straight; a gently bent
+  highway corridor is a cheap follow-up on the corridor mechanism.
+- **Street-fabric performance** — per-building polygon clipping; profile
+  before optimizing.
 - **Reroll loading feedback** — a visually distinct generating state
   (loading animation/overlay on the map, not just the button label
   flipping to "Generating…"). Note: generation currently runs

@@ -185,6 +185,29 @@ for (const { tags, shot, wet, bridge, seed = 42 } of TERRAIN_SWEEP) {
   }
 }
 
+// street-style tags: planned vs sprawl must both render dense fabric and differ
+await page.goto(`${BASE}/?seed=42&tags=coastal,planned`)
+await page.waitForSelector('svg')
+await page.screenshot({ path: `${OUT}/streets-planned.png` })
+const svgPlanned = await page.locator('svg').innerHTML()
+if ((await page.locator('svg polygon[data-id^="BLD"]').count()) < 50)
+  fail('planned: too few buildings')
+if (!(await page.getByRole('button', { name: 'Planned', pressed: true }).isVisible()))
+  fail('planned chip not pressed from URL tags')
+
+await page.goto(`${BASE}/?seed=42&tags=coastal,sprawl`)
+await page.waitForSelector('svg')
+await page.screenshot({ path: `${OUT}/streets-sprawl.png` })
+if ((await page.locator('svg polygon[data-id^="BLD"]').count()) < 50)
+  fail('sprawl: too few buildings')
+if ((await page.locator('svg').innerHTML()) === svgPlanned)
+  fail('planned and sprawl render identically')
+
+// water-heavy organic fabric: crooked streets + bridges coexist
+await page.goto(`${BASE}/?seed=42&tags=coastal,river,sprawl`)
+await page.waitForSelector('svg')
+await page.screenshot({ path: `${OUT}/streets-sprawl-river.png` })
+
 // bare URL (no tags) still auto-resolves a landform via resolveTerrain, but
 // the chips/URL must materialize that roll instead of showing nothing staged
 await page.goto(`${BASE}/?seed=42`)
