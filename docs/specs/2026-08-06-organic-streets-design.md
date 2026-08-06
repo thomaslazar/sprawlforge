@@ -93,7 +93,11 @@ infrastructure). A gently curved highway is deferred to ROADMAP.
 - **Level 2 — blocks:** partition each district polygon with that
   district's own irregularity (§5). Cuts become streets.
 
-`bspSplit` has no remaining callers after this and is deleted.
+`bspSplit` survives in exactly one place: building lots *inside* a block
+(`buildings.ts`) stay a rectangular grid, rotated to the block's longest
+edge — real lots are rectangular-ish along street frontage, and twisted
+bisection at 5–30 m scale would cost a polygon-boolean per building for
+no visual gain. District- and block-level BSP callers are deleted.
 
 ### 4.3 Irregularity assignment
 
@@ -135,14 +139,17 @@ This is the real cost of the feature.
 
 ## 6. Tags (no numeric knob)
 
-Two new tags in one exclusive group, same staged-until-reroll and
-materialization semantics as existing tags:
+One new exclusive tag group `streets`, same staged-until-reroll and
+materialization semantics as existing groups:
 
-- `planned` — shifts the whole irregularity distribution down.
-- `sprawl` — shifts it up.
-- Neither active — the mixed default.
+- `planned` — shifts the whole irregularity distribution down (0.15).
+- `mixed` — the neutral middle (0.5).
+- `sprawl` — shifts it up (0.85).
 
-No slider. Exclusivity enforced like the landform group.
+`mixed` is an explicit tag (not "neither active") because
+`materializeTags` rolls an explicit member for every unstaged group —
+a bare URL is a fully materialized surprise-me, and the streets group
+keeps that invariant. No slider.
 
 ## 7. Testing
 
