@@ -17,9 +17,9 @@
 Phases 1+2 are specced: `docs/specs/2026-08-04-terrain-v2-design.md`
 (metro-scale heightfield, one-pass water contouring, carved rivers,
 bridges, waterline clipping, shore zoning, piers). Phase 3 (organic
-streets) remains a future spec. Additional deferrals recorded in that
-spec §8: tributaries/confluences, elevation rendering, shallow-water
-bands, ships/harbor props.
+streets) is specced and shipped: `docs/specs/2026-08-06-organic-streets-design.md`.
+Additional deferrals recorded in that spec §8: tributaries/confluences,
+elevation rendering, shallow-water bands, ships/harbor props.
 
 v1 water is a toy (straight east coast, horizontal river band, coast wins
 over river, no bridges, land clipped as rectangle) and the BSP street grid

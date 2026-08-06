@@ -14,8 +14,8 @@ import {
 // islets below this get no district (ROADMAP defers islet settlement)
 const MIN_DISTRICT_AREA = 250_000
 
-// tolerance on the endpoint-to-highway-edge distance (float slop from BSP
-// recursion, not a real search radius)
+// tolerance on the endpoint-to-highway-edge distance (float slop from
+// polygon-clipping / chord intersection, not a real search radius)
 const OVERPASS_EDGE_TOL = 3
 // how far apart (perpendicular to the highway) two facing endpoints may sit
 // and still count as "facing" — genre-accurate highways have limited,
@@ -23,13 +23,14 @@ const OVERPASS_EDGE_TOL = 3
 const OVERPASS_PERP_TOL = 20
 
 /**
- * Arterials dead-end on both sides of the highway strip (bspSplit lays out
- * each side's district grid independently) — that makes the highway an
- * uncrossable wall. Where a road on the left touches the strip's left edge
- * and a road on the right touches the right edge at roughly the same
- * position, merge them into one continuous arterial across the gap. These
- * are plain road continuity, not bridges — no deck, and highways keep their
- * "limited exits" feel since only arterials (not streets) get joined.
+ * Arterials dead-end on both sides of the highway strip (the twisted
+ * partition lays out each side of the highway corridor independently) —
+ * that makes the highway an uncrossable wall. Where a road on the left
+ * touches the strip's left edge and a road on the right touches the right
+ * edge at roughly the same position, merge them into one continuous arterial
+ * across the gap. These are plain road continuity, not bridges — no deck,
+ * and highways keep their "limited exits" feel since only arterials
+ * (not streets) get joined.
  */
 function joinArterialsAcrossHighway(roads: Road[]): Road[] {
   const highways = roads.filter((r) => r.class === 'highway')
@@ -46,10 +47,9 @@ function joinArterialsAcrossHighway(roads: Road[]): Road[] {
     if (Math.abs(last.x - x) <= OVERPASS_EDGE_TOL) return { at: last }
     return null
   }
-  // connectors are their own 2-point roads — every water-clipping/truncation
-  // function assumes roads are straight 2-point segments, and merged 4-point
-  // polylines slipped through unclipped (rendered as diagonal roads crossing
-  // water). The originals stay untouched; only the short gap segment is new.
+  // connectors are their own 2-point roads — a short straight gap join is
+  // the simplest correct geometry. The originals stay untouched; only the
+  // short gap segment is new.
   let n = 0
   for (const hw of highways) {
     const hx = hw.points[0].x
