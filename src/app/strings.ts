@@ -15,6 +15,7 @@ export const strings = {
       density: 'Density',
       power: 'Power',
       activity: 'Activity',
+      streets: 'Streets',
       water: 'Water',
     },
     tags: {
@@ -36,6 +37,9 @@ export const strings = {
       quiet: 'Quiet',
       normal: 'Normal',
       lively: 'Lively',
+      planned: 'Planned',
+      mixed: 'Mixed',
+      sprawl: 'Sprawl',
       piers: 'Piers',
       'no-pois': 'No POIs',
       piersNeedsWater: 'Needs water — pick a wet terrain',

@@ -140,3 +140,21 @@ describe('no-pois free tag', () => {
     for (const seed of [1, 2, 42, 999]) expect(materializeTags(seed, [])).not.toContain('no-pois')
   })
 })
+
+describe('streets tags', () => {
+  it('streets tags set irregularity', () => {
+    expect(resolveTags(['planned']).irregularity).toBe(0.15)
+    expect(resolveTags(['mixed']).irregularity).toBe(0.5)
+    expect(resolveTags(['sprawl']).irregularity).toBe(0.85)
+    expect(resolveTags([]).irregularity).toBe(0.5)
+  })
+
+  it('streets tags are mutually exclusive, last wins', () => {
+    expect(normalizeTags(['planned', 'sprawl'])).toEqual(['sprawl'])
+  })
+
+  it('materializeTags rolls a streets tag when none staged', () => {
+    const out = materializeTags(42, ['coastal'])
+    expect(out.filter((t) => ['planned', 'mixed', 'sprawl'].includes(t))).toHaveLength(1)
+  })
+})
