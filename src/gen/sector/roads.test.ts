@@ -7,8 +7,8 @@ import { districtDomains, finalizeRoads, layoutStreets, partitionDistricts } fro
 import { assignZones } from './zoning'
 
 /** mirrors generateSector's road pipeline (partition -> zone -> streets -> finalize) */
-function buildRoads(params: SectorParams, terrain: Terrain): Road[] {
-  const { roads: skeleton, districtPolys } = partitionDistricts(params, terrain)
+function buildRoads(params: SectorParams, terrain: Terrain, size = sizeM): Road[] {
+  const { roads: skeleton, districtPolys } = partitionDistricts(params, terrain, size)
   const districts = assignZones(districtPolys, params, terrain)
   const { streets } = layoutStreets(districts, params)
   return finalizeRoads([...skeleton, ...streets], terrain)
@@ -69,45 +69,93 @@ const isletTerrain: Terrain = {
 
 describe('districtDomains', () => {
   it('returns land outer rings, filling lake holes', () => {
-    const domains = districtDomains(lakeTerrain)
+    const domains = districtDomains(lakeTerrain, sizeM)
     expect(domains).toHaveLength(1)
     expect(domains[0].length).toBeGreaterThanOrEqual(4)
   })
 
   it('reconnects river banks into one domain', () => {
-    const domains = districtDomains(riverTerrain)
+    const domains = districtDomains(riverTerrain, sizeM)
     expect(domains).toHaveLength(1)
   })
 
   it('reconnects banks even when the channel runs wider than 2x the width constant', () => {
-    const domains = districtDomains(wideRiverTerrain)
+    const domains = districtDomains(wideRiverTerrain, sizeM)
     expect(domains).toHaveLength(1)
   })
 
   it('drops islet rings below the minimum district area', () => {
-    const domains = districtDomains(isletTerrain)
+    const domains = districtDomains(isletTerrain, sizeM)
     expect(domains).toHaveLength(1)
+  })
+
+  it('clamps the domain to the sector window when the river course runs past it', () => {
+    // riverSlice.course is window-clipped with a ±500 m margin upstream
+    // (terrain's RIVER_MARGIN), so points just outside [0, sizeM] are a
+    // real fixture shape, not a fabrication — the reconnect corridor built
+    // from them must not leak district area past the window.
+    const overshootRiver: Terrain = {
+      landform: 'inland', river: true, lakes: false, islands: false, metroSeed: 1,
+      water: [[[[1900, 0], [2100, 0], [2100, 4000], [1900, 4000]]]],
+      land: [
+        [[[0, 0], [1900, 0], [1900, 4000], [0, 4000]]],
+        [[[2100, 0], [4000, 0], [4000, 4000], [2100, 4000]]],
+      ],
+      riverSlice: { course: [{ x: -400, y: -400 }, { x: 2000, y: 2000 }, { x: sizeM + 400, y: sizeM + 400 }], width: 250 },
+    }
+    const domains = districtDomains(overshootRiver, sizeM)
+    for (const ring of domains)
+      for (const p of ring) {
+        expect(p.x).toBeGreaterThanOrEqual(-1)
+        expect(p.x).toBeLessThanOrEqual(sizeM + 1)
+        expect(p.y).toBeGreaterThanOrEqual(-1)
+        expect(p.y).toBeLessThanOrEqual(sizeM + 1)
+      }
   })
 })
 
 describe('partitionDistricts', () => {
   it('is deterministic and covers the domain with districts', () => {
-    const a = partitionDistricts(base, dryTerrain)
-    const b = partitionDistricts(base, dryTerrain)
+    const a = partitionDistricts(base, dryTerrain, sizeM)
+    const b = partitionDistricts(base, dryTerrain, sizeM)
     expect(a).toEqual(b)
     expect(a.districtPolys.length).toBeGreaterThan(3)
     expect(a.roads.some((r) => r.class === 'arterial')).toBe(true)
   })
 
   it('adds a highway for size >= 3', () => {
-    const { roads } = partitionDistricts({ ...base, size: 4 }, dryTerrain)
+    const { roads } = partitionDistricts({ ...base, size: 4 }, dryTerrain, sizeM)
     expect(roads.some((r) => r.class === 'highway')).toBe(true)
+  })
+
+  it('keeps every district polygon and road point within the sector window (river overshoot)', () => {
+    // regression coverage for the bottom-left-of-frame bug: districtDomains
+    // clips to the window before partitioning, so this must hold without
+    // needing to eyeball a screenshot.
+    const overshootRiver: Terrain = {
+      landform: 'inland', river: true, lakes: false, islands: false, metroSeed: 1,
+      water: [[[[1900, 0], [2100, 0], [2100, 4000], [1900, 4000]]]],
+      land: [
+        [[[0, 0], [1900, 0], [1900, 4000], [0, 4000]]],
+        [[[2100, 0], [4000, 0], [4000, 4000], [2100, 4000]]],
+      ],
+      riverSlice: { course: [{ x: -400, y: -400 }, { x: 2000, y: 2000 }, { x: sizeM + 400, y: sizeM + 400 }], width: 250 },
+    }
+    const { roads, districtPolys } = partitionDistricts(base, overshootRiver, sizeM)
+    const inWindow = (p: Pt) => {
+      expect(p.x).toBeGreaterThanOrEqual(-1)
+      expect(p.x).toBeLessThanOrEqual(sizeM + 1)
+      expect(p.y).toBeGreaterThanOrEqual(-1)
+      expect(p.y).toBeLessThanOrEqual(sizeM + 1)
+    }
+    for (const poly of districtPolys) for (const p of poly) inWindow(p)
+    for (const road of roads) for (const p of road.points) inWindow(p)
   })
 })
 
 describe('layoutStreets', () => {
   it('partitions each district by its own irregularity, 1:1 indexed', () => {
-    const { districtPolys } = partitionDistricts(base, dryTerrain)
+    const { districtPolys } = partitionDistricts(base, dryTerrain, sizeM)
     const districts = assignZones(districtPolys, base, dryTerrain)
     const { streets, blocksByDistrict } = layoutStreets(districts, base)
     expect(blocksByDistrict).toHaveLength(districts.length)

@@ -89,8 +89,14 @@ const STREET_W = 9
  * polyline pipeline clips/bridges), sea stays out, and the river corridor
  * reconnects the banks so an arterial cut across it becomes a bridge
  * candidate. Rings under MIN_DISTRICT_AREA (tiny islets) get no districts.
+ *
+ * `terrain.riverSlice.course` is window-clipped with a margin (terrain's
+ * RIVER_MARGIN), so the reconnect corridor can poke outside the sector
+ * window — intersect with the [0,sizeM]² window ring before anything else
+ * (outer-ring extraction, area filter, sort) so partitioning never sees
+ * domain area beyond the map frame.
  */
-export function districtDomains(terrain: Terrain): Pt[][] {
+export function districtDomains(terrain: Terrain, sizeM: number): Pt[][] {
   const land: MultiPolygon = terrain.land.map((poly) => [poly[0]])
   if (land.length === 0) return []
   const river = terrain.riverSlice
@@ -105,7 +111,9 @@ export function districtDomains(terrain: Terrain): Pt[][] {
   const domain = river
     ? polygonClipping.union(land, [[toRing(corridorPolygon(river.course, river.width * 6))]])
     : polygonClipping.union(land)
-  return domain
+  const window: [number, number][] = [[0, 0], [sizeM, 0], [sizeM, sizeM], [0, sizeM]]
+  const clipped = polygonClipping.intersection(domain, [[window]])
+  return clipped
     .map((p) => fromRing(p[0]))
     .filter((r) => Math.abs(ringArea(r)) >= MIN_DISTRICT_AREA)
     .sort((a, b) => bboxOf(a).y - bboxOf(b).y || bboxOf(a).x - bboxOf(b).x)
@@ -119,10 +127,11 @@ export function districtDomains(terrain: Terrain): Pt[][] {
 export function partitionDistricts(
   params: SectorParams,
   terrain: Terrain,
+  sizeM: number,
 ): { roads: Road[]; districtPolys: Pt[][] } {
   const rng = mulberry32(hashSeed(params.seed, 'roads'))
   const roads: Road[] = []
-  let domains = districtDomains(terrain)
+  let domains = districtDomains(terrain, sizeM)
 
   // highway: straight vertical corridor, planned infrastructure (spec §4.1)
   if (params.size >= 3 && domains.length > 0) {

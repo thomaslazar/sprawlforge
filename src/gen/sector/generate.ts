@@ -38,7 +38,7 @@ export function generateSector(params: SectorParams): SectorModel {
   const pack = getPack(params.pack)
 
   const terrain = sampleTerrain(params, sizeM)
-  const { roads: skeleton, districtPolys } = partitionDistricts(params, terrain)
+  const { roads: skeleton, districtPolys } = partitionDistricts(params, terrain, sizeM)
   const districts = assignZones(districtPolys, params, terrain)
   const { streets, blocksByDistrict } = layoutStreets(districts, params)
   const roads = finalizeRoads([...skeleton, ...streets], terrain)
