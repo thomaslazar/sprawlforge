@@ -1,5 +1,5 @@
 import polygonClipping from 'polygon-clipping'
-import { pointInRings, ringArea, type Pt } from '../geometry'
+import { bboxOf, pointInRings, ringArea, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 
 export interface PartitionOpts {
@@ -49,13 +49,32 @@ function diameterAngle(pts: Pt[]): number {
   return Math.atan2(by, bx)
 }
 
-/** grid look at low irregularity: snap the split axis toward the nearest 90° */
+// below this irregularity the axis is pure grid (blend === 0); ramps to
+// full diameter-angle by ~irr 0.775
+const GRID_BLEND_START = 0.15
+const GRID_BLEND_RATE = 1.6
+
+/** signed angular difference a-b, wrapped to (-π/2, π/2] (axis lines have period π) */
+function axisDiff(a: number, b: number): number {
+  let d = (a - b) % Math.PI
+  if (d > Math.PI / 2) d -= Math.PI
+  else if (d < -Math.PI / 2) d += Math.PI
+  return d
+}
+
+/**
+ * Grid look at low irregularity: below GRID_BLEND_START the split axis is
+ * exactly the cell's bbox axis (cut across the longer side) — true
+ * BSP-equivalent, no diagonal leakage. Blends toward the diameter angle as
+ * irregularity rises so high-irr cuts stay organic.
+ */
 function splitAxis(pts: Pt[], irr: number, rng: Rng): number {
   const theta = diameterAngle(pts)
-  const snapped = Math.round(theta / (Math.PI / 2)) * (Math.PI / 2)
-  const blend = Math.min(1, irr * 2)
-  const wobble = (rng.next() - 0.5) * 2 * irr * (Math.PI / 7)
-  return snapped + (theta - snapped) * blend + wobble
+  const box = bboxOf(pts)
+  const gridAxis = box.w >= box.h ? 0 : Math.PI / 2
+  const blend = Math.max(0, Math.min(1, (irr - GRID_BLEND_START) * GRID_BLEND_RATE))
+  const wobble = (rng.next() - 0.5) * 2 * irr * irr * (Math.PI / 7)
+  return gridAxis + axisDiff(theta, gridAxis) * blend + wobble
 }
 
 interface Hit { pt: Pt; s: number; edge: number }

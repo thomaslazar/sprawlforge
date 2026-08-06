@@ -59,13 +59,13 @@ describe('partitionPolygon', () => {
   })
 
   it('near-zero irregularity yields near-axis-aligned cuts', () => {
-    const { cuts } = partitionPolygon(square(1000), { ...OPTS, irregularity: 0.02, rng: mulberry32(5) })
+    const { cuts } = partitionPolygon(square(1000), { ...OPTS, irregularity: 0.1, rng: mulberry32(5) })
     for (const cut of cuts) {
       const a = cut.points[0]
       const b = cut.points[cut.points.length - 1]
       const angle = Math.abs(Math.atan2(b.y - a.y, b.x - a.x)) % (Math.PI / 2)
       const offAxis = Math.min(angle, Math.PI / 2 - angle)
-      expect(offAxis).toBeLessThan(0.15) // < ~9° off an axis
+      expect(offAxis).toBeLessThan(0.055) // < ~3° off an axis — true grid at low irr
     }
   })
 

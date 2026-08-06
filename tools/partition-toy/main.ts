@@ -3,7 +3,7 @@ import { hashSeed, mulberry32 } from '../../src/gen/rng'
 import { sampleTerrain } from '../../src/gen/terrain'
 import type { Pt } from '../../src/gen/geometry'
 
-const IRREGULARITY = [0.1, 0.4, 0.7, 0.95]
+const IRREGULARITY = [0.05, 0.15, 0.5, 0.95]
 
 const square = (): Pt[] => [
   { x: 50, y: 50 }, { x: 950, y: 50 }, { x: 950, y: 950 }, { x: 50, y: 950 },
