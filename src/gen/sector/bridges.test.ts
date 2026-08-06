@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Road, Terrain } from '../types'
-import { clipRoadsToLand, inWater, planBridges, truncateOverSpanRoads, truncateUnlandableRoads } from './bridges'
+import {
+  clipRoadsToLand,
+  inWater,
+  planBridges,
+  splitHostAtBridges,
+  truncateOverSpanRoads,
+  truncateUnlandableRoads,
+} from './bridges'
 
 // hand terrain: vertical river band x∈[450,550] in a 1000² window
 const banded: Terrain = {
@@ -196,6 +203,37 @@ describe('polyline roads', () => {
     expect(bridges).toHaveLength(1)
     expect(bridges[0].points).toHaveLength(2)
     expect(bridges[0].bridge).toBe(true)
+    // both landings fall in [400,900] so they sit on the bent second segment
+    // (350,120)->(900,100), not on the straight (0,100)->(900,100) chord —
+    // check each landing's y against that segment's own line equation
+    const [p, q] = bridges[0].points
+    for (const pt of [p, q]) {
+      const expectedY = 120 + ((pt.x - 350) / (900 - 350)) * (100 - 120)
+      expect(pt.y).toBeCloseTo(expectedY, 6)
+    }
+  })
+
+  it('splitHostAtBridges cuts a 3+ point host at the landing points, keeping the dry interior vertex', () => {
+    const road: Road = {
+      id: 'A01', class: 'arterial', width: 18, name: null,
+      points: [{ x: 0, y: 300 }, { x: 200, y: 300 }, { x: 1000, y: 300 }],
+    }
+    const out = splitHostAtBridges([road], stripTerrain(400, 600))
+    expect(out).toHaveLength(2)
+    for (const r of out) for (const p of r.points) {
+      expect(p.x < 400 || p.x > 600).toBe(true)
+    }
+    // landings sit LANDING=15m onto land from the strip edge, plus up to one
+    // 10m sampling step of dry-rounding slop — road is straight and colinear
+    // through the crossing, so x-distance is exact arc-length distance
+    const firstEnd = out[0].points[out[0].points.length - 1]
+    const secondStart = out[1].points[0]
+    expect(400 - firstEnd.x).toBeGreaterThanOrEqual(14)
+    expect(400 - firstEnd.x).toBeLessThanOrEqual(26)
+    expect(secondStart.x - 600).toBeGreaterThanOrEqual(14)
+    expect(secondStart.x - 600).toBeLessThanOrEqual(26)
+    // interior dry-side vertex (200,300) survives intact in the first piece
+    expect(out[0].points.some((p) => p.x === 200 && p.y === 300)).toBe(true)
   })
 })
 
