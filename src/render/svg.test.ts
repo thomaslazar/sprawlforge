@@ -209,4 +209,23 @@ describe('renderSector', () => {
     expect(countLabels(zoomed)).toBeGreaterThanOrEqual(countLabels(base1))
     expect(zoomed).toContain(`font-size="${(model.meta.sizeM * 0.011) / 4}"`)
   })
+
+  it('shore band skips water-ring segments on the window border', () => {
+    // water square touching the right border: the ring's border-lying edge
+    // must not appear in the shallow-band stroke path
+    const wet = handModel([])
+    wet.terrain = {
+      landform: 'coastal', metroSeed: 1, river: false, lakes: false, riverSlice: null,
+      water: [[[[600, 200], [1000, 200], [1000, 800], [600, 800]]]],
+      land: [[[[0, 0], [1000, 0], [1000, 200], [600, 200], [600, 800], [1000, 800], [1000, 1000], [0, 1000]]]],
+    }
+    const svg = renderSector(wet, getTheme('neon'))
+    const band = svg.match(new RegExp(`<path d="([^"]*)" fill="none" stroke="${getTheme('neon').waterShallow}"`))
+    expect(band).not.toBeNull()
+    // the border segment x=1000 from y=200..800 must be absent: no move/line
+    // pair connecting 1000,200 -> 1000,800 in the band path
+    expect(band![1]).not.toMatch(/1000,200L1000,800|1000,800L1000,200/)
+    // but the real shoreline (x=600) is present
+    expect(band![1]).toContain('600,')
+  })
 })

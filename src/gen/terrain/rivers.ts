@@ -59,11 +59,21 @@ export function traceRiver(base: TerrainFieldBase, metroSeed: number, sizeM: num
   const rng = mulberry32(hashSeed(metroSeed, 'river'))
   const win = sectorWindow(sizeM, base.landform, metroSeed)
 
-  // start: highest of K samples on the window's far side from the water
-  let start: Pt = { x: METRO_SIZE / 2, y: METRO_SIZE / 2 }
+  // start: highest of K samples in the sector window's vicinity — sampling
+  // the whole metro fails for small landmasses (an island is <1% of the
+  // metro area, so random metro samples usually start the river in the
+  // ocean and it dies instantly). The window is positioned on land by
+  // construction, so its neighborhood always offers a valid source.
+  const wcx = win.x + win.w / 2
+  const wcy = win.y + win.h / 2
+  const sampleR = Math.max(win.w, win.h) * 1.5
+  let start: Pt = { x: wcx, y: wcy }
   let bestH = -Infinity
   for (let k = 0; k < 60; k++) {
-    const p = { x: rng.next() * METRO_SIZE, y: rng.next() * METRO_SIZE }
+    const p = {
+      x: wcx + (rng.next() * 2 - 1) * sampleR,
+      y: wcy + (rng.next() * 2 - 1) * sampleR,
+    }
     const h = base.heightSea(p.x, p.y)
     if (h > bestH) {
       bestH = h
@@ -94,8 +104,11 @@ export function traceRiver(base: TerrainFieldBase, metroSeed: number, sizeM: num
   // tight spread (0.25, not 0.5): a wider via was occasionally landing the
   // whole crossing near a window edge, leaving too short an in-window arc
   // to clear the smoke test's water floor (seeds 36/55 at sizeM 4000)
-  const via: Pt = { x: METRO_SIZE / 2 + (rng.next() - 0.5) * win.w * 0.25,
-                    y: METRO_SIZE / 2 + (rng.next() - 0.5) * win.h * 0.25 }
+  // via anchors on the WINDOW center, not the metro center — since window
+  // positioning (per landform/size) they are no longer the same point, and a
+  // metro-centered via can steer the river outside the visible frame
+  const via: Pt = { x: wcx + (rng.next() - 0.5) * win.w * 0.25,
+                    y: wcy + (rng.next() - 0.5) * win.h * 0.25 }
 
   const phase = rng.next() * Math.PI * 2
   const meanderNoise = fractalNoise2D(hashSeed(metroSeed, 'river-meander'))

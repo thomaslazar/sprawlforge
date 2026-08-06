@@ -74,6 +74,38 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     .map((poly) => poly.map((ring) => `M${ring.map(([x, y]) => `${n(x)},${n(y)}`).join('L')}Z`).join(' '))
     .join(' ')
 
+  // Shoreline-only path for the band/glow strokes: water rings close along
+  // the window border where water leaves the frame, and stroking those
+  // border segments paints a phantom "waterline" along the map edge in open
+  // ocean. Emit open subpaths that skip any segment lying on the border.
+  const EDGE = 1
+  const onBorder = ([x, y]: [number, number]) =>
+    x <= EDGE || y <= EDGE || x >= S - EDGE || y >= S - EDGE
+  const shoreSegments: string[] = []
+  for (const poly of model.terrain.water) {
+    for (const ring of poly) {
+      let run: Array<[number, number]> = []
+      const flush = () => {
+        if (run.length >= 2)
+          shoreSegments.push(`M${run.map(([x, y]) => `${n(x)},${n(y)}`).join('L')}`)
+        run = []
+      }
+      for (let i = 0; i <= ring.length; i++) {
+        const a = ring[i % ring.length]
+        const b = ring[(i + 1) % ring.length]
+        if (onBorder(a) && onBorder(b)) {
+          if (run.length) run.push(a)
+          flush()
+        } else {
+          if (run.length === 0) run.push(a)
+          run.push(b)
+        }
+      }
+      flush()
+    }
+  }
+  const shoreD = shoreSegments.join(' ')
+
   out.push('<defs>')
   out.push(`<path id="water-shape" d="${waterD}" fill-rule="evenodd"/>`)
   out.push(`<clipPath id="water-clip"><use href="#water-shape"/></clipPath>`)
@@ -103,12 +135,12 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
 
   // Shallow band
   out.push(
-    `<use href="#water-shape" fill="none" stroke="${theme.waterShallow}" stroke-width="${n(S * 0.02)}" clip-path="url(#water-clip)"/>`,
+    `<path d="${shoreD}" fill="none" stroke="${theme.waterShallow}" stroke-width="${n(S * 0.02)}" clip-path="url(#water-clip)"/>`,
   )
 
   // Shore glow
   out.push(
-    `<use href="#water-shape" fill="none" stroke="${theme.shoreGlow}" stroke-width="${n(S * 0.015)}" filter="url(#shoreblur)" clip-path="url(#land-clip)"/>`,
+    `<path d="${shoreD}" fill="none" stroke="${theme.shoreGlow}" stroke-width="${n(S * 0.015)}" filter="url(#shoreblur)" clip-path="url(#land-clip)"/>`,
   )
 
   if (model.terrain.riverSlice) {

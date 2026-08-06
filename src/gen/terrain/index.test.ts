@@ -66,4 +66,15 @@ describe('sampleTerrain', () => {
       expect(t.water.length).toBeGreaterThan(0)
     })
   })
+
+  it('island+river: the river actually crosses the window (regression: metro-wide start sampling drowned island rivers)', () => {
+    for (const seed of [1, 42, 765298847]) {
+      const t = sampleTerrain({ ...base, landform: 'island', river: true, seed, size: 2 }, 2000)
+      expect(t.riverSlice, `seed ${seed}`).not.toBeNull()
+      const inWin = t.riverSlice!.course.some(
+        (pt) => pt.x >= 0 && pt.x <= 2000 && pt.y >= 0 && pt.y <= 2000,
+      )
+      expect(inWin, `seed ${seed}`).toBe(true)
+    }
+  }, 60000)
 })
