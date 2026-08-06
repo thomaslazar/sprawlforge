@@ -173,8 +173,12 @@ function safeUnion(acc: MultiPolygon, next: [number, number][][]): MultiPolygon 
         continue
       }
     }
-    // give up merging this one quad — the corridor loses a sliver at a
-    // single degenerate joint rather than crashing the whole sector
+    // ponytail: give up merging this one quad rather than retry harder —
+    // acc keeps every ring found so far (corridorPolygon returns all of
+    // them, not just the largest), so the real worst case is a gap at this
+    // one joint (the corridor splits into two components here), not a lost
+    // component. Upgrade to a finer epsilon ladder or a segment-local
+    // fallback offset if a gapped corridor ever shows up in practice.
     return acc
   }
 }
@@ -189,8 +193,16 @@ function safeUnion(acc: MultiPolygon, next: [number, number][][]): MultiPolygon 
  * (non-self-intersecting) rectangles regardless of bend angle, and
  * polygon-clipping's union handles merging overlapping quads at the joints
  * robustly, so the result is guaranteed simple.
+ *
+ * Returns every simple ring the union produced (largest first), not just
+ * the largest: a dropped quad (see safeUnion) can split the corridor into
+ * more than one component, and callers must feed all of them into their
+ * boolean op or silently lose a whole far-side piece (e.g. the river's far
+ * bank) instead of just gapping at one joint.
  */
-export function corridorPolygon(line: Pt[], width: number): Pt[] {
+const MIN_FRAGMENT_AREA = 1e-3 // numerical noise floor, not a policy minimum
+
+export function corridorPolygon(line: Pt[], width: number): Pt[][] {
   const h = width / 2
   const quads: [number, number][][][] = []
   for (let i = 0; i < line.length - 1; i++) {
@@ -211,14 +223,10 @@ export function corridorPolygon(line: Pt[], width: number): Pt[] {
   if (quads.length === 0) return []
   let merged: MultiPolygon = [quads[0]]
   for (let i = 1; i < quads.length; i++) merged = safeUnion(merged, quads[i])
-  let best: Pt[] = []
-  let bestArea = 0
-  for (const poly of merged) {
-    const ring = fromRing(poly[0])
-    const area = Math.abs(ringArea(ring))
-    if (area > bestArea) { bestArea = area; best = ring }
-  }
-  return best
+  return merged
+    .map((poly) => fromRing(poly[0]))
+    .filter((ring) => Math.abs(ringArea(ring)) > MIN_FRAGMENT_AREA)
+    .sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)))
 }
 
 /** push both endpoints outward along their segment so the corridor overshoots the boundary */
@@ -260,8 +268,8 @@ export function partitionPolygon(poly: Pt[], opts: PartitionOpts): { cells: Pt[]
     for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
       const cut = planCut(ring, opts)
       if (!cut) continue
-      const corridor = corridorPolygon(extendEnds(cut, opts.gap * 2), opts.gap)
-      const pieces = polygonClipping.difference([toRing(ring)], [toRing(corridor)])
+      const corridorRings = corridorPolygon(extendEnds(cut, opts.gap * 2), opts.gap)
+      const pieces = polygonClipping.difference([toRing(ring)], corridorRings.map((r) => [toRing(r)]))
       const rings = pieces
         .map((p) => fromRing(p[0]))
         .filter((r) => r.length >= 3 && Math.abs(ringArea(r)) > area * 0.001)

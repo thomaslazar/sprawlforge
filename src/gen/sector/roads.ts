@@ -109,7 +109,7 @@ export function districtDomains(terrain: Terrain, sizeM: number): Pt[][] {
   // locally-sampled carve width instead if river-heavy maps ever show
   // disconnected banks.
   const domain = river
-    ? polygonClipping.union(land, [[toRing(corridorPolygon(river.course, river.width * 6))]])
+    ? polygonClipping.union(land, corridorPolygon(river.course, river.width * 6).map((r) => [toRing(r)]))
     : polygonClipping.union(land)
   const window: [number, number][] = [[0, 0], [sizeM, 0], [sizeM, sizeM], [0, sizeM]]
   const clipped = polygonClipping.intersection(domain, [[window]])
@@ -147,9 +147,9 @@ export function partitionDistricts(
           id: `H${n}`, class: 'highway', width: HIGHWAY_W, name: null,
           points: [{ x: hx, y: bb.y }, { x: hx, y: bb.y + bb.h }],
         })
-        const corridor = corridorPolygon(
+        const corridorRings = corridorPolygon(
           [{ x: hx, y: bb.y - HIGHWAY_W }, { x: hx, y: bb.y + bb.h + HIGHWAY_W }], HIGHWAY_W)
-        const pieces = polygonClipping.difference([toRing(domain)], [toRing(corridor)])
+        const pieces = polygonClipping.difference([toRing(domain)], corridorRings.map((r) => [toRing(r)]))
         next.push(...pieces.map((p) => fromRing(p[0])).filter((r) => Math.abs(ringArea(r)) >= MIN_DISTRICT_AREA))
       } else {
         next.push(domain)

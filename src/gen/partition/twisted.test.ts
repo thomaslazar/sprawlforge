@@ -111,17 +111,19 @@ describe('partitionPolygon', () => {
 
 describe('corridorPolygon', () => {
   it('inflates a straight line to a rectangle-ish ring of the right width', () => {
-    const ring = corridorPolygon([{ x: 0, y: 0 }, { x: 100, y: 0 }], 10)
-    expect(ring).toHaveLength(4)
-    expect(Math.abs(ringArea(ring))).toBeCloseTo(1000, 0)
+    const rings = corridorPolygon([{ x: 0, y: 0 }, { x: 100, y: 0 }], 10)
+    expect(rings).toHaveLength(1)
+    expect(rings[0]).toHaveLength(4)
+    expect(Math.abs(ringArea(rings[0]))).toBeCloseTo(1000, 0)
   })
 
   it('handles a bent polyline', () => {
-    const ring = corridorPolygon([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }], 10)
+    const rings = corridorPolygon([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }], 10)
+    expect(rings).toHaveLength(1)
     // per-segment quads unioned at the joint — square-ish miter, not a raw sum of quads
-    expect(Math.abs(ringArea(ring))).toBeGreaterThan(1900)
-    expect(Math.abs(ringArea(ring))).toBeLessThan(2000)
-    expect(isSimple(ring)).toBe(true)
+    expect(Math.abs(ringArea(rings[0]))).toBeGreaterThan(1900)
+    expect(Math.abs(ringArea(rings[0]))).toBeLessThan(2000)
+    expect(isSimple(rings[0])).toBe(true)
   })
 
   it('does not self-intersect on a sharp bend at large width (river-corridor shape)', () => {
@@ -133,8 +135,21 @@ describe('corridorPolygon', () => {
       { x: 165, y: 30 },
       { x: 330, y: 45 },
     ]
-    const ring = corridorPolygon(line, 360)
-    expect(isSimple(ring)).toBe(true)
-    expect(() => polygonClipping.union([toRing(ring)])).not.toThrow()
+    const rings = corridorPolygon(line, 360)
+    expect(rings.length).toBeGreaterThan(0)
+    for (const ring of rings) {
+      expect(isSimple(ring)).toBe(true)
+      expect(() => polygonClipping.union([toRing(ring)])).not.toThrow()
+    }
+  })
+
+  it('returns every component, sorted largest-area-first (a dropped joint must gap, not vanish)', () => {
+    const rings = corridorPolygon(
+      [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 0, y: 200 }, { x: 0, y: 400 }],
+      10,
+    )
+    expect(rings.length).toBeGreaterThan(0)
+    const areas = rings.map((r) => Math.abs(ringArea(r)))
+    expect(areas).toEqual([...areas].sort((a, b) => b - a))
   })
 })

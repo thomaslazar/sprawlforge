@@ -82,6 +82,11 @@ function safeIntersection(ring: [number, number][], other: Polygon | MultiPolygo
         continue
       }
     }
+    // ponytail: give up and drop this one block/building footprint rather
+    // than retry harder — a rare coastal edge case, dropped silently rather
+    // than crashing the sector. Upgrade to a finer epsilon ladder (or a
+    // geometric fallback, e.g. clip against a slightly shrunk ring) if
+    // dropped footprints ever show up often enough to matter.
     return []
   }
 }
