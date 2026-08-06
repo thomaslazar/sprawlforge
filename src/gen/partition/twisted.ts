@@ -23,8 +23,8 @@ const ATTEMPTS = 3
 // one piece grabbing more than this share of the parent = sliver cut, retry
 const DEGENERATE_SHARE = 0.94
 
-const toRing = (pts: Pt[]): [number, number][] => pts.map((p) => [p.x, p.y])
-const fromRing = (ring: [number, number][]): Pt[] => {
+export const toRing = (pts: Pt[]): [number, number][] => pts.map((p) => [p.x, p.y])
+export const fromRing = (ring: [number, number][]): Pt[] => {
   const pts = ring.map(([x, y]) => ({ x, y }))
   const first = pts[0]
   const last = pts[pts.length - 1]

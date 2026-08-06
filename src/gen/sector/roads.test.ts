@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { pointInRings, type Pt } from '../geometry'
+import { bboxOf, pointInRings, type Pt } from '../geometry'
 import { sampleTerrain } from '../terrain'
 import { distToPolyline } from '../terrain/rivers'
 import type { SectorParams, Terrain } from '../types'
-import { layoutRoads } from './roads'
+import { districtDomains, layoutRoads, layoutStreets, partitionDistricts } from './roads'
+import { assignZones } from './zoning'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
@@ -215,5 +216,88 @@ describe('layoutRoads', () => {
       expect(roads.some((r) => r.bridge)).toBe(true)
       expect(Math.max(...sizes.values()) / pts.length).toBeGreaterThan(0.9)
     }
+  })
+})
+
+// dryTerrain: all-land, no water — reuse the existing all-land fixture
+const dryTerrain = noWater
+
+const lakeTerrain: Terrain = {
+  landform: 'inland', river: false, lakes: true, islands: false, metroSeed: 1,
+  water: [[[[1500, 1500], [2500, 1500], [2500, 2500], [1500, 2500]]]],
+  land: [[
+    [[0, 0], [4000, 0], [4000, 4000], [0, 4000]],
+    [[1500, 1500], [1500, 2500], [2500, 2500], [2500, 1500]], // lake hole
+  ]],
+  riverSlice: null,
+}
+
+const riverTerrain: Terrain = {
+  landform: 'inland', river: true, lakes: false, islands: false, metroSeed: 1,
+  water: [[[[1900, 0], [2100, 0], [2100, 4000], [1900, 4000]]]],
+  land: [
+    [[[0, 0], [1900, 0], [1900, 4000], [0, 4000]]],
+    [[[2100, 0], [4000, 0], [4000, 4000], [2100, 4000]]],
+  ],
+  riverSlice: { course: [{ x: 2000, y: 0 }, { x: 2000, y: 4000 }], width: 250 },
+}
+
+const isletTerrain: Terrain = {
+  landform: 'inland', river: false, lakes: false, islands: true, metroSeed: 1,
+  water: [],
+  land: [
+    [[[0, 0], [4000, 0], [4000, 4000], [0, 4000]]],
+    [[[10, 10], [40, 10], [40, 20], [10, 20]]], // 300 m² islet, well under MIN_DISTRICT_AREA
+  ],
+  riverSlice: null,
+}
+
+describe('districtDomains', () => {
+  it('returns land outer rings, filling lake holes', () => {
+    const domains = districtDomains(lakeTerrain)
+    expect(domains).toHaveLength(1)
+    expect(domains[0].length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('reconnects river banks into one domain', () => {
+    const domains = districtDomains(riverTerrain)
+    expect(domains).toHaveLength(1)
+  })
+
+  it('drops islet rings below the minimum district area', () => {
+    const domains = districtDomains(isletTerrain)
+    expect(domains).toHaveLength(1)
+  })
+})
+
+describe('partitionDistricts', () => {
+  it('is deterministic and covers the domain with districts', () => {
+    const a = partitionDistricts(base, dryTerrain)
+    const b = partitionDistricts(base, dryTerrain)
+    expect(a).toEqual(b)
+    expect(a.districtPolys.length).toBeGreaterThan(3)
+    expect(a.roads.some((r) => r.class === 'arterial')).toBe(true)
+  })
+
+  it('adds a highway for size >= 3', () => {
+    const { roads } = partitionDistricts({ ...base, size: 4 }, dryTerrain)
+    expect(roads.some((r) => r.class === 'highway')).toBe(true)
+  })
+})
+
+describe('layoutStreets', () => {
+  it('partitions each district by its own irregularity, 1:1 indexed', () => {
+    const { districtPolys } = partitionDistricts(base, dryTerrain)
+    const districts = assignZones(districtPolys, base, dryTerrain)
+    const { streets, blocksByDistrict } = layoutStreets(districts, base)
+    expect(blocksByDistrict).toHaveLength(districts.length)
+    expect(streets.length).toBeGreaterThan(0)
+    districts.forEach((d, i) => {
+      for (const block of blocksByDistrict[i]) {
+        const bb = bboxOf(block)
+        expect(bb.x).toBeGreaterThanOrEqual(d.bounds.x - 1)
+        expect(bb.x + bb.w).toBeLessThanOrEqual(d.bounds.x + d.bounds.w + 1)
+      }
+    })
   })
 })
