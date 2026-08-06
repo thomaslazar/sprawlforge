@@ -1,7 +1,7 @@
 import type { Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import type { Landform } from '../types'
-import { METRO_SIZE, makeFieldBase, sectorWindow, type TerrainFieldBase } from './field'
+import { METRO_SIZE, applyIslands, makeFieldBase, sectorWindow, type TerrainFieldBase } from './field'
 import { fractalNoise2D } from './noise'
 
 export interface River {
@@ -172,13 +172,13 @@ export function widthMultiplier(noise: (x: number, y: number) => number, t01: nu
 export function makeTerrainField(
   metroSeed: number,
   landform: Landform,
-  water: { river: boolean; lakes: boolean },
+  water: { river: boolean; lakes: boolean; islands: boolean },
   sizeM: number,
 ): TerrainField {
   const base = makeFieldBase(metroSeed, landform, water)
   const river = traceRiver(base, metroSeed, sizeM)
   const widthNoise = river ? fractalNoise2D(hashSeed(metroSeed, 'river-width')) : null
-  const height = (x: number, y: number): number => {
+  const heightWithRiver = (x: number, y: number): number => {
     const h = base.heightRaw(x, y)
     if (!river) return h
     const { dist: d, t01 } = nearestOnPolyline({ x, y }, river.course)
@@ -191,5 +191,8 @@ export function makeTerrainField(
     const s = t * t * (3 - 2 * t)
     return Math.min(h, CHANNEL_H * (1 - s) + h * s)
   }
+  const height = water.islands
+    ? applyIslands(heightWithRiver, metroSeed, sectorWindow(sizeM, landform, metroSeed))
+    : heightWithRiver
   return { ...base, height, river }
 }

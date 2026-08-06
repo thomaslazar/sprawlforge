@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { Landform } from '../types'
-import { METRO_SIZE, makeFieldBase, sectorWindow } from './field'
+import { METRO_SIZE, applyIslands, makeFieldBase, sectorWindow } from './field'
 
 const sizeM = 4000
-const DRY = { river: false, lakes: false }
+const DRY = { river: false, lakes: false, islands: false }
 const grid = (h: (x: number, y: number) => number, win: ReturnType<typeof sectorWindow>, n = 32) => {
   const vals: number[] = []
   for (let j = 0; j <= n; j++)
@@ -29,8 +29,8 @@ describe('makeFieldBase', () => {
       expect(win.x + win.w / 2).toBe(METRO_SIZE / 2)
     }
   })
-  it('coastal/island clear a water floor at small sizeM, where a centered window would be all-land (C3)', () => {
-    for (const landform of ['coastal', 'island'] as Landform[]) {
+  it('coastal clears a water floor at small sizeM, where a centered window would be all-land (C3)', () => {
+    for (const landform of ['coastal'] as Landform[]) {
       for (const seed of [1, 42, 999]) {
         const win = sectorWindow(2000, landform, seed)
         const frac = waterFrac(grid(makeFieldBase(seed, landform, DRY).heightRaw, win, 48))
@@ -73,15 +73,6 @@ describe('makeFieldBase', () => {
       expect(frac).toBeLessThan(0.5)
     }
   })
-  it('island: land inside, water at the window corners', () => {
-    for (const seed of [1, 42, 999]) {
-      const f = makeFieldBase(seed, 'island', DRY)
-      const win = sectorWindow(sizeM, 'island', seed)
-      expect(f.heightRaw(METRO_SIZE / 2, METRO_SIZE / 2)).toBeGreaterThan(0)
-      expect(f.heightRaw(win.x, win.y)).toBeLessThan(0)
-      expect(f.heightRaw(win.x + win.w, win.y + win.h)).toBeLessThan(0)
-    }
-  })
   it('inland + lakes: some water, far less than coastal, no sea', () => {
     for (const seed of [1, 42, 999]) {
       const f = makeFieldBase(seed, 'inland', { river: false, lakes: true })
@@ -97,8 +88,40 @@ describe('makeFieldBase', () => {
     expect(f.hasSea).toBe(true)
     expect(f.hasRiver).toBe(true)
   })
-  it('lakes modifier composes with any landform: island + lakes still has sea', () => {
-    const f = makeFieldBase(42, 'island', { river: false, lakes: true })
+  it('lakes modifier composes with any landform: coastal + lakes still has sea', () => {
+    const f = makeFieldBase(42, 'coastal', { river: false, lakes: true })
     expect(f.hasSea).toBe(true)
+  })
+})
+
+describe('applyIslands', () => {
+  it('no-op when the window has no wet candidates (e.g. inland without lakes)', () => {
+    const f = makeFieldBase(42, 'inland', DRY)
+    const win = centered(42)
+    const withIslands = applyIslands(f.heightRaw, 42, win)
+    for (const seed of [1, 42, 999]) {
+      const p = { x: win.x + win.w * 0.3, y: win.y + win.h * 0.7 }
+      expect(withIslands(p.x + seed, p.y)).toBe(f.heightRaw(p.x + seed, p.y))
+    }
+  })
+  it('breaches 0 at the islet center when the window has wet candidates (coastal)', () => {
+    for (const seed of [1, 42, 999]) {
+      const win = sectorWindow(sizeM, 'coastal', seed)
+      const base = makeFieldBase(seed, 'coastal', DRY)
+      const withIslands = applyIslands(base.heightRaw, seed, win)
+      // sample the window and confirm at least one point that was wet under
+      // the base field now reads dry (>= 0) under the islands modifier —
+      // proof a bump actually breached, not just proof the function ran
+      const n = 80 // grid spacing ~50m, well under the ~150-300m islet radius
+      let breached = false
+      for (let i = 0; i <= n && !breached; i++) {
+        for (let j = 0; j <= n && !breached; j++) {
+          const x = win.x + (i / n) * win.w
+          const y = win.y + (j / n) * win.h
+          if (base.heightRaw(x, y) < -0.08 && withIslands(x, y) >= 0) breached = true
+        }
+      }
+      expect(breached, `seed ${seed}`).toBe(true)
+    }
   })
 })

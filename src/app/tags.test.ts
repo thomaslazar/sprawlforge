@@ -14,6 +14,7 @@ describe('resolveTags', () => {
       landform: 'coastal',
       river: false,
       lakes: false,
+      islands: false,
       size: 6,
       density: 0.9,
       corpDominance: 0.85,
@@ -94,13 +95,14 @@ describe('materializeTags', () => {
 
   it('terrain materialization matches the generator resolution', () => {
     const seed = 1
-    const { landform, river, lakes } = resolveTerrain({
+    const { landform, river, lakes, islands } = resolveTerrain({
       ...DEFAULT_PARAMS, seed, pack: '', theme: '',
     } as SectorParams)
     const result = materializeTags(seed, [])
     expect(result).toContain(landform)
     expect(result.includes('river')).toBe(river)
     expect(result.includes('lakes')).toBe(lakes)
+    expect(result.includes('islands')).toBe(islands)
   })
 
   it('partial: river staged with no landform gains a landform and keeps river', () => {
@@ -123,6 +125,7 @@ describe('materialized tags drive generation honestly', () => {
       expect(tags).toContain(model.terrain.landform)
       expect(tags.includes('river')).toBe(model.terrain.river)
       expect(tags.includes('lakes')).toBe(model.terrain.lakes)
+      expect(tags.includes('islands')).toBe(model.terrain.islands)
     }
   }, 60000)
 })

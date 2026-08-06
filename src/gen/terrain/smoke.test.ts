@@ -4,7 +4,7 @@ import { sampleTerrain } from './index'
 
 const base: SectorParams = {
   seed: 0, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  landform: 'inland', river: false, lakes: false, piers: false, pack: 'generic', theme: 'neon',
+  landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 
 // outer rings add area, holes subtract — same convention as contour.test.ts
@@ -36,13 +36,19 @@ const WATER_FLOOR = 0.01 // 1% of window area
 // warp+noise pipeline per field instance instead of raising them again.
 const breathe = () => new Promise<void>((resolve) => setTimeout(resolve, 0))
 
+// islands alone implies no water floor (an islet only ever ADDS a small land
+// patch inside otherwise-existing water; it never creates water on its own)
 const WATER_COMBOS = [
-  ['none', false, false], ['river', true, false], ['lakes', false, true], ['both', true, true],
+  ['none', false, false, false],
+  ['river', true, false, false],
+  ['lakes', false, true, false],
+  ['islands', false, false, true],
+  ['river+lakes', true, true, false],
 ] as const
 
 describe('sampleTerrain smoke', () => {
   describe.each(LANDFORMS)('%s', (landform: Landform) => {
-    describe.each(WATER_COMBOS)('+ %s, seeds 0..39 at default size 4000', (_label, river, lakes) => {
+    describe.each(WATER_COMBOS)('+ %s, seeds 0..39 at default size 4000', (_label, river, lakes, islands) => {
       it('never throws; combos implying water clear the water floor', async () => {
         const sizeM = 4000
         const impliesWater = landform !== 'inland' || river || lakes
@@ -51,15 +57,15 @@ describe('sampleTerrain smoke', () => {
           if (seed % 5 === 4) await breathe()
           let t
           try {
-            t = sampleTerrain({ ...base, landform, river, lakes, seed }, sizeM)
+            t = sampleTerrain({ ...base, landform, river, lakes, islands, seed }, sizeM)
           } catch (err) {
-            failures.push(`${landform}/${river}/${lakes}/${seed}: threw ${(err as Error).message}`)
+            failures.push(`${landform}/${river}/${lakes}/${islands}/${seed}: threw ${(err as Error).message}`)
             continue
           }
           if (impliesWater) {
             const frac = waterArea(t.water) / (sizeM * sizeM)
             if (frac < WATER_FLOOR)
-              failures.push(`${landform}/${river}/${lakes}/${seed}: water frac ${frac.toFixed(4)} < floor`)
+              failures.push(`${landform}/${river}/${lakes}/${islands}/${seed}: water frac ${frac.toFixed(4)} < floor`)
           }
         }
         expect(failures).toEqual([])
@@ -68,7 +74,7 @@ describe('sampleTerrain smoke', () => {
   })
 
   describe.each([
-    ['coastal', false], ['coastal', true], ['island', false], ['island', true],
+    ['coastal', false], ['coastal', true], ['bay', false], ['bay', true],
   ] as const)('%s river=%s at sizes 2000/6000, seeds 0..14', (landform, river) => {
     it.each([2000, 6000] as const)('never throws and clears the water floor at size %d', async (sizeM) => {
       const failures: string[] = []

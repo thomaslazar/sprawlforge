@@ -18,11 +18,11 @@ function seedDir(metroSeed: number): { x: number; y: number } {
  * The sector window into the metro-scale field: always sizeM×sizeM,
  * centered on the metro except where centering would leave the window dry
  * or all-land at small sizeM (C3, spec §2 restoration). coastal pushes the
- * window along `dir` toward the waterline; bay toward its pocket; island
- * pushes toward its rim. This only moves the window's POSITION — heightRaw
- * stays a pure function of (x, y, metroSeed, landform) either way (see
- * field.test.ts "field is window-independent"). Water modifiers (river,
- * lakes) never move the window.
+ * window along `dir` toward the waterline; bay toward its pocket. This only
+ * moves the window's POSITION — heightRaw stays a pure function of
+ * (x, y, metroSeed, landform) either way (see field.test.ts "field is
+ * window-independent"). Water modifiers (river, lakes, islands) never move
+ * the window.
  */
 export function sectorWindow(sizeM: number, landform: Landform, metroSeed: number): Rect {
   const cx = METRO_SIZE / 2
@@ -49,12 +49,6 @@ export function sectorWindow(sizeM: number, landform: Landform, metroSeed: numbe
       // no-op until the window is small enough that a centered view would
       // miss the pocket's near rim (BAY_CENTER_OFFSET - BAY_RADIUS) entirely
       along = Math.max(0, BAY_CENTER_OFFSET - BAY_RADIUS - sizeM * 0.3)
-      break
-    case 'island':
-      // island radius is metro-fixed; a small window centered on the
-      // island is all-land. Push toward the rim until the shoreline
-      // crosses the frame.
-      along = Math.max(0, ISLAND_RADIUS - sizeM * 0.3)
       break
     default:
       along = 0
@@ -111,7 +105,6 @@ const WARP_SCALE = 1300
 const COAST_ANCHOR = 1200 // 0.3 * 4000
 const BAY_CENTER_OFFSET = 2200 // 0.55 * 4000
 const BAY_RADIUS = 1800 // 0.45 * 4000
-const ISLAND_RADIUS = 1520 // 0.38 * 4000
 // guaranteed gradient depth (raw numerator, /4000 below) at the coastal
 // window's farthest corner — 1600/4000 = 0.4, safely past NOISE_AMP/2
 // (0.275) so noise alone can never dry the whole window out
@@ -193,11 +186,6 @@ export function makeFieldBase(
       amp = 0.35
       break
     }
-    case 'island': {
-      gradient = (x, y) => (ISLAND_RADIUS - Math.hypot(x - cx, y - cy)) / 3000
-      amp = 0.35
-      break
-    }
   }
 
   const preLakeGradient = gradient
@@ -238,5 +226,59 @@ export function makeFieldBase(
     hasRiver: water.river,
     heightRaw: (x, y) => gradient(x, y) + noiseAt(x, y),
     heightSea: (x, y) => preLakeGradient(x, y) + noiseAt(x, y),
+  }
+}
+
+// Islands modifier (islands become a water modifier, not a landform): mirrors
+// the lakes dip above but inverted and window-scoped — a lake basin is a
+// metro-scale dip near the metro center (visible from whichever window
+// reaches it); an islet only matters if it lands inside the sector actually
+// being viewed, so candidates are sampled within the window itself rather
+// than at a fixed metro-scale position. Applied on top of the fully-resolved
+// height (post river-carve) so islets never land athwart a carved channel,
+// and never touch heightSea — same reasoning as lakes: heightSea is the
+// river tracer's "is this still sea" probe, and an islet breaching to land
+// there would falsely end a river next to open water it should keep tracing.
+const ISLET_WET_THRESHOLD = -0.08
+// ponytail: 60 uniform-random samples over the window is a probabilistic
+// hit test, not a guarantee — a seed whose wet area is a small fraction of
+// the window can still roll zero candidates and silently no-op even though
+// water is genuinely present. Raise the count (or switch to a jittered grid
+// scan) if smoke/uicheck ever show islands "not showing up" often enough to
+// matter.
+const ISLET_CANDIDATE_SAMPLES = 60
+const ISLET_MIN_COUNT = 1
+const ISLET_MAX_COUNT = 3
+const ISLET_RADIUS_MIN = 150
+const ISLET_RADIUS_MAX = 300
+const ISLET_BREACH_MARGIN = 0.1 // guarantees the bump clears 0, not just touches it
+
+export function applyIslands(
+  height: (x: number, y: number) => number,
+  metroSeed: number,
+  win: Rect,
+): (x: number, y: number) => number {
+  const rng = mulberry32(hashSeed(metroSeed, 'islets'))
+  const candidates: Pt[] = []
+  for (let k = 0; k < ISLET_CANDIDATE_SAMPLES; k++) {
+    const p = { x: win.x + rng.next() * win.w, y: win.y + rng.next() * win.h }
+    if (height(p.x, p.y) < ISLET_WET_THRESHOLD) candidates.push(p)
+  }
+  // no wet candidates in this window (e.g. inland without lakes) — no-op
+  if (candidates.length === 0) return height
+
+  const count = rng.int(ISLET_MIN_COUNT, ISLET_MAX_COUNT)
+  const islets = Array.from({ length: count }, (_, i) => {
+    const center = rng.pick(candidates)
+    const radius = ISLET_RADIUS_MIN + rng.next() * (ISLET_RADIUS_MAX - ISLET_RADIUS_MIN)
+    const shoreNoise = fractalNoise2D(hashSeed(metroSeed, 'islet-shore', i))
+    const bump = -height(center.x, center.y) + ISLET_BREACH_MARGIN
+    return { center, radius, shoreNoise, bump }
+  })
+
+  return (x, y) => {
+    let h = height(x, y)
+    for (const isl of islets) h += isl.bump * basinFalloff(x, y, isl.center, isl.radius, isl.shoreNoise)
+    return h
   }
 }

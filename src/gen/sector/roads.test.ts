@@ -7,7 +7,7 @@ import { layoutRoads } from './roads'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  landform: 'inland', river: false, lakes: false, piers: false, pack: 'generic', theme: 'neon',
+  landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 const sizeM = 4000
 const noWater = sampleTerrain(base, sizeM)
@@ -63,7 +63,7 @@ describe('layoutRoads', () => {
   })
   it('tolerates an all-water window (I5): no land yields no districts, no crash', () => {
     const allWater: Terrain = {
-      landform: 'coastal', river: false, lakes: false,
+      landform: 'coastal', river: false, lakes: false, islands: false,
       metroSeed: 1,
       water: [[[[0, 0], [sizeM, 0], [sizeM, sizeM], [0, sizeM]]]],
       land: [],
@@ -108,7 +108,7 @@ describe('layoutRoads', () => {
   it('joins at least one arterial across the highway gap (no uncrossable wall)', () => {
     const params: SectorParams = {
       seed: 119560026, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-      landform: 'coastal', river: false, lakes: false, piers: false, pack: 'generic', theme: 'neon',
+      landform: 'coastal', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
     }
     const terrain = sampleTerrain(params, sizeM)
     const { roads } = layoutRoads(params, terrain, sizeM)

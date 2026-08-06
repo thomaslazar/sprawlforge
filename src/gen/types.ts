@@ -8,7 +8,7 @@ export const ZONE_TYPES = [
 
 export type ZoneType = (typeof ZONE_TYPES)[number]
 
-export const LANDFORMS = ['inland', 'coastal', 'bay', 'island'] as const
+export const LANDFORMS = ['inland', 'coastal', 'bay'] as const
 
 export type Landform = (typeof LANDFORMS)[number]
 
@@ -29,6 +29,8 @@ export interface SectorParams {
   /** water modifiers — independent of landform and each other */
   river: boolean
   lakes: boolean
+  /** offshore islets inside water — independent of landform and each other */
+  islands: boolean
   /** pier/harbor decoration pass (spec §4, last task) */
   piers: boolean
   /** flavor pack id */
@@ -48,6 +50,7 @@ export interface Terrain {
   /** resolved water modifiers (see SectorParams) */
   river: boolean
   lakes: boolean
+  islands: boolean
   metroSeed: number
   /** window-local multipolygons, meters, origin top-left */
   water: Array<Array<Array<[number, number]>>>

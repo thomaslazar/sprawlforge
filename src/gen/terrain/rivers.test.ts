@@ -4,8 +4,8 @@ import { fractalNoise2D } from './noise'
 import { makeTerrainField, traceRiver, widthMultiplier } from './rivers'
 
 const sizeM = 4000
-const DRY = { river: false, lakes: false }
-const RIVER = { river: true, lakes: false }
+const DRY = { river: false, lakes: false, islands: false }
+const RIVER = { river: true, lakes: false, islands: false }
 
 describe('traceRiver', () => {
   it('returns null when there is no river modifier', () => {

@@ -6,7 +6,7 @@ import { getTheme, themes } from './theme'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  landform: 'coastal', river: false, lakes: false, piers: false, pack: 'generic', theme: 'neon',
+  landform: 'coastal', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 const model = generateSector(base)
 
@@ -52,7 +52,7 @@ describe('renderSector', () => {
   const handModel = (pois: SectorModel['pois']): SectorModel => ({
     meta: { seed: 1, generatorVersion: GENERATOR_VERSION, params: base, sizeM: 1000, metroSeed: 1 },
     terrain: {
-      landform: 'inland', river: false, lakes: false,
+      landform: 'inland', river: false, lakes: false, islands: false,
       metroSeed: 1,
       water: [],
       land: [[[[0, 0], [1000, 0], [1000, 1000], [0, 1000]]]],
@@ -72,7 +72,7 @@ describe('renderSector', () => {
   const wetModel: SectorModel = {
     meta: { seed: 1, generatorVersion: GENERATOR_VERSION, params: base, sizeM: 1000, metroSeed: 1 },
     terrain: {
-      landform: 'coastal', river: true, lakes: false,
+      landform: 'coastal', river: true, lakes: false, islands: false,
       metroSeed: 1,
       water: [[[[250, 250], [750, 250], [750, 750], [250, 750]]]],
       // land is the window MINUS the water square (outer ring + hole) —
@@ -215,7 +215,7 @@ describe('renderSector', () => {
     // must not appear in the shallow-band stroke path
     const wet = handModel([])
     wet.terrain = {
-      landform: 'coastal', metroSeed: 1, river: false, lakes: false, riverSlice: null,
+      landform: 'coastal', metroSeed: 1, river: false, lakes: false, islands: false, riverSlice: null,
       water: [[[[600, 200], [1000, 200], [1000, 800], [600, 800]]]],
       land: [[[[0, 0], [1000, 0], [1000, 200], [600, 200], [600, 800], [1000, 800], [1000, 1000], [0, 1000]]]],
     }

@@ -4,7 +4,7 @@ import { sampleTerrain } from './index'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  landform: 'coastal', river: false, lakes: false, piers: false, pack: 'generic', theme: 'neon',
+  landform: 'coastal', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 
 describe('sampleTerrain', () => {
@@ -46,9 +46,9 @@ describe('sampleTerrain', () => {
       expect(t.lakes).toBe(true)
       expect(t.water.length).toBeGreaterThan(0)
     })
-    it('island + river: both flags resolved on the sampled Terrain', () => {
-      const t = sampleTerrain({ ...base, landform: 'island', river: true, lakes: false }, 4000)
-      expect(t.landform).toBe('island')
+    it('bay + river: both flags resolved on the sampled Terrain', () => {
+      const t = sampleTerrain({ ...base, landform: 'bay', river: true, lakes: false }, 4000)
+      expect(t.landform).toBe('bay')
       expect(t.river).toBe(true)
       expect(t.water.length).toBeGreaterThan(0)
     })
@@ -67,9 +67,9 @@ describe('sampleTerrain', () => {
     })
   })
 
-  it('island+river: the river actually crosses the window (regression: metro-wide start sampling drowned island rivers)', () => {
+  it('bay+river: the river actually crosses the window (regression: metro-wide start sampling drowned small-landmass rivers)', () => {
     for (const seed of [1, 42, 765298847]) {
-      const t = sampleTerrain({ ...base, landform: 'island', river: true, seed, size: 2 }, 2000)
+      const t = sampleTerrain({ ...base, landform: 'bay', river: true, seed, size: 2 }, 2000)
       expect(t.riverSlice, `seed ${seed}`).not.toBeNull()
       const inWin = t.riverSlice!.course.some(
         (pt) => pt.x >= 0 && pt.x <= 2000 && pt.y >= 0 && pt.y <= 2000,
@@ -77,4 +77,24 @@ describe('sampleTerrain', () => {
       expect(inWin, `seed ${seed}`).toBe(true)
     }
   }, 60000)
+
+  describe('islands water modifier', () => {
+    it('coastal+islands: land polygon count exceeds coastal-without-islands for at least 2 of 3 seeds', () => {
+      let wins = 0
+      for (const seed of [1, 42, 999]) {
+        const dry = sampleTerrain({ ...base, landform: 'coastal', seed }, 4000)
+        const wet = sampleTerrain({ ...base, landform: 'coastal', islands: true, seed }, 4000)
+        if (wet.land.length > dry.land.length) wins += 1
+      }
+      expect(wins).toBeGreaterThanOrEqual(2)
+    })
+    it('inland+islands with no lakes: identical to inland alone (no wet candidates, no-op)', () => {
+      // `islands` itself is the resolved request flag, so it legitimately
+      // differs — everything the modifier could actually change (water/land
+      // geometry, river) must not
+      const { islands: _t, ...t } = sampleTerrain({ ...base, landform: 'inland', islands: true }, 4000)
+      const { islands: _c, ...control } = sampleTerrain({ ...base, landform: 'inland', islands: false }, 4000)
+      expect(t).toEqual(control)
+    })
+  })
 })

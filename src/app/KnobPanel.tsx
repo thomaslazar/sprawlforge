@@ -5,9 +5,9 @@ import type { AppState } from './params'
 import { t } from './strings'
 import { TAG_GROUPS, type Tag, type TagGroup } from './tags'
 
-// river/lakes/piers: free toggles, no exclusion — presented together as a
-// water-themed chip row (piers is water-themed too: harbor decor).
-const WATER_TAGS: Tag[] = ['river', 'lakes', 'piers']
+// river/lakes/islands/piers: free toggles, no exclusion — presented together
+// as a water-themed chip row (piers is water-themed too: harbor decor).
+const WATER_TAGS: Tag[] = ['river', 'lakes', 'islands', 'piers']
 
 interface Props {
   applied: AppState

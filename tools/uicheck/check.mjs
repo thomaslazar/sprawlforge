@@ -142,21 +142,23 @@ await page.getByRole('button', { name: 'Reroll' }).click()
 await page.getByRole('button', { name: 'Reroll', exact: true }).waitFor({ timeout: 2000 })
 if ((await page.locator('svg').innerHTML()) === svgBeforeBusyReroll) fail('reroll did not change the map')
 
-// terrain sweep: the 4 landforms alone, plus composable combos —
+// terrain sweep: the 3 landforms alone, plus composable combos —
 // every entry renders buildings, wet entries show water, river combos
-// have bridges (composable terrain: landform + independent water toggles)
+// have bridges (composable terrain: landform + independent water toggles).
+// islands is a water modifier now (islets inside water), not a landform —
+// `coastal,islands` replaces the old standalone `island` entry.
 const TERRAIN_SWEEP = [
   { tags: 'inland', shot: 'inland', wet: false, bridge: false },
   { tags: 'coastal', shot: 'coastal', wet: true, bridge: false },
   { tags: 'bay', shot: 'bay', wet: true, bridge: false },
-  { tags: 'island', shot: 'island', wet: true, bridge: false },
+  { tags: 'coastal,islands', shot: 'coastal-islands', wet: true, bridge: false },
   { tags: 'coastal,river', shot: 'coastal-river', wet: true, bridge: true },
   { tags: 'inland,lakes', shot: 'inland-lakes', wet: true, bridge: false },
   // honest bridge geometry (no sideways "pull onto network" hack — see
   // bridges.ts) means not every river/coast crossing is bridgeable; seed 42
-  // happens to have no genuinely two-bank-landable crossing on this island
+  // happens to have no genuinely two-bank-landable crossing on this bay
   // shape, so this entry pins a seed known to produce one instead
-  { tags: 'island,river', shot: 'island-river', wet: true, bridge: true, seed: 12 },
+  { tags: 'bay,river', shot: 'bay-river', wet: true, bridge: true, seed: 12 },
 ]
 for (const { tags, shot, wet, bridge, seed = 42 } of TERRAIN_SWEEP) {
   await page.goto(`${BASE}/?seed=${seed}&tags=${tags}`)
@@ -187,7 +189,7 @@ for (const { tags, shot, wet, bridge, seed = 42 } of TERRAIN_SWEEP) {
 // the chips/URL must materialize that roll instead of showing nothing staged
 await page.goto(`${BASE}/?seed=42`)
 await page.waitForSelector('svg')
-const LANDFORM_LABELS = ['Inland', 'Coastal', 'Bay', 'Island']
+const LANDFORM_LABELS = ['Inland', 'Coastal', 'Bay']
 let pressedLandform = null
 for (const label of LANDFORM_LABELS) {
   if ((await page.getByRole('button', { name: label }).getAttribute('aria-pressed')) === 'true') {

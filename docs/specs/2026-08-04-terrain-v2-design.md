@@ -34,10 +34,11 @@ at once; there are no seams to stitch.
 
 - Seeded fractal value noise (hand-rolled, ~40 lines, no dependency;
   deterministic from the rng module — no `Math.random`).
-- Plus a **gradient field** whose shape family sets the landmass character:
+- Plus a **gradient field** whose shape family sets the landmass character —
+  city-scale terrain only; "city on an island" is a metroplex-scale concept
+  (ROADMAP), not a sector landform:
   - concave gradient → bay
-  - convex → peninsula / headland
-  - radial → island(s)
+  - convex → peninsula / headland (not yet exposed as a landform tag)
   - linear → coastal strip
   - flat-high → inland (little or no water)
 - Water = everywhere `height < 0` (threshold). A **water-level knob**
@@ -45,11 +46,19 @@ at once; there are no seams to stitch.
 
 ### One contouring pass, all features
 
-Coast, lakes, islands and river channels all fall out of the same
+Coast, lakes, islets and river channels all fall out of the same
 marching-squares pass over the sampled window:
 
 - a below-threshold basin inland is a **lake**
-- an above-threshold patch inside water is an **island**
+- an above-threshold patch inside water is an **islet** — either one that
+  falls out of the landform's own noise, or one placed deliberately by the
+  **islands** water modifier (radial bump, same technique as the lake dip
+  but inverted: raises height above 0 instead of dipping it below).
+  Not purpose-built for habitation in v1 — no dedicated logic settles an
+  islet, and its small footprint usually falls between district cells; the
+  generic BSP/clipping pipeline is only tolerant of one occasionally
+  catching a small district, not designed to prevent it (deferred: proper
+  buildable islets + causeways, see ROADMAP)
 - the carved river channel (below) contours into **banks** automatically
 
 No per-feature special-case geometry.
@@ -112,14 +121,14 @@ All numeric knobs disappear behind **template tags** — clickable chips in
 the UI, a comma list in the URL. Internally the generator keeps taking
 `SectorParams` numerics; a fixed, deterministic tag→value table maps
 between them. Landform tags come in an **exclusion group** (selecting one
-deselects its siblings); water is two **independent toggles** on top of any
-landform, so features compose — inland+lakes, island+river,
+deselects its siblings); water is three **independent toggles** on top of any
+landform, so features compose — inland+lakes, coastal+islands,
 coastal+river+lakes all resolve directly instead of needing their own kind:
 
 | Group    | Tags                                     | Maps to |
 |----------|-------------------------------------------|---------|
-| terrain  | `inland \| coastal \| bay \| island` (none = auto) | window anchor + gradient family |
-| water    | `river`, `lakes` (free toggles, independent of terrain and each other) | river trace / lake-basin modifier |
+| terrain  | `inland \| coastal \| bay` (none = auto)  | window anchor + gradient family |
+| water    | `river`, `lakes`, `islands` (free toggles, independent of terrain and each other) | river trace / lake-basin modifier / islet-bump modifier |
 | size     | `small \| medium \| large`                | sector edge km |
 | density  | `sparse \| dense \| packed`               | density |
 | power    | `corp-run \| balanced \| fringe`          | corpDominance |

@@ -5,7 +5,7 @@ import { fillBuildings } from './buildings'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  landform: 'inland', river: false, lakes: false, piers: false, pack: 'generic', theme: 'neon',
+  landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 const districts: District[] = [
   { id: 'D01', zone: 'corp', name: '', bounds: { x: 0, y: 0, w: 600, h: 600 }, shore: false, labelAt: { x: 300, y: 300 } },
@@ -18,14 +18,14 @@ const blocksByDistrict: Rect[][] = [
   [{ x: 2850, y: 10, w: 300, h: 300 }],
 ]
 const dryTerrain: Terrain = {
-  landform: 'inland', river: false, lakes: false,
+  landform: 'inland', river: false, lakes: false, islands: false,
   metroSeed: 1,
   water: [],
   land: [[[[0, 0], [4000, 0], [4000, 4000], [0, 4000]]]],
   riverSlice: null,
 }
 const eastWater: Terrain = {
-  landform: 'coastal', river: false, lakes: false,
+  landform: 'coastal', river: false, lakes: false, islands: false,
   metroSeed: 1,
   water: [[[[3000, 0], [4000, 0], [4000, 4000], [3000, 4000]]]],
   land: [[[[0, 0], [3000, 0], [3000, 4000], [0, 4000]]]],

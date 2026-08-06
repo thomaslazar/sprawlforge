@@ -5,7 +5,7 @@ import { deriveDistricts, generateSector } from './generate'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  landform: 'inland', river: false, lakes: false, piers: false, pack: 'generic', theme: 'neon',
+  landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 
 describe('generateSector', () => {

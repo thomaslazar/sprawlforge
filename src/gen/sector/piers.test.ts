@@ -5,10 +5,10 @@ import { placePiers } from './piers'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  landform: 'coastal', river: false, lakes: false, piers: true, pack: 'generic', theme: 'neon',
+  landform: 'coastal', river: false, lakes: false, islands: false, piers: true, pack: 'generic', theme: 'neon',
 }
 const eastWater: Terrain = {
-  landform: 'coastal', river: false, lakes: false, metroSeed: 1,
+  landform: 'coastal', river: false, lakes: false, islands: false, metroSeed: 1,
   water: [[[[3000, 0], [4000, 0], [4000, 4000], [3000, 4000]]]],
   land: [[[[0, 0], [3000, 0], [3000, 4000], [0, 4000]]]],
   riverSlice: null,

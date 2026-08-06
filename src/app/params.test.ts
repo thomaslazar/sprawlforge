@@ -18,7 +18,7 @@ describe('AppState codec', () => {
   })
 
   it('ignores legacy numeric params entirely', () => {
-    const s = stateFromSearch('?coast=1&density=0.7&size=8&corp=0.9&poi=0.9&terrain=island', 55)
+    const s = stateFromSearch('?coast=1&density=0.7&size=8&corp=0.9&poi=0.9&terrain=coastal', 55)
     expect(s).toEqual({ seed: 55, tags: [], pack: 'generic', theme: 'neon' })
   })
 

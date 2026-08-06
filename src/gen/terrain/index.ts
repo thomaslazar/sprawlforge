@@ -8,6 +8,7 @@ interface ResolvedTerrain {
   landform: Landform
   river: boolean
   lakes: boolean
+  islands: boolean
 }
 
 // M4/composable-terrain: weighted toward wet landforms — an unweighted pick
@@ -15,14 +16,21 @@ interface ResolvedTerrain {
 // water/river rendering the tool exists to demo. Explicit staging (any
 // landform chosen, or any water toggle set) is always exact — the seeded
 // rolls below only fire for a fully-auto request.
+//
+// Draw order (rng call ordinal) is fixed: landform, river, lakes, islands.
+// islands is appended LAST specifically so it never shifts the river/lakes
+// draws to a different call ordinal — they read the exact same rng calls as
+// before islands existed.
 export function resolveTerrain(params: SectorParams): ResolvedTerrain {
   const rng = mulberry32(hashSeed(params.seed, 'terrain-kind'))
-  if (params.landform !== 'auto') return { landform: params.landform, river: params.river, lakes: params.lakes }
+  if (params.landform !== 'auto')
+    return { landform: params.landform, river: params.river, lakes: params.lakes, islands: params.islands }
   const landform = rng.weighted<Landform>([
-    ['inland', 1.5], ['coastal', 2], ['bay', 1.5], ['island', 1],
+    ['inland', 1.5], ['coastal', 2], ['bay', 1.5],
   ])
-  if (params.river || params.lakes) return { landform, river: params.river, lakes: params.lakes }
-  return { landform, river: rng.chance(0.35), lakes: rng.chance(0.25) }
+  if (params.river || params.lakes || params.islands)
+    return { landform, river: params.river, lakes: params.lakes, islands: params.islands }
+  return { landform, river: rng.chance(0.35), lakes: rng.chance(0.25), islands: rng.chance(0.2) }
 }
 
 const GRID_N = 128
@@ -30,8 +38,8 @@ const RIVER_MARGIN = 500
 
 export function sampleTerrain(params: SectorParams, sizeM: number): Terrain {
   const metroSeed = hashSeed(params.seed, 'metro-ctx')
-  const { landform, river, lakes } = resolveTerrain(params)
-  const water = { river, lakes }
+  const { landform, river, lakes, islands } = resolveTerrain(params)
+  const water = { river, lakes, islands }
   const field = makeTerrainField(metroSeed, landform, water, sizeM)
   const win = sectorWindow(sizeM, landform, metroSeed)
   const { water: waterPolys, land } = contourWater(field.height, win, GRID_N)
@@ -49,5 +57,5 @@ export function sampleTerrain(params: SectorParams, sizeM: number): Terrain {
       riverSlice = { course: local, width: (field.river.widthStart + field.river.widthEnd) / 2 }
   }
 
-  return { landform, river, lakes, metroSeed, water: waterPolys, land, riverSlice }
+  return { landform, river, lakes, islands, metroSeed, water: waterPolys, land, riverSlice }
 }

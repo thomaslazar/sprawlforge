@@ -5,7 +5,10 @@
 1. **Sector generator** — v1 per `docs/specs/2026-08-03-sprawlforge-design.md` ✅
 2. **Terrain v2 + organic map redesign** — phases 1+2 ✅; phase 3 (organic
    streets) needs its own spec; see below
-3. **Metroplex generator** — parent of sectors, proves linkage chain
+3. **Metroplex generator** — parent of sectors, proves linkage chain.
+   Candidate metroplex-scale landform: **city on an island** — a whole
+   metro occupying an island, distinct from the sector-scale `islands`
+   water modifier (small uninhabited islets inside a sector's water).
 4. **Battlemap generator** — interiors/street combat, seeded from sector buildings
 5. **Node map generator** — abstract location graphs
 
@@ -51,6 +54,11 @@ core (clipping, insetting, filling non-rectangular shapes).
 - **Elevation / terrain height** on sector maps.
 - **Tributaries and confluences** — branch networks and river merges.
 - **Shallow-water bands option** — rendering distinct shallow zones on water.
+- **Buildable islets + causeways** — v1 `islands` water modifier islets get
+  no dedicated settlement logic (an occasional small district landing on
+  one via the generic BSP/clipping pipeline is tolerated, not designed
+  for). Deliberately settling an islet, connected back to the mainland by a
+  causeway/bridge, is a follow-up.
 - **Ships and harbor props** — ocean-going vessels, docks, shipping infrastructure.
 - **Transit lines** — rail/metro/monorail layer. Good v2 candidate for
   sector maps.
