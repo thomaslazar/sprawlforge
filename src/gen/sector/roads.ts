@@ -38,13 +38,12 @@ function joinArterialsAcrossHighway(roads: Road[]): Road[] {
   const replaced: Road[] = []
   // polyline cuts are no longer axis-aligned (twisted bisection), so a road
   // "faces" the highway edge if either endpoint of its polyline sits on it —
-  // no horizontality check. Report which end matched (first/last) alongside
-  // the point itself.
-  const endInfo = (r: Road, x: number): { at: Pt; end: 'first' | 'last' } | null => {
+  // no horizontality check.
+  const endInfo = (r: Road, x: number): { at: Pt } | null => {
     const first = r.points[0]
     const last = r.points[r.points.length - 1]
-    if (Math.abs(first.x - x) <= OVERPASS_EDGE_TOL) return { at: first, end: 'first' }
-    if (Math.abs(last.x - x) <= OVERPASS_EDGE_TOL) return { at: last, end: 'last' }
+    if (Math.abs(first.x - x) <= OVERPASS_EDGE_TOL) return { at: first }
+    if (Math.abs(last.x - x) <= OVERPASS_EDGE_TOL) return { at: last }
     return null
   }
   // connectors are their own 2-point roads — every water-clipping/truncation
@@ -190,8 +189,16 @@ export function districtDomains(terrain: Terrain): Pt[][] {
   const land: MultiPolygon = terrain.land.map((poly) => [poly[0]])
   if (land.length === 0) return []
   const river = terrain.riverSlice
+  // ponytail: riverSlice.width is a metro-wide constant, but the actually
+  // carved channel can run several times wider locally (envelope taper ×
+  // multiplier × near-sea-level spread) — a tight ×2 corridor can miss one
+  // bank and leave the domain split with no arterial crossing. ×6 is
+  // generous on purpose: over-coverage here is harmless (only feeds the
+  // union; near-bank fabric still clips to land downstream). Pass a
+  // locally-sampled carve width instead if river-heavy maps ever show
+  // disconnected banks.
   const domain = river
-    ? polygonClipping.union(land, [[toRing(corridorPolygon(river.course, river.width * 2))]])
+    ? polygonClipping.union(land, [[toRing(corridorPolygon(river.course, river.width * 6))]])
     : polygonClipping.union(land)
   return domain
     .map((p) => fromRing(p[0]))

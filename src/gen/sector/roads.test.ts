@@ -242,6 +242,19 @@ const riverTerrain: Terrain = {
   riverSlice: { course: [{ x: 2000, y: 0 }, { x: 2000, y: 4000 }], width: 250 },
 }
 
+// gap (400 m) wider than 2×riverSlice.width (200) but under 6× (600) — a
+// tight ×2 reconnect corridor misses both banks; ×6 (the actual carve can
+// run much wider than the metro-wide width constant) reaches them
+const wideRiverTerrain: Terrain = {
+  landform: 'inland', river: true, lakes: false, islands: false, metroSeed: 1,
+  water: [[[[1800, 0], [2200, 0], [2200, 4000], [1800, 4000]]]],
+  land: [
+    [[[0, 0], [1800, 0], [1800, 4000], [0, 4000]]],
+    [[[2200, 0], [4000, 0], [4000, 4000], [2200, 4000]]],
+  ],
+  riverSlice: { course: [{ x: 2000, y: 0 }, { x: 2000, y: 4000 }], width: 100 },
+}
+
 const isletTerrain: Terrain = {
   landform: 'inland', river: false, lakes: false, islands: true, metroSeed: 1,
   water: [],
@@ -261,6 +274,11 @@ describe('districtDomains', () => {
 
   it('reconnects river banks into one domain', () => {
     const domains = districtDomains(riverTerrain)
+    expect(domains).toHaveLength(1)
+  })
+
+  it('reconnects banks even when the channel runs wider than 2x the width constant', () => {
+    const domains = districtDomains(wideRiverTerrain)
     expect(domains).toHaveLength(1)
   })
 
