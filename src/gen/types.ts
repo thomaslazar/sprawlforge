@@ -1,12 +1,16 @@
 import type { Pt, Rect } from './geometry'
 
-export const GENERATOR_VERSION = 1
+export const GENERATOR_VERSION = 3
 
 export const ZONE_TYPES = [
   'corp', 'residential', 'slum', 'industrial', 'entertainment', 'docks',
 ] as const
 
 export type ZoneType = (typeof ZONE_TYPES)[number]
+
+export const LANDFORMS = ['inland', 'coastal', 'bay'] as const
+
+export type Landform = (typeof LANDFORMS)[number]
 
 export type RoadClass = 'highway' | 'arterial' | 'street'
 
@@ -20,20 +24,40 @@ export interface SectorParams {
   corpDominance: number
   /** 0..1 — POI frequency */
   poiDensity: number
-  coast: boolean
+  /** base landform; 'auto' resolves deterministically from the seed */
+  landform: Landform | 'auto'
+  /** water modifiers — independent of landform and each other */
   river: boolean
+  lakes: boolean
+  /** offshore islets inside water — independent of landform and each other */
+  islands: boolean
+  /** pier/harbor decoration pass (spec §4, last task) */
+  piers: boolean
   /** flavor pack id */
   pack: string
   /** theme id (render-side concern, carried in params for URL round-trip) */
   theme: string
 }
 
-export interface Water {
-  kind: 'none' | 'coast' | 'river'
-  /** closed polygon in meters; empty when kind === 'none' */
-  polygon: Pt[]
-  /** axis-aligned bounding rect used to keep land layout out of water; null when none */
-  bounds: Rect | null
+export interface RiverSlice {
+  /** window-local course polyline (clipped to the window, margin included) */
+  course: Pt[]
+  width: number
+}
+
+export interface Terrain {
+  landform: Landform
+  /** resolved water modifiers (see SectorParams) */
+  river: boolean
+  lakes: boolean
+  islands: boolean
+  metroSeed: number
+  /** window-local multipolygons, meters, origin top-left */
+  water: Array<Array<Array<[number, number]>>>
+  land: Array<Array<Array<[number, number]>>>
+  /** river course geometry actually in-window; null even when `river` is true
+   * if the traced course never crosses this sector's window */
+  riverSlice: RiverSlice | null
 }
 
 export interface Road {
@@ -44,6 +68,8 @@ export interface Road {
   /** total paved width, meters */
   width: number
   name: string | null
+  /** true for a bridge span crossing water */
+  bridge?: boolean
 }
 
 export interface District {
@@ -51,12 +77,18 @@ export interface District {
   zone: ZoneType
   name: string
   bounds: Rect
+  shore: boolean
+  /** area-weighted centroid of the district's surviving blocks — where the
+   * label anchors; unlike bounds' center, never falls in open water. */
+  labelAt: Pt
 }
 
 export interface Block {
   id: string
   districtId: string
   rect: Rect
+  /** outer ring, meters; equals rect's 4 corners unless clipped by water */
+  footprint: Pt[]
 }
 
 export interface Building {
@@ -64,6 +96,15 @@ export interface Building {
   blockId: string
   districtId: string
   rect: Rect
+  /** outer ring, meters; equals rect's 4 corners unless clipped by water */
+  footprint: Pt[]
+}
+
+export interface Pier {
+  id: string
+  /** deck centerline, land -> water */
+  points: [Pt, Pt]
+  width: number
 }
 
 export interface Poi {
@@ -84,11 +125,13 @@ export interface SectorModel {
     params: SectorParams
     /** sector edge length in meters */
     sizeM: number
+    metroSeed: number
   }
-  water: Water
+  terrain: Terrain
   roads: Road[]
   districts: District[]
   blocks: Block[]
   buildings: Building[]
   pois: Poi[]
+  piers: Pier[]
 }

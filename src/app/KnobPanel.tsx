@@ -1,72 +1,153 @@
-import type { SectorParams } from '../gen/types'
+import { useEffect, useState } from 'react'
 import { packs } from '../gen/names/packs'
 import { themes } from '../render/theme'
+import type { AppState } from './params'
 import { t } from './strings'
+import { TAG_GROUPS, type Tag, type TagGroup } from './tags'
+
+// river/lakes/islands/piers: free toggles, no exclusion — presented together
+// as a water-themed chip row (piers is water-themed too: harbor decor).
+const WATER_TAGS: Tag[] = ['river', 'lakes', 'islands', 'piers']
 
 interface Props {
-  params: SectorParams
-  onChange: (p: SectorParams) => void
+  applied: AppState
+  pendingTags: Tag[]
+  busy: boolean
+  onChange: (s: AppState) => void
+  onPendingTagsChange: (tags: Tag[]) => void
   onReroll: () => void
   onExport: (kind: 'svg' | 'png' | 'pdf') => void
 }
 
-function Slider(props: {
+// two independent visual channels: `pending` (staged chip selection, darker
+// fill) and `applied` (what the visible map was actually built with, a
+// lighter ring) — they can disagree until the next Reroll.
+function Chip({
+  label,
+  pending,
+  applied,
+  onClick,
+  disabled,
+  title,
+}: {
   label: string
-  value: number
-  min: number
-  max: number
-  step: number
-  onChange: (v: number) => void
+  pending: boolean
+  applied: boolean
+  onClick: () => void
+  disabled?: boolean
+  title?: string
 }) {
   return (
-    <label style={{ display: 'block', marginBottom: 12 }}>
-      {props.label}: {props.value}
-      <input
-        type="range"
-        min={props.min}
-        max={props.max}
-        step={props.step}
-        value={props.value}
-        onChange={(e) => props.onChange(Number(e.target.value))}
-        style={{ width: '100%' }}
-      />
-    </label>
+    <button
+      type="button"
+      aria-pressed={pending}
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      style={{
+        padding: '4px 10px',
+        marginRight: 6,
+        marginBottom: 6,
+        borderRadius: 999,
+        border: '1px solid #888',
+        boxShadow: applied ? '0 0 0 2px #9fd8ff' : 'none',
+        background: pending ? '#2323a0' : 'transparent',
+        color: pending ? '#fff' : 'inherit',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? 0.4 : 1,
+      }}
+    >
+      {label}
+    </button>
   )
 }
 
-export function KnobPanel({ params, onChange, onReroll, onExport }: Props) {
-  const set = <K extends keyof SectorParams>(key: K, value: SectorParams[K]) =>
-    onChange({ ...params, [key]: value })
+export function KnobPanel({ applied, pendingTags, busy, onChange, onPendingTagsChange, onReroll, onExport }: Props) {
+  const setPack = (pack: string) => onChange({ ...applied, pack })
+  const setTheme = (theme: string) => onChange({ ...applied, theme })
+
+  // seed regenerates the map (expensive) — apply on commit only, not per keystroke
+  const [seedInput, setSeedInput] = useState(String(applied.seed))
+  useEffect(() => setSeedInput(String(applied.seed)), [applied.seed])
+  const commitSeed = () => {
+    const seed = Number(seedInput) >>> 0
+    if (seed !== applied.seed) onChange({ ...applied, seed })
+  }
+
+  const isDry = (tags: Tag[]): boolean =>
+    tags.includes('inland') && !tags.includes('river') && !tags.includes('lakes')
+  // piers need water — auto-unstage a staged piers chip the moment the
+  // staged combo goes explicitly dry (inland, no river, no lakes)
+  const dryGate = (tags: Tag[]): Tag[] => (isDry(tags) ? tags.filter((tg) => tg !== 'piers') : tags)
+
+  const toggleTag = (group: TagGroup, tag: Tag) => {
+    const active = pendingTags.includes(tag)
+    const withoutGroup = pendingTags.filter((tg) => !(TAG_GROUPS[group] as readonly string[]).includes(tg))
+    const next = active ? withoutGroup : [...withoutGroup, tag]
+    onPendingTagsChange(dryGate(next))
+  }
+
+  const toggleWaterTag = (tag: Tag) => {
+    const active = pendingTags.includes(tag)
+    const next = active ? pendingTags.filter((tg) => tg !== tag) : [...pendingTags, tag]
+    onPendingTagsChange(dryGate(next))
+  }
+
+  const piersDisabled = isDry(pendingTags)
 
   return (
     <div style={{ width: 260, padding: 16, overflowY: 'auto' }}>
       <h1 style={{ fontSize: 18 }}>{t.appTitle}</h1>
       <h2 style={{ fontSize: 14, opacity: 0.7 }}>{t.toolTitle}</h2>
-      <button onClick={onReroll} style={{ width: '100%', padding: 8, margin: '12px 0' }}>
-        {t.knobs.reroll}
+      <button onClick={onReroll} disabled={busy} style={{ width: '100%', padding: 8, margin: '12px 0' }}>
+        {busy ? t.knobs.rerolling : t.knobs.reroll}
       </button>
       <label style={{ display: 'block', marginBottom: 12 }}>
         {t.knobs.seed}
         <input
           type="number"
-          value={params.seed}
-          onChange={(e) => set('seed', Number(e.target.value) >>> 0)}
+          value={seedInput}
+          onChange={(e) => setSeedInput(e.target.value)}
+          onBlur={commitSeed}
+          onKeyDown={(e) => e.key === 'Enter' && commitSeed()}
           style={{ width: '100%' }}
         />
       </label>
-      <Slider label={t.knobs.size} value={params.size} min={2} max={8} step={1} onChange={(v) => set('size', v)} />
-      <Slider label={t.knobs.density} value={params.density} min={0} max={1} step={0.1} onChange={(v) => set('density', v)} />
-      <Slider label={t.knobs.corpDominance} value={params.corpDominance} min={0} max={1} step={0.1} onChange={(v) => set('corpDominance', v)} />
-      <Slider label={t.knobs.poiDensity} value={params.poiDensity} min={0} max={1} step={0.1} onChange={(v) => set('poiDensity', v)} />
-      <label style={{ display: 'block', marginBottom: 8 }}>
-        <input type="checkbox" checked={params.coast} onChange={(e) => set('coast', e.target.checked)} /> {t.knobs.coast}
-      </label>
-      <label style={{ display: 'block', marginBottom: 12 }}>
-        <input type="checkbox" checked={params.river} onChange={(e) => set('river', e.target.checked)} /> {t.knobs.river}
-      </label>
+      {(Object.keys(TAG_GROUPS) as TagGroup[]).map((group) => (
+        <div key={group} style={{ marginBottom: 12 }}>
+          <div style={{ marginBottom: 4 }}>{t.tagGroups[group]}</div>
+          <div>
+            {TAG_GROUPS[group].map((tag) => (
+              <Chip
+                key={tag}
+                label={t.tags[tag]}
+                pending={pendingTags.includes(tag)}
+                applied={applied.tags.includes(tag)}
+                onClick={() => toggleTag(group, tag)}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 4 }}>{t.tagGroups.water}</div>
+        <div>
+          {WATER_TAGS.map((tag) => (
+            <Chip
+              key={tag}
+              label={t.tags[tag]}
+              pending={pendingTags.includes(tag)}
+              applied={applied.tags.includes(tag)}
+              onClick={() => toggleWaterTag(tag)}
+              disabled={tag === 'piers' ? piersDisabled : undefined}
+              title={tag === 'piers' && piersDisabled ? t.tags.piersNeedsWater : undefined}
+            />
+          ))}
+        </div>
+      </div>
       <label style={{ display: 'block', marginBottom: 12 }}>
         {t.knobs.pack}
-        <select value={params.pack} onChange={(e) => set('pack', e.target.value)} style={{ width: '100%' }}>
+        <select value={applied.pack} onChange={(e) => setPack(e.target.value)} style={{ width: '100%' }}>
           {Object.values(packs).map((p) => (
             <option key={p.id} value={p.id}>{p.label}</option>
           ))}
@@ -74,7 +155,7 @@ export function KnobPanel({ params, onChange, onReroll, onExport }: Props) {
       </label>
       <label style={{ display: 'block', marginBottom: 12 }}>
         {t.knobs.theme}
-        <select value={params.theme} onChange={(e) => set('theme', e.target.value)} style={{ width: '100%' }}>
+        <select value={applied.theme} onChange={(e) => setTheme(e.target.value)} style={{ width: '100%' }}>
           {Object.values(themes).map((th) => (
             <option key={th.id} value={th.id}>{th.label}</option>
           ))}

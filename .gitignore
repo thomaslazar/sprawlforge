@@ -5,6 +5,7 @@ temp/
 node_modules/
 dist/
 coverage/
+.vite/
 
 # tooling artifacts
 .playwright-mcp/

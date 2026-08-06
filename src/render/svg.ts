@@ -65,38 +65,116 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   out.push(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S} ${S}" font-family="system-ui, sans-serif">`,
   )
+
+  // Build water and land paths for defs
+  const waterD = model.terrain.water
+    .map((poly) => poly.map((ring) => `M${ring.map(([x, y]) => `${n(x)},${n(y)}`).join('L')}Z`).join(' '))
+    .join(' ')
+  const landD = model.terrain.land
+    .map((poly) => poly.map((ring) => `M${ring.map(([x, y]) => `${n(x)},${n(y)}`).join('L')}Z`).join(' '))
+    .join(' ')
+
+  // Shoreline-only path for the band/glow strokes: water rings close along
+  // the window border where water leaves the frame, and stroking those
+  // border segments paints a phantom "waterline" along the map edge in open
+  // ocean. Emit open subpaths that skip any segment lying on the border.
+  const EDGE = 1
+  const onBorder = ([x, y]: [number, number]) =>
+    x <= EDGE || y <= EDGE || x >= S - EDGE || y >= S - EDGE
+  const shoreSegments: string[] = []
+  for (const poly of model.terrain.water) {
+    for (const ring of poly) {
+      let run: Array<[number, number]> = []
+      const flush = () => {
+        if (run.length >= 2)
+          shoreSegments.push(`M${run.map(([x, y]) => `${n(x)},${n(y)}`).join('L')}`)
+        run = []
+      }
+      for (let i = 0; i <= ring.length; i++) {
+        const a = ring[i % ring.length]
+        const b = ring[(i + 1) % ring.length]
+        if (onBorder(a) && onBorder(b)) {
+          if (run.length) run.push(a)
+          flush()
+        } else {
+          if (run.length === 0) run.push(a)
+          run.push(b)
+        }
+      }
+      flush()
+    }
+  }
+  const shoreD = shoreSegments.join(' ')
+
+  out.push('<defs>')
+  out.push(`<path id="water-shape" d="${waterD}" fill-rule="evenodd"/>`)
+  out.push(`<clipPath id="water-clip"><use href="#water-shape"/></clipPath>`)
+  out.push(`<clipPath id="land-clip"><path d="${landD}" fill-rule="evenodd"/></clipPath>`)
+  // the [0,S]² viewport itself — clips features (river) that would
+  // otherwise overrun the frame edge (I3)
+  out.push(`<clipPath id="frame-clip"><rect x="0" y="0" width="${n(S)}" height="${n(S)}"/></clipPath>`)
+  out.push(`<filter id="shoreblur"><feGaussianBlur stdDeviation="${n(S * 0.004)}"/></filter>`)
+
   if (theme.glow) {
     out.push(
-      '<defs><filter id="glow" x="-50%" y="-50%" width="200%" height="200%">',
+      '<filter id="glow" x="-50%" y="-50%" width="200%" height="200%">',
       '<feGaussianBlur stdDeviation="8" result="b"/>',
       '<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>',
-      '</filter></defs>',
+      '</filter>',
     )
   }
+  out.push('</defs>')
+
   const glowAttr = theme.glow ? ' filter="url(#glow)"' : ''
 
   out.push(`<rect x="0" y="0" width="${S}" height="${S}" fill="${theme.bg}"/>`)
 
-  if (model.water.kind !== 'none') {
-    const pts = model.water.polygon.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
-    out.push(`<polygon points="${pts}" fill="${theme.water}"/>`)
+  // Water fill — reuses the water-shape path already built for the clips
+  // above instead of re-serializing the same rings a second time
+  out.push(`<use href="#water-shape" fill="${theme.water}" fill-rule="evenodd" data-water=""/>`)
+
+  // Shallow band
+  out.push(
+    `<path d="${shoreD}" fill="none" stroke="${theme.waterShallow}" stroke-width="${n(S * 0.02)}" clip-path="url(#water-clip)"/>`,
+  )
+
+  // Shore glow
+  out.push(
+    `<path d="${shoreD}" fill="none" stroke="${theme.shoreGlow}" stroke-width="${n(S * 0.015)}" filter="url(#shoreblur)" clip-path="url(#land-clip)"/>`,
+  )
+
+  if (model.terrain.riverSlice) {
+    const pts = model.terrain.riverSlice.course.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
+    out.push(`<g clip-path="url(#frame-clip)">`)
+    out.push(
+      `<polyline points="${pts}" fill="none" stroke="${theme.water}" stroke-width="${n(model.terrain.riverSlice.width)}" stroke-linecap="round"/>`,
+    )
+    out.push('</g>')
   }
 
+  // district rects are the land bounding box, not the land shape itself
+  // (see roads.ts landSlabs) — clip so a rect's corner never paints over
+  // water it doesn't actually cover (C2)
+  out.push('<g clip-path="url(#land-clip)">')
   for (const d of model.districts) {
     const r = d.bounds
     out.push(
       `<rect data-id="${d.id}" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" fill="${theme.districtFill[d.zone]}"/>`,
     )
   }
+  out.push('</g>')
 
   for (const b of model.buildings) {
-    const r = b.rect
+    const pts = b.footprint.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
     out.push(
-      `<rect data-id="${b.id}" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" fill="${theme.building.fill}" stroke="${theme.building.stroke}" stroke-width="1"/>`,
+      `<polygon data-id="${b.id}" points="${pts}" fill="${theme.building.fill}" stroke="${theme.building.stroke}" stroke-width="1"/>`,
     )
   }
 
   for (const road of model.roads) {
+    // bridge decks are drawn in their own pass below (deck + shadow) — the
+    // road-class color never renders for a bridge span, or it'd double-draw
+    if (road.bridge) continue
     const pts = road.points.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
     const glow = road.class === 'street' ? '' : glowAttr
     out.push(
@@ -104,11 +182,34 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     )
   }
 
+  // Bridge decks above roads
+  for (const road of model.roads) {
+    if (!road.bridge) continue
+    const pts = road.points.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
+    // Shadow (offset +S*0.002 in y)
+    const shadowPts = road.points.map((p) => `${n(p.x)},${n(p.y + S * 0.002)}`).join(' ')
+    out.push(
+      `<polyline points="${shadowPts}" fill="none" stroke="${theme.bridge.shadow}" stroke-width="${n(road.width * 1.3)}" clip-path="url(#water-clip)"/>`,
+    )
+    // Deck (square caps)
+    out.push(
+      `<polyline data-bridge="" points="${pts}" fill="none" stroke="${theme.bridge.deck}" stroke-width="${road.width}" stroke-linecap="square"/>`,
+    )
+  }
+
+  // Pier decks, above water, below labels
+  for (const pier of model.piers) {
+    const [a, b] = pier.points
+    out.push(
+      `<line data-id="${pier.id}" x1="${n(a.x)}" y1="${n(a.y)}" x2="${n(b.x)}" y2="${n(b.y)}" stroke="${theme.bridge.deck}" stroke-width="${n(pier.width)}"/>`,
+    )
+  }
+
   const placedLabels: Box[] = []
 
   for (const d of model.districts) {
-    const cx = d.bounds.x + d.bounds.w / 2
-    const cy = d.bounds.y + d.bounds.h / 2
+    const cx = d.labelAt.x
+    const cy = d.labelAt.y
     // district labels always render — they anchor the map — but still
     // occupy space so later poi labels avoid them
     const raw = textBox(cx, cy, d.name, fontD, 'middle')

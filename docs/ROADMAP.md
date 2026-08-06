@@ -3,13 +3,23 @@
 ## Build order
 
 1. **Sector generator** — v1 per `docs/specs/2026-08-03-sprawlforge-design.md` ✅
-2. **Terrain v2 + organic map redesign** — next up, needs its own design
-   spec; see below
-3. **Metroplex generator** — parent of sectors, proves linkage chain
+2. **Terrain v2 + organic map redesign** — phases 1+2 ✅; phase 3 (organic
+   streets) needs its own spec; see below
+3. **Metroplex generator** — parent of sectors, proves linkage chain.
+   Candidate metroplex-scale landform: **city on an island** — a whole
+   metro occupying an island, distinct from the sector-scale `islands`
+   water modifier (small uninhabited islets inside a sector's water).
 4. **Battlemap generator** — interiors/street combat, seeded from sector buildings
 5. **Node map generator** — abstract location graphs
 
-## Terrain v2 + organic map redesign (next design spec)
+## Terrain v2 + organic map redesign
+
+Phases 1+2 are specced: `docs/specs/2026-08-04-terrain-v2-design.md`
+(metro-scale heightfield, one-pass water contouring, carved rivers,
+bridges, waterline clipping, shore zoning, piers). Phase 3 (organic
+streets) remains a future spec. Additional deferrals recorded in that
+spec §8: tributaries/confluences, elevation rendering, shallow-water
+bands, ships/harbor props.
 
 v1 water is a toy (straight east coast, horizontal river band, coast wins
 over river, no bridges, land clipped as rectangle) and the BSP street grid
@@ -18,11 +28,11 @@ reads as a treemap. One redesign, three shippable phases, one
 organic street patterns share a dependency: an arbitrary-polygon geometry
 core (clipping, insetting, filling non-rectangular shapes).
 
-1. **Terrain v2** — terrain generated first, city adapts. Coast on any
+1. **Terrain v2** ✅ — terrain generated first, city adapts. Coast on any
    side with a curved waterline; meandering river that can coexist with
    the coast and flow into it; waterline as first-class polyline. Biggest
    variety win, visible even with rectangular streets.
-2. **City adapts to terrain** — blocks/buildings clipped to the waterline
+2. **City adapts to terrain** ✅ — blocks/buildings clipped to the waterline
    (waterfront buildings reach the river's edge), dock zones biased to
    the shore, roads crossing water become bridges (rendered as such,
    network stays connected).
@@ -42,6 +52,14 @@ core (clipping, insetting, filling non-rectangular shapes).
 - **Structural editing** — moving walls/roads/buildings by hand. v1 is
   generate + knobs + light annotation only.
 - **Elevation / terrain height** on sector maps.
+- **Tributaries and confluences** — branch networks and river merges.
+- **Shallow-water bands option** — rendering distinct shallow zones on water.
+- **Buildable islets + causeways** — v1 `islands` water modifier islets get
+  no dedicated settlement logic (an occasional small district landing on
+  one via the generic BSP/clipping pipeline is tolerated, not designed
+  for). Deliberately settling an islet, connected back to the mainland by a
+  causeway/bridge, is a follow-up.
+- **Ships and harbor props** — ocean-going vessels, docks, shipping infrastructure.
 - **Transit lines** — rail/metro/monorail layer. Good v2 candidate for
   sector maps.
 - **3D anything.**
@@ -76,8 +94,30 @@ core (clipping, insetting, filling non-rectangular shapes).
   names per sector and retry (or draw without replacement) so every
   district/POI name is unique within a map. Deterministic retries only —
   same seed must still give same names (`GENERATOR_VERSION` bump).
+- **POI category filters** — toggle POI types on/off on the map by
+  category (e.g. pleasure/nightlife, corp headquarters, medical,
+  commerce, underworld — exact categories to be worked out). Flavor-pack
+  poi types get a category field; the UI gets per-category visibility
+  toggles. Display-layer only, no generation change.
+- **Cursor-anchored zoom** — wheel zoom should keep the point under the
+  mouse cursor fixed while zooming in/out; currently the view jumps
+  around because zoom scales from the transform origin.
+- **Cursor styling** — default pointer over the map; the grab hand only
+  while actually dragging (currently the hand shows permanently).
+- **Reroll loading feedback** — a visually distinct generating state
+  (loading animation/overlay on the map, not just the button label
+  flipping to "Generating…"). Note: generation currently runs
+  synchronously on the main thread, which freezes CSS animations —
+  a real spinner needs the generator moved into a Web Worker, which
+  also unblocks the UI during generation. Worth doing together.
 
 ## Cross-cutting
+
+- **Single tag-cloud UI** — present all tags as one cloud (as popular
+  generator tools do) instead of labeled group rows; exclusivity and
+  dependency rules (landform group exclusive, piers ⇒ water) enforced
+  within the cloud. Pure UI change — the composable tag semantics
+  already exist underneath.
 
 - **App styling** — the UI currently has no design at all: components use
   ad-hoc inline `style={{…}}` props (KnobPanel, MapView, App, error

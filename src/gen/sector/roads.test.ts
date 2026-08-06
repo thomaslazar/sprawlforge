@@ -1,15 +1,26 @@
 import { describe, expect, it } from 'vitest'
-import type { Rect } from '../geometry'
-import type { SectorParams } from '../types'
-import { genGeography } from './geography'
-import { coastClipX, layoutRoads } from './roads'
+import { pointInRings, type Pt } from '../geometry'
+import { sampleTerrain } from '../terrain'
+import { distToPolyline } from '../terrain/rivers'
+import type { SectorParams, Terrain } from '../types'
+import { layoutRoads } from './roads'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
-  coast: false, river: false, pack: 'generic', theme: 'neon',
+  landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 const sizeM = 4000
-const noWater = genGeography(base, sizeM)
+const noWater = sampleTerrain(base, sizeM)
+
+function landBounds(terrain: ReturnType<typeof sampleTerrain>) {
+  const pts = terrain.land.flat().flat()
+  return {
+    minX: Math.min(...pts.map(([x]) => x)),
+    minY: Math.min(...pts.map(([, y]) => y)),
+    maxX: Math.max(...pts.map(([x]) => x)),
+    maxY: Math.max(...pts.map(([, y]) => y)),
+  }
+}
 
 describe('layoutRoads', () => {
   it('is deterministic', () => {
@@ -28,20 +39,41 @@ describe('layoutRoads', () => {
     const hi = layoutRoads({ ...base, density: 0.9 }, noWater, sizeM).blocksByDistrict.flat().length
     expect(hi).toBeGreaterThan(lo)
   })
-  it('coast keeps all districts on land, clipped at the mean coastline', () => {
-    const water = genGeography({ ...base, coast: true }, sizeM)
-    const r = layoutRoads({ ...base, coast: true }, water, sizeM)
-    const clipX = coastClipX(water, sizeM)
+  it('coast keeps all districts within the land bounding box', () => {
+    const terrain = sampleTerrain({ ...base, landform: 'coastal' }, sizeM)
+    const r = layoutRoads({ ...base, landform: 'coastal' }, terrain, sizeM)
+    const b = landBounds(terrain)
     for (const d of r.districtRects) {
-      expect(d.x + d.w).toBeLessThanOrEqual(clipX + 1e-9)
+      expect(d.x).toBeGreaterThanOrEqual(b.minX - 1e-6)
+      expect(d.y).toBeGreaterThanOrEqual(b.minY - 1e-6)
+      expect(d.x + d.w).toBeLessThanOrEqual(b.maxX + 1e-6)
+      expect(d.y + d.h).toBeLessThanOrEqual(b.maxY + 1e-6)
     }
   })
-  it('river splits land into slabs above and below', () => {
-    const water = genGeography({ ...base, river: true }, sizeM)
-    const r = layoutRoads({ ...base, river: true }, water, sizeM)
-    const above = r.districtRects.some((d: Rect) => d.y + d.h <= water.bounds!.y + 1e-9)
-    const below = r.districtRects.some((d: Rect) => d.y >= water.bounds!.y + water.bounds!.h - 1e-9)
-    expect(above && below).toBe(true)
+  it('river keeps all districts within the land bounding box', () => {
+    const terrain = sampleTerrain({ ...base, river: true }, sizeM)
+    const r = layoutRoads({ ...base, river: true }, terrain, sizeM)
+    const b = landBounds(terrain)
+    for (const d of r.districtRects) {
+      expect(d.x).toBeGreaterThanOrEqual(b.minX - 1e-6)
+      expect(d.y).toBeGreaterThanOrEqual(b.minY - 1e-6)
+      expect(d.x + d.w).toBeLessThanOrEqual(b.maxX + 1e-6)
+      expect(d.y + d.h).toBeLessThanOrEqual(b.maxY + 1e-6)
+    }
+  })
+  it('tolerates an all-water window (I5): no land yields no districts, no crash', () => {
+    const allWater: Terrain = {
+      landform: 'coastal', river: false, lakes: false, islands: false,
+      metroSeed: 1,
+      water: [[[[0, 0], [sizeM, 0], [sizeM, sizeM], [0, sizeM]]]],
+      land: [],
+      riverSlice: null,
+    }
+    expect(() => layoutRoads(base, allWater, sizeM)).not.toThrow()
+    const r = layoutRoads(base, allWater, sizeM)
+    expect(r.districtRects).toEqual([])
+    expect(r.blocksByDistrict).toEqual([])
+    expect(r.roads).toEqual([])
   })
   it('road ids are stable and prefixed by class', () => {
     const r = layoutRoads(base, noWater, sizeM)
@@ -49,6 +81,139 @@ describe('layoutRoads', () => {
       if (road.class === 'highway') expect(road.id).toMatch(/^H\d+$/)
       if (road.class === 'arterial') expect(road.id).toMatch(/^A\d\d$/)
       if (road.class === 'street') expect(road.id).toMatch(/^S\d\d\d$/)
+    }
+  })
+  it('no non-bridge road of any class ever has a point in water', { timeout: 20000 }, () => {
+    // strong invariant: only the bridge deck may span water — every host
+    // road (street, arterial, or highway) must be truncated/split at the
+    // shoreline instead (the old code let arterials/highways draw straight
+    // through the water under a "bridge floats over it" excuse). Covers
+    // both a river cutting through inland, and a coastal shoreline — the
+    // two shapes of "water" the invariant has to hold against.
+    const cases = [
+      ...[1, 42, 119560026].map((seed) => ({ ...base, seed, river: true })),
+      ...[1, 42, 999].map((seed) => ({ ...base, seed, landform: 'coastal' as const })),
+    ]
+    for (const params of cases) {
+      const terrain = sampleTerrain(params, sizeM)
+      const { roads } = layoutRoads(params, terrain, sizeM)
+      const inWater = (p: Pt) =>
+        terrain.water.some((poly) => pointInRings(p, poly.map((ring) => ring.map(([x, y]) => ({ x, y })))))
+      for (const road of roads) {
+        if (road.bridge) continue
+        for (const p of road.points) expect(inWater(p)).toBe(false)
+      }
+    }
+  })
+  it('joins at least one arterial across the highway gap (no uncrossable wall)', () => {
+    const params: SectorParams = {
+      seed: 119560026, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
+      landform: 'coastal', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
+    }
+    const terrain = sampleTerrain(params, sizeM)
+    const { roads } = layoutRoads(params, terrain, sizeM)
+    const hw = roads.find((r) => r.class === 'highway')
+    expect(hw).toBeDefined()
+    const hx = hw!.points[0].x
+    const crosses = roads.some(
+      (r) =>
+        !r.bridge &&
+        r.class !== 'highway' &&
+        r.points.some((p) => p.x < hx - 10) &&
+        r.points.some((p) => p.x > hx + 10),
+    )
+    expect(crosses).toBe(true)
+  })
+  it('every bridge is collinear with its host road, or perpendicular-ish to a river crossing', { timeout: 20000 }, () => {
+    const angleOf = (a: Pt, b: Pt) => Math.atan2(b.y - a.y, b.x - a.x)
+    const lineDiff = (a1: number, a2: number) => {
+      let diff = Math.abs(a1 - a2) % Math.PI
+      if (diff > Math.PI / 2) diff = Math.PI - diff
+      return diff
+    }
+    for (const seed of [1, 42, 119560026]) {
+      for (const [landform, river] of [
+        ['inland', true],
+        ['coastal', false],
+      ] as const) {
+        const params = { ...base, seed, landform, river }
+        const terrain = sampleTerrain(params, sizeM)
+        const { roads } = layoutRoads(params, terrain, sizeM)
+        for (const bridge of roads.filter((r) => r.bridge)) {
+          const [p, q] = bridge.points
+          const bridgeAngle = angleOf(p, q)
+          const host = roads.find(
+            (r) =>
+              !r.bridge &&
+              r.class === bridge.class &&
+              r.points.some((pt) => Math.hypot(pt.x - p.x, pt.y - p.y) < 1 || Math.hypot(pt.x - q.x, pt.y - q.y) < 1),
+          )
+          if (host) {
+            const hostAngle = angleOf(host.points[0], host.points[host.points.length - 1])
+            if (lineDiff(bridgeAngle, hostAngle) < (5 * Math.PI) / 180) continue // collinear — OK
+          }
+          // not collinear with any host piece — the only by-spec exception is
+          // a river crossing re-oriented perpendicular to local flow, which
+          // by construction lands near the river course itself
+          expect(terrain.riverSlice).not.toBeNull()
+          const course = terrain.riverSlice!.course
+          const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }
+          const nearRiver = course.some(
+            (_, i) => i < course.length - 1 && distToPolyline(mid, [course[i], course[i + 1]]) < 300,
+          )
+          expect(nearRiver).toBe(true)
+        }
+      }
+    }
+  })
+  it('road graph stays connected across water (river seeds)', { timeout: 20000 }, () => {
+    for (const seed of [1, 42, 999]) {
+      const params = { ...base, seed, river: true }
+      const terrain = sampleTerrain(params, 4000)
+      const { roads } = layoutRoads(params, terrain, 4000)
+      // union-find over road endpoints; endpoints within 20 m are joined
+      const pts: Pt[] = []
+      const parent: number[] = []
+      const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])))
+      const idx = (p: Pt): number => {
+        for (let i = 0; i < pts.length; i++)
+          if (Math.hypot(pts[i].x - p.x, pts[i].y - p.y) < 20) return i
+        pts.push(p)
+        parent.push(pts.length - 1)
+        return pts.length - 1
+      }
+      for (const r of roads) {
+        const a = idx(r.points[0])
+        const b = idx(r.points[r.points.length - 1])
+        parent[find(a)] = find(b)
+        // segments cross mid-polyline too: join consecutive points
+        for (let i = 1; i < r.points.length; i++) parent[find(idx(r.points[i - 1]))] = find(idx(r.points[i]))
+      }
+      // T-junctions: road A's endpoint touching mid-span of road B (not B's own
+      // endpoints) is a real intersection, not a gap — BSP cut endpoints sit
+      // exactly gap/2 (up to 9m for an arterial) off the parent road's centerline,
+      // and a bridge landing needs a little more slack. Join on point-to-segment
+      // distance, reusing the same math nearestOnPolyline uses for river distance.
+      for (const A of roads) {
+        for (const B of roads) {
+          if (A === B) continue
+          for (const end of [A.points[0], A.points[A.points.length - 1]]) {
+            for (let i = 0; i < B.points.length - 1; i++) {
+              if (distToPolyline(end, [B.points[i], B.points[i + 1]]) <= 30)
+                parent[find(idx(end))] = find(idx(B.points[i]))
+            }
+          }
+        }
+      }
+      const sizes = new Map<number, number>()
+      pts.forEach((_, i) => sizes.set(find(i), (sizes.get(find(i)) ?? 0) + 1))
+      // honest bridge geometry (no sideways "pull onto the network" hack)
+      // means a handful of small, genuinely isolated stubs are expected —
+      // a short street clip near the shoreline, or a lone bridge into a
+      // pocket-sized block. The real invariant: the map isn't bisected into
+      // large disconnected halves — nearly everything sits in one component.
+      expect(roads.some((r) => r.bridge)).toBe(true)
+      expect(Math.max(...sizes.values()) / pts.length).toBeGreaterThan(0.9)
     }
   })
 })
