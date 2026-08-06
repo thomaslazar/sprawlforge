@@ -19,12 +19,15 @@ const eastWater: Terrain = {
   land: [[[[0, 0], [3000, 0], [3000, 4000], [0, 4000]]]],
   riverSlice: null,
 }
+// shore edge (x: 2490..3000, length 510 = 17 * EDGE_STEP) so perimeterSamples'
+// even fraction-of-edge-length spacing lands a sample within ROOT_WATER_TOL
+// of the water boundary regardless of step remainder
 const docksDistrict: District = {
   id: 'D01', zone: 'docks', name: 'The Docks', shore: true,
-  bounds: { x: 2500, y: 1000, w: 500, h: 800 },
-  poly: rectPoly({ x: 2500, y: 1000, w: 500, h: 800 }),
+  bounds: { x: 2490, y: 1000, w: 510, h: 800 },
+  poly: rectPoly({ x: 2490, y: 1000, w: 510, h: 800 }),
   irregularity: 0.5,
-  labelAt: { x: 2750, y: 1400 },
+  labelAt: { x: 2745, y: 1400 },
 }
 const waterRings = eastWater.water.map((poly) => poly.map((r) => r.map(([x, y]) => ({ x, y }))))
 const inWater = (p: { x: number; y: number }) => waterRings.some((rings) => pointInRings(p, rings))

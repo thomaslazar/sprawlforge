@@ -147,8 +147,8 @@ describe('renderSector', () => {
   it('clips district fills to the land shape and the river to the frame (C2/I3)', () => {
     const svg = renderSector(wetModel, getTheme('neon'))
     expect(svg).toContain('id="frame-clip"')
-    // district rects sit inside a land-clipped group, not painted bare
-    expect(svg).toMatch(/<g clip-path="url\(#land-clip\)">[\s\S]*<rect data-id="D01"[\s\S]*<\/g>/)
+    // district polys sit inside a land-clipped group, not painted bare
+    expect(svg).toMatch(/<g clip-path="url\(#land-clip\)">[\s\S]*<polygon data-id="D01"[\s\S]*<\/g>/)
     // the river polyline sits inside a frame-clipped group
     expect(svg).toMatch(/<g clip-path="url\(#frame-clip\)">[\s\S]*<polyline[\s\S]*<\/g>/)
   })

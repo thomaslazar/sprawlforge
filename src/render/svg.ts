@@ -152,15 +152,14 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     out.push('</g>')
   }
 
-  // district rects are the land bounding box, not the land shape itself
-  // (see roads.ts landSlabs) — clip so a rect's corner never paints over
-  // water it doesn't actually cover (C2)
+  // district polys include filled lakes and the river corridor (twisted
+  // bisection carves districts straight from the land domain), so the land
+  // clip still earns its keep against any straggling water sliver at the
+  // shoreline (C2)
   out.push('<g clip-path="url(#land-clip)">')
   for (const d of model.districts) {
-    const r = d.bounds
-    out.push(
-      `<rect data-id="${d.id}" x="${n(r.x)}" y="${n(r.y)}" width="${n(r.w)}" height="${n(r.h)}" fill="${theme.districtFill[d.zone]}"/>`,
-    )
+    const pts = d.poly.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
+    out.push(`<polygon data-id="${d.id}" points="${pts}" fill="${theme.districtFill[d.zone]}"/>`)
   }
   out.push('</g>')
 
