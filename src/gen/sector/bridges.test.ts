@@ -158,6 +158,47 @@ describe('sea bridges roughly perpendicular to the shoreline', () => {
   })
 })
 
+// hand terrain: a vertical water strip x0..x1 spanning the 1000 window,
+// land = the two side slabs, no river — for polyline-road tests below
+const stripTerrain = (x0: number, x1: number): Terrain => ({
+  landform: 'inland', river: false, lakes: false, islands: false, metroSeed: 1,
+  water: [[[[x0, 0], [x1, 0], [x1, 1000], [x0, 1000]]]],
+  land: [
+    [[[0, 0], [x0, 0], [x0, 1000], [0, 1000]]],
+    [[[x1, 0], [1000, 0], [1000, 1000], [x1, 1000]]],
+  ],
+  riverSlice: null,
+})
+
+describe('polyline roads', () => {
+  it('clips a polyline street to land keeping interior vertices', () => {
+    const road: Road = {
+      id: 'S001', class: 'street', width: 9, name: null,
+      points: [{ x: 0, y: 100 }, { x: 300, y: 100 }, { x: 300, y: 500 }, { x: 900, y: 500 }],
+    }
+    const out = clipRoadsToLand([road], stripTerrain(400, 600))
+    // piece 1 must contain the corner (300,100)->(300,500) intact
+    const first = out[0]
+    expect(first.points.some((p) => p.x === 300 && p.y === 100)).toBe(true)
+    expect(first.points.some((p) => p.x === 300 && p.y === 500)).toBe(true)
+    // no kept point may be inside the strip
+    for (const r of out) for (const p of r.points) {
+      expect(p.x < 405 || p.x > 595).toBe(true)
+    }
+  })
+
+  it('bridges a polyline arterial with a straight 2-point deck', () => {
+    const road: Road = {
+      id: 'A01', class: 'arterial', width: 18, name: null,
+      points: [{ x: 0, y: 100 }, { x: 350, y: 120 }, { x: 900, y: 100 }],
+    }
+    const bridges = planBridges([road], stripTerrain(400, 600))
+    expect(bridges).toHaveLength(1)
+    expect(bridges[0].points).toHaveLength(2)
+    expect(bridges[0].bridge).toBe(true)
+  })
+})
+
 describe('unlandable crossings (bridge would end in open water)', () => {
   it('planBridges refuses to bridge a crossing whose landing is still in water', () => {
     const grounded = clipRoadsToLand([road('A01', 'arterial', 300)], edgeWater)
