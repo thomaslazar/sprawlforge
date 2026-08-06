@@ -1,4 +1,3 @@
-import type { Pt } from '../geometry'
 import { ringCentroid } from '../geometry'
 import type { FlavorPack } from '../names/names'
 import { generateName } from '../names/names'

@@ -142,6 +142,7 @@ export function ringCentroid(pts: Pt[]): Pt {
     cx += (a.x + b.x) * cross
     cy += (a.y + b.y) * cross
   }
+  // degenerate (zero-area) footprint — fall back to the vertex mean
   if (Math.abs(area) < 1e-9) {
     return {
       x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
