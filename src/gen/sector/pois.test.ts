@@ -75,4 +75,8 @@ describe('placePois', () => {
     expect(hi.length).toBeGreaterThan(lo.length)
     expect(new Set(hi.map((p) => p.buildingId)).size).toBe(hi.length)
   })
+
+  it('poiDensity 0 places no POIs at all', () => {
+    expect(placePois(districts, buildings, pack, { ...base, poiDensity: 0 })).toEqual([])
+  })
 })

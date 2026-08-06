@@ -129,3 +129,13 @@ describe('materialized tags drive generation honestly', () => {
     }
   }, 60000)
 })
+
+describe('no-pois free tag', () => {
+  it('zeroes poiDensity and beats any activity tag', () => {
+    expect(resolveTags(['lively', 'no-pois']).poiDensity).toBe(0)
+    expect(resolveTags(normalizeTags(['no-pois', 'lively'])).poiDensity).toBe(0)
+  })
+  it('is never auto-rolled by materialization', () => {
+    for (const seed of [1, 2, 42, 999]) expect(materializeTags(seed, [])).not.toContain('no-pois')
+  })
+})

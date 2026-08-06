@@ -37,6 +37,7 @@ export const strings = {
       normal: 'Normal',
       lively: 'Lively',
       piers: 'Piers',
+      'no-pois': 'No POIs',
       piersNeedsWater: 'Needs water — pick a wet terrain',
     },
     exports: {
