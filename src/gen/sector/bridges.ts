@@ -205,7 +205,9 @@ function isRiverCrossing(mid: Pt, terrain: Terrain): boolean {
  * that misses the network stays a dead end (or gets truncated, see
  * truncateUnlandableRoads/crossingBridgeable).
  */
-function landingFor(a: Pt, b: Pt, t0: number, t1: number, len: number, terrain: Terrain): { p: Pt; q: Pt } {
+function landingFor(
+  a: Pt, b: Pt, t0: number, t1: number, len: number, terrain: Terrain,
+): { p: Pt; q: Pt; axisP: Pt; axisQ: Pt } {
   const mid = at(a, b, (t0 + t1) / 2)
   let p = at(a, b, t0)
   let q = at(a, b, t1)
@@ -247,7 +249,12 @@ function landingFor(a: Pt, b: Pt, t0: number, t1: number, len: number, terrain: 
     p = at(a, b, Math.max(0, t0 - LANDING / len))
     q = at(a, b, Math.min(1, t1 + LANDING / len))
   }
-  return { p, q }
+  // on-axis bank points: host stubs must end HERE (on the road's own line),
+  // never at a rotated deck endpoint — snapping stubs to a perpendicular
+  // deck visibly bent whole arterials (the "drifting" bridge bug)
+  const axisP = at(a, b, Math.max(0, t0 - LANDING / len))
+  const axisQ = at(a, b, Math.min(1, t1 + LANDING / len))
+  return { p, q, axisP, axisQ }
 }
 
 /**
@@ -340,9 +347,9 @@ export function splitHostAtBridges(roads: Road[], terrain: Terrain): Road[] {
     let cursor = a
     const pieces: Array<[Pt, Pt]> = []
     for (const [t0, t1] of intervals) {
-      const { p, q } = landingFor(a, b, t0, t1, len, terrain)
-      pieces.push([cursor, p])
-      cursor = q
+      const { axisP, axisQ } = landingFor(a, b, t0, t1, len, terrain)
+      pieces.push([cursor, axisP])
+      cursor = axisQ
     }
     pieces.push([cursor, b])
     pieces.forEach(([x, y], i) => out.push({ ...road, id: `${road.id}-${i + 1}`, points: [x, y] }))
@@ -364,12 +371,18 @@ export function planBridges(roads: Road[], terrain: Terrain): Road[] {
       // a crossing that isn't bridgeable isn't bridged — the host road gets
       // truncated at the waterline instead (truncateUnlandableRoads)
       if (!crossingBridgeable(a, b, t0, t1, len, terrain)) continue
-      const { p, q } = landingFor(a, b, t0, t1, len, terrain)
+      const { p, q, axisP, axisQ } = landingFor(a, b, t0, t1, len, terrain)
       n += 1
+      // when the deck is rotated perpendicular to the river, its endpoints
+      // sit off the host road's line — short approach-ramp segments connect
+      // the on-axis stub ends to the deck so the road dog-legs onto the
+      // bridge instead of the whole arterial leaning to meet it
+      const ramped = Math.hypot(p.x - axisP.x, p.y - axisP.y) > 1 ||
+        Math.hypot(q.x - axisQ.x, q.y - axisQ.y) > 1
       bridges.push({
         id: `BR${String(n).padStart(2, '0')}`,
         class: road.class,
-        points: [p, q],
+        points: ramped ? [axisP, p, q, axisQ] : [p, q],
         width: road.width,
         name: null,
         bridge: true,
