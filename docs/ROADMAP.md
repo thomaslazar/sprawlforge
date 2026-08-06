@@ -104,6 +104,12 @@ core (clipping, insetting, filling non-rectangular shapes).
   around because zoom scales from the transform origin.
 - **Cursor styling** — default pointer over the map; the grab hand only
   while actually dragging (currently the hand shows permanently).
+- **Reroll loading feedback** — a visually distinct generating state
+  (loading animation/overlay on the map, not just the button label
+  flipping to "Generating…"). Note: generation currently runs
+  synchronously on the main thread, which freezes CSS animations —
+  a real spinner needs the generator moved into a Web Worker, which
+  also unblocks the UI during generation. Worth doing together.
 
 ## Cross-cutting
 
