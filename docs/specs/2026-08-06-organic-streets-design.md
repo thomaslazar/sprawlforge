@@ -171,7 +171,9 @@ keeps that invariant. No slider.
 ## 9. Delivery
 
 Spec, plan, and implementation all live on `spec/organic-streets`,
-merged to `main` via a single PR. The `no-pois` tag commit rides on this
-branch (already merged in) as a grid-visibility aid during development.
+merged to `main` via a single PR. The `no-pois` tag commit rode on this
+branch as a grid-visibility aid during development; during PR review it
+was replaced by a render-side "Show POIs" toggle (instant, no reroll) —
+the tag no longer exists.
 Implementation phases: (1) partition module + toy, gate; (2) sector
 wiring both levels + data-model ripple; (3) tags + UI + uicheck.
