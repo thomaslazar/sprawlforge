@@ -15,7 +15,7 @@ export const TAG_GROUPS = {
 export type TagGroup = keyof typeof TAG_GROUPS
 // river/lakes/islands/piers are free toggles: independently selectable, no
 // group, no exclusion — see normalizeTags.
-export const FREE_TAGS = ['river', 'lakes', 'islands', 'piers', 'no-pois'] as const
+export const FREE_TAGS = ['river', 'lakes', 'islands', 'piers'] as const
 export type Tag = (typeof TAG_GROUPS)[TagGroup][number] | (typeof FREE_TAGS)[number]
 
 /** numeric/param effect of each tag; absent group = default values */
@@ -27,9 +27,6 @@ const TAG_EFFECTS: Record<string, Partial<SectorParams>> = {
   quiet: { poiDensity: 0.25 }, normal: { poiDensity: 0.5 }, lively: { poiDensity: 0.7 },
   planned: { irregularity: 0.15 }, mixed: { irregularity: 0.5 }, sprawl: { irregularity: 0.85 },
   river: { river: true }, lakes: { lakes: true }, islands: { islands: true }, piers: { piers: true },
-  // free tags resolve after group tags (normalizeTags orders them last),
-  // so no-pois always beats whatever the activity group rolled
-  'no-pois': { poiDensity: 0 },
 }
 
 export const DEFAULT_PARAMS: Omit<SectorParams, 'seed' | 'pack' | 'theme'> = {

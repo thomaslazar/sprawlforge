@@ -8,16 +8,16 @@ import { TAG_GROUPS, type Tag, type TagGroup } from './tags'
 // river/lakes/islands/piers: free toggles, no exclusion — presented together
 // as a water-themed chip row (piers is water-themed too: harbor decor).
 const WATER_TAGS: Tag[] = ['river', 'lakes', 'islands', 'piers']
-// activity-adjacent free toggle rendered with the activity group
-const NO_POIS: Tag = 'no-pois'
 
 interface Props {
   applied: AppState
   pendingTags: Tag[]
   busy: boolean
+  showPois: boolean
   onChange: (s: AppState) => void
   onPendingTagsChange: (tags: Tag[]) => void
   onReroll: () => void
+  onShowPoisChange: (show: boolean) => void
   onExport: (kind: 'svg' | 'png' | 'pdf') => void
 }
 
@@ -64,7 +64,17 @@ function Chip({
   )
 }
 
-export function KnobPanel({ applied, pendingTags, busy, onChange, onPendingTagsChange, onReroll, onExport }: Props) {
+export function KnobPanel({
+  applied,
+  pendingTags,
+  busy,
+  showPois,
+  onChange,
+  onPendingTagsChange,
+  onReroll,
+  onShowPoisChange,
+  onExport,
+}: Props) {
   const setPack = (pack: string) => onChange({ ...applied, pack })
   const setTheme = (theme: string) => onChange({ ...applied, theme })
 
@@ -128,14 +138,6 @@ export function KnobPanel({ applied, pendingTags, busy, onChange, onPendingTagsC
                 onClick={() => toggleTag(group, tag)}
               />
             ))}
-            {group === 'activity' && (
-              <Chip
-                label={t.tags[NO_POIS]}
-                pending={pendingTags.includes(NO_POIS)}
-                applied={applied.tags.includes(NO_POIS)}
-                onClick={() => toggleWaterTag(NO_POIS)}
-              />
-            )}
           </div>
         </div>
       ))}
@@ -155,6 +157,15 @@ export function KnobPanel({ applied, pendingTags, busy, onChange, onPendingTagsC
           ))}
         </div>
       </div>
+      <label style={{ display: 'block', marginBottom: 12 }}>
+        <input
+          type="checkbox"
+          checked={showPois}
+          onChange={(e) => onShowPoisChange(e.target.checked)}
+          style={{ marginRight: 6 }}
+        />
+        {t.knobs.showPois}
+      </label>
       <label style={{ display: 'block', marginBottom: 12 }}>
         {t.knobs.pack}
         <select value={applied.pack} onChange={(e) => setPack(e.target.value)} style={{ width: '100%' }}>

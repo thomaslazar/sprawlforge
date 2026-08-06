@@ -27,6 +27,20 @@ if (buildings < 50) fail(`expected a dense map, got ${buildings} buildings`)
 const pois = await page.locator('svg circle[data-id^="P"]').count()
 if (pois < 1) fail('no POIs rendered')
 
+// Show POIs toggle: instant display filter, no reroll/regeneration — url
+// stays put and no 'Generating…' busy flip, just the markers vanishing
+const urlBeforePoiToggle = page.url()
+const showPoisToggle = page.getByLabel(/Show POIs/)
+await showPoisToggle.click()
+if ((await page.locator('svg circle[data-id^="P"]').count()) !== 0)
+  fail('unchecking Show POIs did not hide poi markers')
+if (page.url() !== urlBeforePoiToggle) fail('toggling Show POIs changed the url')
+if (await page.getByRole('button', { name: 'Generating…' }).isVisible().catch(() => false))
+  fail('toggling Show POIs triggered a regenerate busy state')
+await showPoisToggle.click()
+if ((await page.locator('svg circle[data-id^="P"]').count()) < 1)
+  fail('rechecking Show POIs did not restore poi markers')
+
 // tag chips reflect the URL on load
 if (!(await page.getByRole('button', { name: 'Coastal', pressed: true }).isVisible()))
   fail('coastal chip not pressed from URL tags')

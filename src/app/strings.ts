@@ -8,6 +8,7 @@ export const strings = {
       theme: 'Theme',
       reroll: 'Reroll',
       rerolling: 'Generating…',
+      showPois: 'Show POIs',
     },
     tagGroups: {
       terrain: 'Terrain',
@@ -41,7 +42,6 @@ export const strings = {
       mixed: 'Mixed',
       sprawl: 'Sprawl',
       piers: 'Piers',
-      'no-pois': 'No POIs',
       piersNeedsWater: 'Needs water — pick a wet terrain',
     },
     exports: {

@@ -23,6 +23,9 @@ export function App() {
     return { ...loaded, tags: materializeTags(loaded.seed, loaded.tags) }
   })
   const [pendingTags, setPendingTags] = useState<Tag[]>(applied.tags)
+  // display-only, session-scoped (no URL persistence): toggling re-renders
+  // the SVG from the existing model with pois filtered out — zero regen
+  const [showPois, setShowPois] = useState(true)
   // generation is synchronous and blocks the main thread (~50-300ms) — stage
   // the busy label/disable on click, then let it paint before the blocking
   // work runs on the next tick
@@ -64,9 +67,10 @@ export function App() {
   // fit as you zoom in; generation itself only depends on genParams
   const [labelZoom, setLabelZoom] = useState(1)
   const model = useMemo(() => generateSector(params), [genParams])
+  const visibleModel = showPois ? model : { ...model, pois: [] }
   const svg = useMemo(
-    () => renderSector(model, getTheme(params.theme), { labelZoom }),
-    [model, params.theme, labelZoom],
+    () => renderSector(visibleModel, getTheme(params.theme), { labelZoom }),
+    [visibleModel, params.theme, labelZoom],
   )
 
   const exportName = `sprawlforge-sector-${params.seed}`
@@ -74,8 +78,9 @@ export function App() {
   // exports module to the click that actually needs it
   const onExport = async (kind: 'svg' | 'png' | 'pdf') => {
     const m = await import('./exports')
-    // exports always use base label sizing, independent of viewport zoom
-    const exportSvg = renderSector(model, getTheme(params.theme))
+    // exports always use base label sizing, independent of viewport zoom;
+    // WYSIWYG — exports match what's on screen, POIs included or not
+    const exportSvg = renderSector(visibleModel, getTheme(params.theme))
     switch (kind) {
       case 'svg':
         m.downloadSvg(exportSvg, exportName)
@@ -95,9 +100,11 @@ export function App() {
         applied={applied}
         pendingTags={pendingTags}
         busy={busy}
+        showPois={showPois}
         onChange={update}
         onPendingTagsChange={setPendingTags}
         onReroll={reroll}
+        onShowPoisChange={setShowPois}
         onExport={onExport}
       />
       <MapView

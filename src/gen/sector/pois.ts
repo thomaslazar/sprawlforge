@@ -11,7 +11,8 @@ export function placePois(
   params: SectorParams,
 ): Poi[] {
   // poiDensity <= 0 disables POIs entirely — the per-district count formula
-  // floors at 1, so it can't express "none" on its own (no-pois tag)
+  // floors at 1, so it can't express "none" on its own; defensive guard, not
+  // currently reachable via any tag (poi visibility is a display-only toggle)
   if (params.poiDensity <= 0) return []
   const rng = mulberry32(hashSeed(params.seed, 'pois'))
   const pois: Poi[] = []
