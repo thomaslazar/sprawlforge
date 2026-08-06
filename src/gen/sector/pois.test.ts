@@ -20,7 +20,6 @@ const buildings: Building[] = Array.from({ length: 30 }, (_, i) => ({
   id: `BLD0101${String(i + 1).padStart(2, '0')}`,
   blockId: 'B0101',
   districtId: 'D01',
-  rect: { x: i * 20, y: 0, w: 15, h: 15 },
   footprint: [{ x: i * 20, y: 0 }, { x: i * 20 + 15, y: 0 }, { x: i * 20 + 15, y: 15 }, { x: i * 20, y: 15 }],
 }))
 
@@ -43,13 +42,12 @@ describe('placePois', () => {
       })
     }
   })
-  it('anchors at the footprint centroid, not the rect center (shore-clipped buildings)', () => {
-    // a shore-clipped building's rect is the pre-clip bounding box — its
-    // center (10,10) can sit in water even though the clipped footprint
-    // (centroid (4,4)) is entirely on land
+  it('anchors at the footprint centroid, not the pre-clip bbox center (shore-clipped buildings)', () => {
+    // a shore-clipped building's pre-clip bounding box center (10,10) can sit
+    // in water even though the clipped footprint (centroid (4,4)) is
+    // entirely on land
     const clipped: Building = {
       id: 'BLD010101', blockId: 'B0101', districtId: 'D01',
-      rect: { x: 0, y: 0, w: 20, h: 20 },
       footprint: [{ x: 0, y: 0 }, { x: 8, y: 0 }, { x: 8, y: 8 }, { x: 0, y: 8 }],
     }
     const pois = placePois(districts, [clipped], pack, base)
@@ -62,7 +60,6 @@ describe('placePois', () => {
     // centroid must land inside the polygon instead
     const lShaped: Building = {
       id: 'BLD010101', blockId: 'B0101', districtId: 'D01',
-      rect: { x: 0, y: 0, w: 20, h: 20 },
       footprint: [
         { x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 10 },
         { x: 10, y: 10 }, { x: 10, y: 20 }, { x: 0, y: 20 },

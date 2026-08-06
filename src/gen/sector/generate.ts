@@ -1,4 +1,4 @@
-import type { Pt, Rect } from '../geometry'
+import { ringArea, ringCentroid, type Pt, type Rect } from '../geometry'
 import { generateName } from '../names/names'
 import { getPack } from '../names/packs'
 import { hashSeed, mulberry32 } from '../rng'
@@ -23,9 +23,10 @@ export function deriveDistricts(districts: District[], blocks: Block[]): Distric
     if (dBlocks.length === 0) return []
     let sx = 0, sy = 0, sArea = 0
     for (const b of dBlocks) {
-      const area = b.rect.w * b.rect.h
-      sx += (b.rect.x + b.rect.w / 2) * area
-      sy += (b.rect.y + b.rect.h / 2) * area
+      const area = Math.abs(ringArea(b.footprint))
+      const c = ringCentroid(b.footprint)
+      sx += c.x * area
+      sy += c.y * area
       sArea += area
     }
     return [{ ...d, labelAt: { x: sx / sArea, y: sy / sArea } }]
@@ -61,7 +62,7 @@ export function generateSector(params: SectorParams): SectorModel {
       : { ...r, name: generateName(nameRng.pick(pack.streetPatterns), pack.tables, nameRng) },
   )
 
-  const { blocks, buildings } = fillBuildings(namedDistricts, alignedBlocks, params, terrain)
+  const { blocks, buildings } = fillBuildings(namedDistricts, alignedBlocks.map((rs) => rs.map(rectPoly)), params, terrain)
   const finalDistricts = deriveDistricts(namedDistricts, blocks)
   const pois = placePois(finalDistricts, buildings, pack, params)
   const piers = placePiers(finalDistricts, terrain, params)

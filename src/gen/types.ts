@@ -92,8 +92,9 @@ export interface District {
 export interface Block {
   id: string
   districtId: string
-  rect: Rect
-  /** outer ring, meters; equals rect's 4 corners unless clipped by water */
+  /** block outline, meters, in its local street-fabric orientation */
+  poly: Pt[]
+  /** outer ring, meters; equals poly unless clipped by water */
   footprint: Pt[]
 }
 
@@ -101,8 +102,7 @@ export interface Building {
   id: string
   blockId: string
   districtId: string
-  rect: Rect
-  /** outer ring, meters; equals rect's 4 corners unless clipped by water */
+  /** outer ring, meters; a rotated BSP lot clipped to its block's footprint */
   footprint: Pt[]
 }
 

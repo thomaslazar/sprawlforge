@@ -1,5 +1,5 @@
 import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
-import { bspSplit, insetRect, pointInRings, ringArea, type Pt, type Rect } from '../geometry'
+import { bboxOf, bspSplit, insetRect, pointInRings, ringArea, ringCentroid, rotatePt, type Pt, type Rect } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import type { Block, Building, District, SectorParams, Terrain, ZoneType } from '../types'
 
@@ -17,10 +17,12 @@ const SHORE_CLEAR = 200
 const MIN_BLOCK_AREA = 500
 const MIN_BUILDING_AREA = 40
 
-const rectRing = (r: Rect): [number, number][] => [
-  [r.x, r.y], [r.x + r.w, r.y], [r.x + r.w, r.y + r.h], [r.x, r.y + r.h],
+const rectCorners = (r: Rect): Pt[] => [
+  { x: r.x, y: r.y }, { x: r.x + r.w, y: r.y },
+  { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h },
 ]
-const rectCorners = (r: Rect): Pt[] => rectRing(r).map(([x, y]) => ({ x, y }))
+
+const toRing = (pts: Pt[]): [number, number][] => pts.map((p) => [p.x, p.y])
 
 interface BBox { minX: number; minY: number; maxX: number; maxY: number }
 
@@ -37,16 +39,15 @@ function bboxOfRings(rings: Array<Array<[number, number]>>): BBox {
   return { minX, minY, maxX, maxY }
 }
 
-/** distance (0 if overlapping) from an axis-aligned rect to a bbox */
+/** distance (0 if overlapping) from a rect to a bbox */
 function rectToBBoxDist(r: Rect, b: BBox): number {
   const dx = Math.max(b.minX - (r.x + r.w), r.x - b.maxX, 0)
   const dy = Math.max(b.minY - (r.y + r.h), r.y - b.maxY, 0)
   return Math.hypot(dx, dy)
 }
 
-/** largest-by-|area| outer ring of a rect clipped to land, or null if fully drowned */
-function clipToLand(ring: [number, number][], land: MultiPolygon): { pts: Pt[]; area: number } | null {
-  const result = polygonClipping.intersection([ring], land)
+/** largest-by-|area| outer ring of a clip result, or null if empty */
+function largestRing(result: MultiPolygon): { pts: Pt[]; area: number } | null {
   let best: Pt[] | null = null
   let bestArea = 0
   for (const poly of result) {
@@ -59,9 +60,27 @@ function clipToLand(ring: [number, number][], land: MultiPolygon): { pts: Pt[]; 
   return best ? { pts: best, area: bestArea } : null
 }
 
+/** intersection of one ring against another (single-ring) polygon */
+function clipRingToRing(ring: Pt[], other: Pt[]): { pts: Pt[]; area: number } | null {
+  return largestRing(polygonClipping.intersection([toRing(ring)], [toRing(other)]))
+}
+
+/** angle of a polygon's longest edge — buildings inherit this orientation */
+const longestEdgeAngle = (poly: Pt[]): number => {
+  let best = 0
+  let angle = 0
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]
+    const b = poly[(i + 1) % poly.length]
+    const d = (b.x - a.x) ** 2 + (b.y - a.y) ** 2
+    if (d > best) { best = d; angle = Math.atan2(b.y - a.y, b.x - a.x) }
+  }
+  return angle
+}
+
 export function fillBuildings(
   districts: District[],
-  blocksByDistrict: Rect[][],
+  blocksByDistrict: Pt[][][],
   params: SectorParams,
   terrain: Terrain,
 ): { blocks: Block[]; buildings: Building[] } {
@@ -74,14 +93,16 @@ export function fillBuildings(
   )
   const waterBBoxes: BBox[] = terrain.water.map((poly) => bboxOfRings(poly))
 
-  // fast path only pays off away from the shore — clipping is exact but slow
-  const footprintOf = (r: Rect): { pts: Pt[]; area: number } | null => {
-    const corners = rectCorners(r)
-    const farFromWater = waterBBoxes.every((b) => rectToBBoxDist(r, b) > SHORE_CLEAR)
-    if (farFromWater && corners.every((p) => pointInRings(p, landRings))) {
-      return { pts: corners, area: r.w * r.h }
+  // fast path only pays off away from the shore — clipping is exact but slow;
+  // buildings always clip against the block footprint (below), so this fast
+  // path is block-level only.
+  const clipToLand = (ring: Pt[]): { pts: Pt[]; area: number } | null => {
+    const bbox = bboxOf(ring)
+    const farFromWater = waterBBoxes.every((b) => rectToBBoxDist(bbox, b) > SHORE_CLEAR)
+    if (farFromWater && ring.every((p) => pointInRings(p, landRings))) {
+      return { pts: ring, area: Math.abs(ringArea(ring)) }
     }
-    return clipToLand(rectRing(r), terrain.land)
+    return largestRing(polygonClipping.intersection([toRing(ring)], terrain.land))
   }
 
   districts.forEach((district, di) => {
@@ -90,28 +111,31 @@ export function fillBuildings(
     const fill = Math.min(1, profile.fill * (0.6 + 0.4 * params.density) * shoreBonus)
     const dd = district.id.slice(1)
 
-    ;(blocksByDistrict[di] ?? []).forEach((blockRect, bi) => {
-      const blockFp = footprintOf(blockRect)
+    ;(blocksByDistrict[di] ?? []).forEach((poly, bi) => {
+      const blockFp = clipToLand(poly)
       if (!blockFp || blockFp.area < MIN_BLOCK_AREA) return
 
       const blockId = `B${dd}${String(bi + 1).padStart(2, '0')}`
-      blocks.push({ id: blockId, districtId: district.id, rect: blockRect, footprint: blockFp.pts })
+      blocks.push({ id: blockId, districtId: district.id, poly, footprint: blockFp.pts })
 
-      const lot = insetRect(blockRect, SIDEWALK)
+      const theta = longestEdgeAngle(poly)
+      const c = ringCentroid(poly)
+      const local = poly.map((p) => rotatePt(p, -theta, c))
+      const lot = insetRect(bboxOf(local), SIDEWALK)
       if (!lot) return
       const { cells } = bspSplit(lot, { minCell: profile.minCell, gap: 3, jitter: 0.25, rng })
       let n = 0
       for (const cell of cells) {
         if (!rng.chance(fill)) continue
-        const bldFp = footprintOf(cell)
-        if (!bldFp || bldFp.area < MIN_BUILDING_AREA) continue
+        const ring = rectCorners(cell).map((p) => rotatePt(p, theta, c))
+        const clipped = clipRingToRing(ring, blockFp.pts)
+        if (!clipped || clipped.area < MIN_BUILDING_AREA) continue
         n += 1
         buildings.push({
           id: `BLD${dd}${String(bi + 1).padStart(2, '0')}${String(n).padStart(2, '0')}`,
           blockId,
           districtId: district.id,
-          rect: cell,
-          footprint: bldFp.pts,
+          footprint: clipped.pts,
         })
       }
     })

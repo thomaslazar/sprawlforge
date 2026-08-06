@@ -70,12 +70,13 @@ describe('generateSector', () => {
   })
 })
 
-const block = (id: string, districtId: string, rect: { x: number; y: number; w: number; h: number }): Block => ({
-  id, districtId, rect, footprint: [
+const block = (id: string, districtId: string, rect: { x: number; y: number; w: number; h: number }): Block => {
+  const poly = [
     { x: rect.x, y: rect.y }, { x: rect.x + rect.w, y: rect.y },
     { x: rect.x + rect.w, y: rect.y + rect.h }, { x: rect.x, y: rect.y + rect.h },
-  ],
-})
+  ]
+  return { id, districtId, poly, footprint: poly }
+}
 const district = (id: string, bounds: { x: number; y: number; w: number; h: number }): District => ({
   id, zone: 'corp', name: 'X', bounds,
   poly: [
