@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
-import { generateSector } from '../gen/sector/generate'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { hashSeed } from '../gen/rng'
-import type { SectorParams } from '../gen/types'
+import type { SectorModel, SectorParams } from '../gen/types'
 import { renderSector } from '../render/svg'
 import { getTheme } from '../render/theme'
+import type { GenRequest, GenResponse } from './genWorker'
 import { KnobPanel } from './KnobPanel'
 import { MapView } from './MapView'
 import { stateFromSearch, stateToSearch, type AppState } from './params'
@@ -26,19 +26,33 @@ export function App() {
   // display-only, session-scoped (no URL persistence): toggling re-renders
   // the SVG from the existing model with pois filtered out — zero regen
   const [showPois, setShowPois] = useState(true)
-  // generation is synchronous and blocks the main thread (~50-300ms) — stage
-  // the busy label/disable on click, then let it paint before the blocking
-  // work runs on the next tick
-  const [busy, setBusy] = useState(false)
-  const reroll = () => {
-    setBusy(true)
-    setTimeout(() => {
-      const seed = hashSeed(applied.seed, 'reroll')
-      const tags = materializeTags(seed, pendingTags)
-      setPendingTags(tags)
-      update({ ...applied, tags, seed })
+
+  // generation runs in a worker (off the main thread) — model is null until
+  // the first reply lands, so the initial load shows the busy overlay
+  // instead of a blank/frozen page. Each request carries an id; a reply
+  // whose id doesn't match the latest sent request is a stale straggler
+  // from a superseded params change and is dropped.
+  const [model, setModel] = useState<SectorModel | null>(null)
+  const [busy, setBusy] = useState(true)
+  const workerRef = useRef<Worker | null>(null)
+  const requestIdRef = useRef(0)
+
+  useEffect(() => {
+    const worker = new Worker(new URL('./genWorker.ts', import.meta.url), { type: 'module' })
+    worker.onmessage = (e: MessageEvent<GenResponse>) => {
+      if (e.data.id !== requestIdRef.current) return
+      setModel(e.data.model)
       setBusy(false)
-    }, 20)
+    }
+    workerRef.current = worker
+    return () => worker.terminate()
+  }, [])
+
+  const reroll = () => {
+    const seed = hashSeed(applied.seed, 'reroll')
+    const tags = materializeTags(seed, pendingTags)
+    setPendingTags(tags)
+    update({ ...applied, tags, seed })
   }
 
   useEffect(() => {
@@ -63,13 +77,21 @@ export function App() {
     [genParams, applied.theme],
   )
 
+  // generation itself only depends on genParams — post to the worker on
+  // change, tagging the request so a stale reply (superseded by a newer
+  // params change before it comes back) never clobbers a fresher one
+  useEffect(() => {
+    const id = ++requestIdRef.current
+    setBusy(true)
+    workerRef.current?.postMessage({ id, params: genParams } satisfies GenRequest)
+  }, [genParams])
+
   // semantic zoom: labels re-render per zoom band (1|2|4|8) so more of them
-  // fit as you zoom in; generation itself only depends on genParams
+  // fit as you zoom in; generation itself never re-runs for this
   const [labelZoom, setLabelZoom] = useState(1)
-  const model = useMemo(() => generateSector(params), [genParams])
-  const visibleModel = showPois ? model : { ...model, pois: [] }
+  const visibleModel = model ? (showPois ? model : { ...model, pois: [] }) : null
   const svg = useMemo(
-    () => renderSector(visibleModel, getTheme(params.theme), { labelZoom }),
+    () => (visibleModel ? renderSector(visibleModel, getTheme(params.theme), { labelZoom }) : ''),
     [visibleModel, params.theme, labelZoom],
   )
 
@@ -77,6 +99,7 @@ export function App() {
   // ponytail: jspdf pulls ~688kB into the main chunk — defer the whole
   // exports module to the click that actually needs it
   const onExport = async (kind: 'svg' | 'png' | 'pdf') => {
+    if (!visibleModel) return
     const m = await import('./exports')
     // exports always use base label sizing, independent of viewport zoom;
     // WYSIWYG — exports match what's on screen, POIs included or not
@@ -109,6 +132,7 @@ export function App() {
       />
       <MapView
         svg={svg}
+        busy={busy}
         onZoom={(z) => setLabelZoom(Math.min(8, Math.max(1, 2 ** Math.floor(Math.log2(z)))))}
       />
     </div>

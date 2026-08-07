@@ -106,12 +106,9 @@ core (clipping, insetting, filling non-rectangular shapes).
   highway corridor is a cheap follow-up on the corridor mechanism.
 - **Street-fabric performance** — per-building polygon clipping; profile
   before optimizing.
-- **Reroll loading feedback** — a visually distinct generating state
-  (loading animation/overlay on the map, not just the button label
-  flipping to "Generating…"). Note: generation currently runs
-  synchronously on the main thread, which freezes CSS animations —
-  a real spinner needs the generator moved into a Web Worker, which
-  also unblocks the UI during generation. Worth doing together.
+- **Reroll loading feedback** ✅ — generation moved to a Web Worker; a
+  dimmed "Generating…" overlay covers the map while busy and pan/zoom stay
+  interactive throughout (see `src/app/genWorker.ts`, `MapView.tsx`).
 
 ## Cross-cutting
 

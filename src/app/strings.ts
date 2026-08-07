@@ -10,6 +10,9 @@ export const strings = {
       rerolling: 'Generating…',
       showPois: 'Show POIs',
     },
+    overlay: {
+      generating: 'Generating…',
+    },
     tagGroups: {
       terrain: 'Terrain',
       size: 'Size',
