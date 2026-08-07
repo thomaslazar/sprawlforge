@@ -51,12 +51,27 @@ core (clipping, insetting, filling non-rectangular shapes).
   one via the generic BSP/clipping pipeline is tolerated, not designed
   for). Deliberately settling an islet, connected back to the mainland by a
   causeway/bridge, is a follow-up.
-- **River meander wavelength control** — the metro-scale river tracer can
-  produce oxbow-tight loops (near-self-touching horseshoes within one small
-  sector window, e.g. seed 2882370099 inland/small). Real meanders have a
-  wavelength ~10× channel width; add a minimum self-distance or wavelength
-  constraint to the tracer. Terrain-only change, but same-seed river courses
-  shift → `GENERATOR_VERSION` bump when it lands.
+- **Coastal & water character v2** — one follow-up spec, all in
+  `src/gen/terrain/` (same-seed water shifts → `GENERATOR_VERSION` bump).
+  Reference case: seed 2908896298 large/bay/river/lakes/islands.
+  - *Coastal detail band*: bare coastlines are one smooth low-frequency
+    arc — boring. Add a medium-frequency domain-warped noise octave
+    concentrated near the waterline for natural inlets, headlands, coves.
+  - *Lakes are inland lakes*: the metro-center radial dip often lands in
+    sea/river on coastal maps and merges into the bay (accidental — and
+    currently the only thing making coasts interesting). Constrain basins
+    to land away from coast gradient and river corridor, and break the
+    uniform-blob shape (stronger shore noise, chained sub-basins).
+  - *Rivers meander and pool*: courses read as near-straight lines,
+    especially on large maps. Meander wavelength control (min
+    self-distance; real meanders run ~10× channel width — oxbow-tight
+    loop repro: seed 2882370099 inland/small) plus deliberate lake-like
+    carve-outs along the course (pools/widenings, the look that today
+    only happens when a lake accidentally intersects a river).
+  - *Archipelago islands*: islet candidates sample uniformly over all
+    water, so a large bay gets one lonely 300 m dot. Sample in an
+    offshore band along the coast, scale count with wet area, vary radii
+    — islands as a coastal feature with intent, no extra knob.
 - **Ships and harbor props** — ocean-going vessels, docks, shipping infrastructure.
 - **Transit lines** — rail/metro/monorail layer. Good v2 candidate for
   sector maps.
