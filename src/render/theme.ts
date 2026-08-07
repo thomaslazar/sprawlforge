@@ -65,7 +65,35 @@ const print: Theme = {
   glow: false,
 }
 
-export const themes: Record<string, Theme> = { neon, print }
+// classic architectural-drafting look: deep blueprint-blue field, near-white
+// linework for roads/buildings (buildings barely filled, read as outlines),
+// white-cyan labels, no glow — district fills are barely-differentiated blue
+// tints so zoning still reads without competing with the linework
+const blueprint: Theme = {
+  id: 'blueprint',
+  label: 'Blueprint',
+  bg: '#0b2e59',
+  water: '#082444',
+  waterShallow: '#0e3a6b',
+  shoreGlow: '#0b2e59',
+  districtFill: {
+    corp: '#0f3564',
+    residential: '#0d3160',
+    slum: '#0b2c58',
+    industrial: '#0e3462',
+    entertainment: '#11386a',
+    docks: '#0c305d',
+  },
+  districtLabel: '#dff3ff',
+  road: { highway: '#ffffff', arterial: '#f1fbff', street: '#9dc4e0' },
+  building: { fill: '#0e335f', stroke: '#e4f4ff' },
+  poi: { marker: '#eaf7ff', label: '#dff3ff' },
+  bridge: { deck: '#e4f4ff', shadow: '#071c38' },
+  scaleBar: '#dff3ff',
+  glow: false,
+}
+
+export const themes: Record<string, Theme> = { neon, print, blueprint }
 
 export function getTheme(id: string): Theme {
   return Object.hasOwn(themes, id) ? themes[id] : neon

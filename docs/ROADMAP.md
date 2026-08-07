@@ -80,7 +80,6 @@ core (clipping, insetting, filling non-rectangular shapes).
   data) — data model deliberately keeps wall/door semantics so this stays
   possible.
 - **Poster-tiling PDF** for printing battlemaps across multiple pages.
-- **Blueprint theme** — third theme; cheap once theme system exists.
 - **Better label placement** — v1 ships good-enough overlap heuristics.
 - **Annotation layer + JSON override export/import** — user labels, markers,
   renames stored as diffs against generated state (spec §3). Follow-up plan

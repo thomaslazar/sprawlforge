@@ -52,8 +52,8 @@ describe('renderSector', () => {
     const svg = renderSector(hacked, getTheme('neon'))
     expect(svg).toContain('A &amp; B &lt;X&gt;')
   })
-  it('ships neon and print themes; getTheme falls back to neon', () => {
-    expect(Object.keys(themes).sort()).toEqual(['neon', 'print'])
+  it('ships neon, print and blueprint themes; getTheme falls back to neon', () => {
+    expect(Object.keys(themes).sort()).toEqual(['blueprint', 'neon', 'print'])
     expect(getTheme('nope').id).toBe('neon')
   })
   it('getTheme falls back to neon for prototype-polluting ids', () => {
