@@ -33,9 +33,16 @@ export function MapView({
       }}
       onWheel={(e) => {
         const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
-        const zoom = Math.min(20, Math.max(0.2, zoomRef.current * factor))
+        const oldZoom = zoomRef.current
+        const zoom = Math.min(20, Math.max(0.2, oldZoom * factor))
         zoomRef.current = zoom
-        setView((v) => ({ ...v, zoom }))
+        // anchor zoom to the cursor: keep the world point under it fixed on
+        // screen — c.x - (c.x - view.x) * (newZoom/oldZoom), same for y
+        const rect = e.currentTarget.getBoundingClientRect()
+        const cx = e.clientX - rect.left
+        const cy = e.clientY - rect.top
+        const ratio = zoom / oldZoom
+        setView((v) => ({ x: cx - (cx - v.x) * ratio, y: cy - (cy - v.y) * ratio, zoom }))
         clearTimeout(zoomDebounce.current)
         zoomDebounce.current = setTimeout(() => onZoom?.(zoom), 150)
       }}
