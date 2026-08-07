@@ -109,8 +109,6 @@ core (clipping, insetting, filling non-rectangular shapes).
   commerce, underworld — exact categories to be worked out). Flavor-pack
   poi types get a category field; the UI gets per-category visibility
   toggles. Display-layer only, no generation change.
-- **Cursor styling** — default pointer over the map; the grab hand only
-  while actually dragging (currently the hand shows permanently).
 - **Curved highways** — the highway strip stays straight; a gently bent
   highway corridor is a cheap follow-up on the corridor mechanism.
 - **Street-fabric performance** — per-building polygon clipping; profile

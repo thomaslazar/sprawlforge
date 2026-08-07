@@ -12,6 +12,9 @@ export function MapView({
 }) {
   const [view, setView] = useState({ x: 0, y: 0, zoom: 1 })
   const drag = useRef<{ x: number; y: number } | null>(null)
+  // drag state itself lives in the ref above (read/written mid-gesture
+  // without a re-render); this just flips the cursor style at drag start/end
+  const [dragging, setDragging] = useState(false)
   // synchronous zoom mirror: wheel handlers read/write it directly, so rapid
   // events compound correctly and the updater below never reads mutable state
   const zoomRef = useRef(1)
@@ -29,7 +32,7 @@ export function MapView({
         flex: 1,
         overflow: 'hidden',
         position: 'relative',
-        cursor: drag.current ? 'grabbing' : 'grab',
+        cursor: dragging ? 'grabbing' : 'default',
       }}
       onWheel={(e) => {
         const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
@@ -48,6 +51,7 @@ export function MapView({
       }}
       onPointerDown={(e) => {
         drag.current = { x: e.clientX - view.x, y: e.clientY - view.y }
+        setDragging(true)
         e.currentTarget.setPointerCapture(e.pointerId)
       }}
       onPointerMove={(e) => {
@@ -58,7 +62,10 @@ export function MapView({
         const y = e.clientY - drag.current.y
         setView((v) => ({ ...v, x, y }))
       }}
-      onPointerUp={() => (drag.current = null)}
+      onPointerUp={() => {
+        drag.current = null
+        setDragging(false)
+      }}
     >
       <div
         className="map-viewport"
