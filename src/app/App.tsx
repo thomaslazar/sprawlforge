@@ -51,12 +51,14 @@ export function App() {
 
   // three seed/tag actions, all routed through the same worker (see the
   // genParams effect below) — see KnobPanel for what each does:
-  // Reroll = new random seed, unstaged groups re-rolled from it;
+  // Reroll = new random seed AND every tag group freshly re-rolled from it
+  // (materializeTags from an empty set — the same full surprise-me roll a
+  // bare URL gets), staged tags are discarded, not kept;
   // Update = same seed, apply staged tags as-is;
   // Dice = new random seed, tag set untouched.
   const reroll = () => {
     const seed = randomSeed()
-    const tags = materializeTags(seed, pendingTags)
+    const tags = materializeTags(seed, [])
     setPendingTags(tags)
     update({ ...applied, tags, seed })
   }
