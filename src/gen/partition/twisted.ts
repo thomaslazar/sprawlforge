@@ -1,5 +1,5 @@
 import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
-import { bboxOf, pointInRings, ringArea, type Pt } from '../geometry'
+import { bboxOf, pointAtT, pointInRings, polylineLength, ringArea, ringCentroid, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 
 export interface PartitionOpts {
@@ -7,9 +7,17 @@ export interface PartitionOpts {
   minCell: number
   /** cut corridor width (the future road's width), meters */
   gap: number
-  /** 0..1 — 0 ≈ regular grid, 1 = fully organic */
-  irregularity: number
+  /**
+   * 0..1 — 0 ≈ regular grid, 1 = fully organic. A function is sampled at
+   * the current cell's centroid for each cut, so different regions of one
+   * domain partition differently (see irregularityField).
+   */
+  irregularity: number | ((p: Pt) => number)
   rng: Rng
+}
+
+function resolveIrregularity(irr: PartitionOpts['irregularity'], poly: Pt[]): number {
+  return typeof irr === 'function' ? irr(ringCentroid(poly)) : irr
 }
 
 export interface PolyCut {
@@ -243,15 +251,72 @@ function extendEnds(line: Pt[], by: number): Pt[] {
   ]
 }
 
+// below this, meander is a no-op — keeps the grid gate (irr 0.1 ⇒ ≤3-point,
+// near-axis cuts) intact, and sits above the sector's arterial-irregularity
+// ceiling (0.1 + 0.25*irr, spec §4.2's "planned infrastructure keeps a low
+// ceiling" — arterials stay gently-bent, not organic, until that ceiling is
+// revisited) so this phase's cut-shape change doesn't ripple into sector
+// road layout; streets (uncapped per-district irregularity) meander freely
+const MEANDER_MIN_IRR = 0.4
+const MEANDER_SEG_MIN = 250
+const MEANDER_SEG_MAX = 400
+const MEANDER_AMP_K = 0.22
+const MEANDER_RETRIES = 2 // + the initial full-amplitude attempt
+
+/**
+ * Subdivides a cut polyline into ~250-400m segments and displaces interior
+ * points perpendicular to the local direction (midpoint-displacement),
+ * amplitude ∝ irregularity × segment length. Endpoints are untouched (they
+ * already meet the boundary near-perpendicular). Displacement fractions are
+ * drawn once so retries (halving amplitude on containment violation) stay
+ * deterministic without extra rng draws; falls back to the straight polyline
+ * if even the smallest amplitude still escapes the parent.
+ */
+function meanderLine(poly: Pt[], line: Pt[], irr: number, rng: Rng): Pt[] {
+  if (irr <= MEANDER_MIN_IRR) return line
+  const total = polylineLength(line)
+  const segLen = MEANDER_SEG_MIN + rng.next() * (MEANDER_SEG_MAX - MEANDER_SEG_MIN)
+  const segments = Math.round(total / segLen)
+  if (segments < 2) return line
+  const draws = Array.from({ length: segments - 1 }, () => (rng.next() - 0.5) * 2)
+  const EPS = 1e-3
+  for (let attempt = 0; attempt <= MEANDER_RETRIES; attempt++) {
+    const scale = 1 / 2 ** attempt
+    const amp = irr * segLen * MEANDER_AMP_K * scale
+    const pts: Pt[] = [line[0]]
+    let ok = true
+    for (let i = 1; i < segments; i++) {
+      const t = i / segments
+      const base = pointAtT(line, t)
+      const p0 = pointAtT(line, Math.max(0, t - EPS))
+      const p1 = pointAtT(line, Math.min(1, t + EPS))
+      const dx = p1.x - p0.x
+      const dy = p1.y - p0.y
+      const dlen = Math.hypot(dx, dy) || 1
+      const nx = -dy / dlen
+      const ny = dx / dlen
+      const disp = draws[i - 1] * amp
+      const pt = { x: base.x + nx * disp, y: base.y + ny * disp }
+      if (!pointInRings(pt, [poly])) ok = false
+      pts.push(pt)
+    }
+    pts.push(line[line.length - 1])
+    if (ok) return pts
+  }
+  return line
+}
+
 function planCut(poly: Pt[], opts: PartitionOpts): Pt[] | null {
-  const theta = splitAxis(poly, opts.irregularity, opts.rng)
-  const frac = 0.5 + (opts.rng.next() - 0.5) * 2 * (0.05 + 0.3 * opts.irregularity)
+  const irr = resolveIrregularity(opts.irregularity, poly)
+  const theta = splitAxis(poly, irr, opts.rng)
+  const frac = 0.5 + (opts.rng.next() - 0.5) * 2 * (0.05 + 0.3 * irr)
   const chord = chordThrough(poly, theta, frac)
   if (!chord) return null
   const [A, B] = chord
   if (Math.hypot(B.pt.x - A.pt.x, B.pt.y - A.pt.y) < opts.gap * 2) return null
-  const M = opts.irregularity > 0.05 ? bendPoint(poly, A, B, opts.irregularity) : null
-  return M ? [A.pt, M, B.pt] : [A.pt, B.pt]
+  const M = irr > 0.05 ? bendPoint(poly, A, B, irr) : null
+  const base = M ? [A.pt, M, B.pt] : [A.pt, B.pt]
+  return meanderLine(poly, base, irr, opts.rng)
 }
 
 export function partitionPolygon(poly: Pt[], opts: PartitionOpts): { cells: Pt[][]; cuts: PolyCut[] } {

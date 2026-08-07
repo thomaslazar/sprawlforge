@@ -1,3 +1,4 @@
+import { irregularityField } from '../../src/gen/partition/irregularity'
 import { partitionPolygon } from '../../src/gen/partition/twisted'
 import { hashSeed, mulberry32 } from '../../src/gen/rng'
 import { sampleTerrain } from '../../src/gen/terrain'
@@ -61,6 +62,29 @@ function draw(): void {
          <figcaption>${shape.name} irr=${irr} cells=${cells.length}</figcaption></figure>`,
       )
     }
+  }
+
+  // fifth row: one shape (the big square), irregularity supplied by a
+  // spatial field instead of a constant — each column its own field seed, so
+  // a single cut region shows grid-like patches transitioning into
+  // meandering ones as the field varies across the domain.
+  for (let column = 0; column < 4; column++) {
+    const poly = square()
+    const field = irregularityField(hashSeed(seed, 'field-row', column))
+    const rng = mulberry32(hashSeed(seed, 'field', column))
+    const { cells, cuts } = partitionPolygon(poly, { minCell, gap: 9, irregularity: field, rng })
+    const cellsSvg = cells
+      .map((c, i) =>
+        `<polygon points="${c.map((p) => `${p.x},${p.y}`).join(' ')}" fill="hsl(${HUES[i % 6]} 40% 30%)" stroke="#0af" stroke-width="1.5"/>`)
+      .join('')
+    const cutsSvg = cuts
+      .map((c) => `<polyline points="${c.points.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="#fff" stroke-width="3" opacity="0.5"/>`)
+      .join('')
+    out.insertAdjacentHTML(
+      'beforeend',
+      `<figure><svg viewBox="0 0 1000 1000">${cellsSvg}${cutsSvg}</svg>
+       <figcaption>field col=${column} cells=${cells.length}</figcaption></figure>`,
+    )
   }
 }
 

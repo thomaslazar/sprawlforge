@@ -10,8 +10,8 @@ const page = await browser.newPage({ viewport: { width: 1420, height: 1500 } })
 await page.goto(`${BASE}/tools/partition-toy/`)
 await page.waitForSelector('svg')
 const figures = await page.locator('figure').count()
-if (figures !== 16) {
-  console.error(`FAIL: expected 16 figures, got ${figures}`)
+if (figures !== 20) {
+  console.error(`FAIL: expected 20 figures, got ${figures}`)
   process.exitCode = 1
 }
 await page.screenshot({ path: `${OUT}/toy.png`, fullPage: true })

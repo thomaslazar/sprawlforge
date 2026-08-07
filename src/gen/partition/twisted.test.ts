@@ -95,6 +95,31 @@ describe('partitionPolygon', () => {
     expect(cuts.some((c) => c.points.length >= 3)).toBe(true)
   })
 
+  it('near-zero irregularity keeps cuts to ≤3 points (no meander leakage into the grid gate)', () => {
+    const { cuts } = partitionPolygon(square(1000), { ...OPTS, irregularity: 0.1, rng: mulberry32(5) })
+    for (const cut of cuts) expect(cut.points.length).toBeLessThanOrEqual(3)
+  })
+
+  it('a long high-irregularity chord meanders: ≥4 points, all inside the parent', () => {
+    const parent = square(2000)
+    const { cuts } = partitionPolygon(parent, { ...OPTS, irregularity: 0.9, rng: mulberry32(11) })
+    const longCut = cuts.reduce((a, b) =>
+      Math.hypot(b.points[b.points.length - 1].x - b.points[0].x, b.points[b.points.length - 1].y - b.points[0].y) >
+      Math.hypot(a.points[a.points.length - 1].x - a.points[0].x, a.points[a.points.length - 1].y - a.points[0].y) ? b : a)
+    expect(longCut.points.length).toBeGreaterThanOrEqual(4)
+    // endpoints sit ON the boundary by design; only interior (displaced) points must be strictly inside
+    for (const p of longCut.points.slice(1, -1)) expect(pointInRings(p, [parent])).toBe(true)
+  })
+
+  it('accepts a per-cell irregularity function, sampled at each cut cell centroid, deterministically', () => {
+    const field = (p: Pt) => (p.x < 500 ? 0.05 : 0.9)
+    const a = partitionPolygon(square(1000), { ...OPTS, irregularity: field, rng: mulberry32(9) })
+    const b = partitionPolygon(square(1000), { ...OPTS, irregularity: field, rng: mulberry32(9) })
+    expect(a).toEqual(b)
+    // some cut somewhere should show the high-irr side's signature (a bend/meander)
+    expect(a.cuts.some((c) => c.points.length >= 3)).toBe(true)
+  })
+
   it('every cut endpoint lies on or near the boundary of some ancestor', () => {
     const parent = square(1000)
     const { cuts } = partitionPolygon(parent, { ...OPTS, irregularity: 0.6, rng: mulberry32(6) })
