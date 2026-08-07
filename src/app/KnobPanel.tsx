@@ -14,12 +14,14 @@ interface Props {
   pendingTags: Tag[]
   busy: boolean
   showPois: boolean
+  pngScale: number
   onChange: (s: AppState) => void
   onPendingTagsChange: (tags: Tag[]) => void
   onReroll: () => void
   onUpdate: () => void
   onDice: () => void
   onShowPoisChange: (show: boolean) => void
+  onPngScaleChange: (scale: number) => void
   onExport: (kind: 'svg' | 'png' | 'pdf') => void
 }
 
@@ -71,12 +73,14 @@ export function KnobPanel({
   pendingTags,
   busy,
   showPois,
+  pngScale,
   onChange,
   onPendingTagsChange,
   onReroll,
   onUpdate,
   onDice,
   onShowPoisChange,
+  onPngScaleChange,
   onExport,
 }: Props) {
   const setPack = (pack: string) => onChange({ ...applied, pack })
@@ -203,7 +207,19 @@ export function KnobPanel({
           ))}
         </select>
       </label>
-      <div style={{ display: 'grid', gap: 8, marginTop: 16 }}>
+      <label style={{ display: 'block', marginBottom: 8 }}>
+        {t.exports.pngScale}
+        <select
+          value={pngScale}
+          onChange={(e) => onPngScaleChange(Number(e.target.value))}
+          style={{ width: '100%' }}
+        >
+          {[1, 2, 4].map((s) => (
+            <option key={s} value={s}>{s}×</option>
+          ))}
+        </select>
+      </label>
+      <div style={{ display: 'grid', gap: 8, marginTop: 8 }}>
         <button onClick={() => onExport('svg')}>{t.exports.svg}</button>
         <button onClick={() => onExport('png')}>{t.exports.png}</button>
         <button onClick={() => onExport('pdf')}>{t.exports.pdf}</button>

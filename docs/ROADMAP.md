@@ -89,8 +89,6 @@ core (clipping, insetting, filling non-rectangular shapes).
   actually hurts.
 - **Zone-mix knob** — spec §4 lists zone mix weights as a district knob;
   v1 UI only exposes corp dominance (zoning derives the rest).
-- **PNG resolution knob** — spec §3 calls for a resolution knob; v1 export
-  is fixed at 2x.
 - **Hierarchical per-entity naming** — spec §3 specifies `hash(seed,
   entityId)` per name; v1 draws all names from one sequential RNG stream
   seeded once. Switching later renames everything on existing URLs —
