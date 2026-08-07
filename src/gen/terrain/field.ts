@@ -314,9 +314,16 @@ export function applyIslands(
     // so which islet's ceiling applies first doesn't matter, only that
     // ceilings are evaluated against the fully-summed land height.
     // ponytail: doesn't defend an islet's own core against a NEIGHBORING
-    // islet's moat when two islets roll within about half a radius of each
-    // other — max 3 islets over a >=2000m window makes this rare; revisit
-    // if smoke/uicheck ever show a dry ring next to a crowded island cluster.
+    // islet's moat ceiling — when two islets' centers land roughly 1x-2x
+    // either radius apart (e.g. two r=200 islets at 176-384m, two r=300
+    // islets at 262-574m), islet A's annulus takes a wet bite out of islet
+    // B's core (not "a dry ring fails to form" — each islet's ceiling
+    // applies independently, so it can chew into a sibling's land same as
+    // it would any other terrain). Candidates cluster along whatever
+    // channel is wet, so two picks landing in that band is plausible, not
+    // rare. Revisit with a min center-spacing check when picking islets, or
+    // by exempting a sibling's own core from another islet's moat ceiling,
+    // if smoke/uicheck ever show a bitten-into island.
     for (const isl of islets) h += isl.bump * basinFalloff(x, y, isl.center, isl.coreR, isl.shoreNoise)
     for (const isl of islets) {
       const d = Math.hypot(x - isl.center.x, y - isl.center.y)
