@@ -138,9 +138,39 @@ describe('partitionPolygon', () => {
     const arc = pts.reduce((s, p, i) => (i === 0 ? 0 : s + Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y)), 0)
     const chord = Math.hypot(pts[pts.length - 1].x - pts[0].x, pts[pts.length - 1].y - pts[0].y)
     const sinuosity = arc / chord
-    expect(maxTurn).toBeLessThan(35)
+    // bounds widened vs the original single-bend design: multi-hump wander
+    // (see below) legitimately runs sinuous stretches at a sharper turn angle
+    expect(maxTurn).toBeLessThanOrEqual(55)
     expect(sinuosity).toBeGreaterThan(1.05)
-    expect(sinuosity).toBeLessThan(1.6)
+    expect(sinuosity).toBeLessThan(2.0)
+  })
+
+  it('at irr 0.9 a long cut multi-humps: its offset from the chord crosses zero repeatedly, not one bulge', () => {
+    const parent = square(2000)
+    const { cuts } = partitionPolygon(parent, { ...OPTS, irregularity: 0.9, rng: mulberry32(11) })
+    const longCut = cuts.reduce((a, b) =>
+      Math.hypot(b.points[b.points.length - 1].x - b.points[0].x, b.points[b.points.length - 1].y - b.points[0].y) >
+      Math.hypot(a.points[a.points.length - 1].x - a.points[0].x, a.points[a.points.length - 1].y - a.points[0].y) ? b : a)
+    const pts = longCut.points
+    const start = pts[0]
+    const end = pts[pts.length - 1]
+    const cx = end.x - start.x
+    const cy = end.y - start.y
+    const clen = Math.hypot(cx, cy) || 1
+    // unit normal to the chord — signed perpendicular distance of each point from it
+    const nx = -cy / clen
+    const ny = cx / clen
+    let signChanges = 0
+    let prevSign = 0
+    for (const p of pts) {
+      const offset = (p.x - start.x) * nx + (p.y - start.y) * ny
+      const sign = Math.sign(offset)
+      if (sign !== 0) {
+        if (prevSign !== 0 && sign !== prevSign) signChanges++
+        prevSign = sign
+      }
+    }
+    expect(signChanges).toBeGreaterThanOrEqual(2)
   })
 
   it('accepts a per-cell irregularity function, sampled at each cut cell centroid, deterministically', () => {

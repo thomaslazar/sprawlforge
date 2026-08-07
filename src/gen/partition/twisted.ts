@@ -260,15 +260,43 @@ function extendEnds(line: Pt[], by: number): Pt[] {
 // revisited) so this phase's cut-shape change doesn't ripple into sector
 // road layout; streets (uncapped per-district irregularity) meander freely
 const MEANDER_MIN_IRR = 0.4
-const MEANDER_SEG_MIN = 150
-const MEANDER_SEG_MAX = 250
+// segment length shrinks as irregularity rises — more control points along
+// the same chord is what buys room for several humps instead of one; holds
+// at its shortest from irr 0.8 up (see meanderSegRange)
+const MEANDER_SEG_MIN_LO = 150
+const MEANDER_SEG_MAX_LO = 250
+const MEANDER_SEG_MIN_HI = 80
+const MEANDER_SEG_MAX_HI = 120
+const MEANDER_SEG_HI_IRR = 0.8
 // amp = irr * segLen * K; tuned so amp stays well under segLen (amp ≈
 // segLen would fold the curve back on itself) while still reading as a
-// continuous wander once low-passed and Chaikin-smoothed — see the "at irr
-// 0.8 a long cut winds smoothly" test for the target sinuosity/turn-angle band
-const MEANDER_AMP_K = 1.1
+// sinuous wander once Chaikin-smoothed — see the "at irr 0.8 a long cut
+// winds" test for the target sinuosity/turn-angle band
+const MEANDER_AMP_K = 1.6
+// bendPoint's bow stops growing past this irr — without a cap, the single
+// boundary-to-boundary bow swallows the whole polygon's usable room at high
+// irr and swamps the meander noise (verified empirically: noise sign never
+// flips against the chord no matter how large MEANDER_AMP_K goes). Freezing
+// the bow shifts the "irregularity budget" above this point into the
+// meander's noise instead, which is what actually produces multiple humps.
+const MEANDER_BOW_CAP_IRR = 0.25
 const MEANDER_RETRIES = 2 // + the initial full-amplitude attempt
 const CHAIKIN_ROUNDS = 2
+// below this irr the 3-tap low-pass runs at full strength (one slow wave —
+// the original "curved cuts" look); above it the low-pass fades out so raw,
+// per-point-independent displacements survive into Chaikin, which rounds
+// them into a string of humps rather than a single bend
+const MEANDER_HIFREQ_START = 0.5
+const MEANDER_HIFREQ_FULL = 0.9
+
+/** segment length [min, max) range: 150-250m at moderate irr, shrinking to 80-120m by irr 0.8+ */
+function meanderSegRange(irr: number): [number, number] {
+  const t = Math.max(0, Math.min(1, (irr - MEANDER_MIN_IRR) / (MEANDER_SEG_HI_IRR - MEANDER_MIN_IRR)))
+  return [
+    MEANDER_SEG_MIN_LO + (MEANDER_SEG_MIN_HI - MEANDER_SEG_MIN_LO) * t,
+    MEANDER_SEG_MAX_LO + (MEANDER_SEG_MAX_HI - MEANDER_SEG_MAX_LO) * t,
+  ]
+}
 
 /**
  * Chaikin corner-cutting: replace each edge (a,b) with the two points at
@@ -330,22 +358,33 @@ function decimateCollinear(pts: Pt[]): Pt[] {
  * if even the smallest amplitude still escapes the parent. The displaced
  * polyline is then run through Chaikin smoothing so the result reads as a
  * continuously curving road rather than a zigzag of straight kinks.
+ *
+ * The 3-tap low-pass alone only ever produces one slow wander (averaging
+ * independent draws washes out anything higher-frequency). Above
+ * MEANDER_HIFREQ_START the low-pass fades out — by MEANDER_HIFREQ_FULL the
+ * raw, per-point-independent draws pass straight through — so Chaikin has
+ * several independent bumps to round into humps instead of one bend.
+ * Segment length also shrinks with irr (meanderSegRange) so there are enough
+ * control points along a long cut to hold 3-6 humps.
  */
 function meanderLine(poly: Pt[], line: Pt[], irr: number, rng: Rng): Pt[] {
   if (irr <= MEANDER_MIN_IRR) return line
   const total = polylineLength(line)
-  const segLen = MEANDER_SEG_MIN + rng.next() * (MEANDER_SEG_MAX - MEANDER_SEG_MIN)
+  const [segMin, segMax] = meanderSegRange(irr)
+  const segLen = segMin + rng.next() * (segMax - segMin)
   const segments = Math.round(total / segLen)
   if (segments < 2) return line
   const rawDraws = Array.from({ length: segments - 1 }, () => (rng.next() - 0.5) * 2)
   // low-pass the raw draws so neighboring offsets don't flip sign abruptly —
   // turns high-frequency zigzag into a gentle wander (a real meander is one
   // slow wave, not noise); pure smoothing, no extra rng draws, same length
-  const draws = rawDraws.map((d, i) => {
+  const smoothed = rawDraws.map((d, i) => {
     const prev = i > 0 ? rawDraws[i - 1] : d
     const next = i < rawDraws.length - 1 ? rawDraws[i + 1] : d
     return (prev + 2 * d + next) / 4
   })
+  const hifreq = Math.max(0, Math.min(1, (irr - MEANDER_HIFREQ_START) / (MEANDER_HIFREQ_FULL - MEANDER_HIFREQ_START)))
+  const draws = smoothed.map((s, i) => s + (rawDraws[i] - s) * hifreq)
   const EPS = 1e-3
   for (let attempt = 0; attempt <= MEANDER_RETRIES; attempt++) {
     const scale = 1 / 2 ** attempt
@@ -381,7 +420,7 @@ function planCut(poly: Pt[], opts: PartitionOpts): Pt[] | null {
   if (!chord) return null
   const [A, B] = chord
   if (Math.hypot(B.pt.x - A.pt.x, B.pt.y - A.pt.y) < opts.gap * 2) return null
-  const M = irr > 0.05 ? bendPoint(poly, A, B, irr) : null
+  const M = irr > 0.05 ? bendPoint(poly, A, B, Math.min(irr, MEANDER_BOW_CAP_IRR)) : null
   const base = M ? [A.pt, M, B.pt] : [A.pt, B.pt]
   return meanderLine(poly, base, irr, opts.rng)
 }
