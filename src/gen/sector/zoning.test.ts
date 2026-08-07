@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import type { Pt, Rect } from '../geometry'
+import { ringCentroid, type Pt, type Rect } from '../geometry'
 import { ZONE_TYPES, type SectorParams, type Terrain } from '../types'
-import { assignZones, zoneWeights } from './zoning'
+import { assignZones, effectiveIrregularity, zoneWeights } from './zoning'
 
 const rectPoly = (r: Rect): Pt[] => [
   { x: r.x, y: r.y }, { x: r.x + r.w, y: r.y },
@@ -79,13 +79,24 @@ describe('assignZones', () => {
       expect(d.irregularity).toBeGreaterThanOrEqual(0.05)
       expect(d.irregularity).toBeLessThanOrEqual(0.95)
     }
-    // zone bias visible in aggregate: mean slum irregularity > mean corp
-    const mean = (zone: string) => {
-      const ds = a.filter((d) => d.zone === zone)
-      return ds.reduce((s, d) => s + d.irregularity, 0) / (ds.length || 1)
+    // field-primary now: irregularity should track the effective field at
+    // each district's centroid (zone bias is secondary), not the zone alone —
+    // assert correlation instead of a per-zone mean (that's noise-prone once
+    // the field dominates)
+    const effective = effectiveIrregularity(params)
+    const xs = a.map((d) => effective(ringCentroid(d.poly)))
+    const ys = a.map((d) => d.irregularity)
+    const n = xs.length
+    const meanX = xs.reduce((s, v) => s + v, 0) / n
+    const meanY = ys.reduce((s, v) => s + v, 0) / n
+    let cov = 0, varX = 0, varY = 0
+    for (let i = 0; i < n; i++) {
+      cov += (xs[i] - meanX) * (ys[i] - meanY)
+      varX += (xs[i] - meanX) ** 2
+      varY += (ys[i] - meanY) ** 2
     }
-    if (a.some((d) => d.zone === 'slum') && a.some((d) => d.zone === 'corp'))
-      expect(mean('slum')).toBeGreaterThan(mean('corp'))
+    const r = cov / Math.sqrt(varX * varY)
+    expect(r).toBeGreaterThan(0.5)
   })
 
   it('shifts irregularity with the params bias', () => {

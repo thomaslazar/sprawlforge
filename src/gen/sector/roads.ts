@@ -10,6 +10,7 @@ import {
   truncateOverSpanRoads,
   truncateUnlandableRoads,
 } from './bridges'
+import { effectiveIrregularity, ZONE_IRREGULARITY } from './zoning'
 
 // islets below this get no district (ROADMAP defers islet settlement)
 const MIN_DISTRICT_AREA = 250_000
@@ -82,6 +83,18 @@ function joinArterialsAcrossHighway(roads: Road[]): Road[] {
 const HIGHWAY_W = 32
 const ARTERIAL_W = 18
 const STREET_W = 9
+
+const clamp = (lo: number, hi: number, v: number) => Math.max(lo, Math.min(hi, v))
+
+// Road.width visualizes hierarchy (depth = how many cuts deep this road sits
+// in its parent's recursion); the corridor `gap` fed to partitionPolygon
+// stays ARTERIAL_W/STREET_W at every depth on purpose — varying the actual
+// cut width by depth would change the partition geometry itself (cell sizes,
+// downstream cut placement), not just how the road is drawn. Keeping gap
+// uniform holds the geometry stable across a reroll; only the rendered
+// width tiers by depth.
+const arterialWidthByDepth = (depth: number) => (depth <= 1 ? 24 : depth === 2 ? 18 : 14)
+const streetWidthByDepth = (depth: number) => (depth <= 1 ? 9 : 6)
 
 /**
  * Domain rings for district partitioning (spec §4.1): outer rings of
@@ -158,8 +171,11 @@ export function partitionDistricts(
     domains = next
   }
 
-  // arterials bend gently — planned infrastructure keeps a low ceiling (spec §4.2)
-  const arterialIrr = 0.1 + 0.25 * params.irregularity
+  // arterials sample the sector's own irregularity field (spec §4.2): organic
+  // regions genuinely squiggle past the meander threshold, planned regions
+  // stay near-straight — no more flat per-sector ceiling
+  const effective = effectiveIrregularity(params)
+  const arterialIrr = (p: Pt) => 0.05 + effective(p) * 0.65
   const districtPolys: Pt[][] = []
   let a = 0
   for (const domain of domains) {
@@ -169,7 +185,7 @@ export function partitionDistricts(
     for (const cut of cuts) {
       a += 1
       roads.push({ id: `A${String(a).padStart(2, '0')}`, class: 'arterial',
-        points: cut.points, width: ARTERIAL_W, name: null })
+        points: cut.points, width: arterialWidthByDepth(cut.depth), name: null })
     }
     districtPolys.push(...cells)
   }
@@ -182,18 +198,23 @@ export function layoutStreets(
   params: SectorParams,
 ): { streets: Road[]; blocksByDistrict: Pt[][][] } {
   const rng = mulberry32(hashSeed(params.seed, 'streets'))
+  const effective = effectiveIrregularity(params)
   const streetCell = 160 - params.density * 70
   const streets: Road[] = []
   const blocksByDistrict: Pt[][][] = []
   let s = 0
   for (const district of districts) {
+    // intra-district fabric follows the same field the district's own
+    // (scalar, centroid-sampled) irregularity was derived from, so streets
+    // stay coherent with the block they're carving, zone as a minor bias
+    const irr = (p: Pt) => clamp(0.05, 0.95, effective(p) * 0.8 + ZONE_IRREGULARITY[district.zone] * 0.2)
     const { cells, cuts } = partitionPolygon(district.poly, {
-      minCell: streetCell, gap: STREET_W, irregularity: district.irregularity, rng,
+      minCell: streetCell, gap: STREET_W, irregularity: irr, rng,
     })
     for (const cut of cuts) {
       s += 1
       streets.push({ id: `S${String(s).padStart(3, '0')}`, class: 'street',
-        points: cut.points, width: STREET_W, name: null })
+        points: cut.points, width: streetWidthByDepth(cut.depth), name: null })
     }
     blocksByDistrict.push(cells)
   }

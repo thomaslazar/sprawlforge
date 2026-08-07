@@ -54,7 +54,11 @@ describe('generateSector', () => {
     }
     for (const p of m.pois) expect(buildingIds.has(p.buildingId)).toBe(true)
   })
-  it('never anchors a poi in water (coastal, shore-clipped buildings)', () => {
+  // 3 full generations; field-driven irregularity (arterials + streets both
+  // sample the noise field per cut now) pushes this past the 5s default
+  // under parallel test load — same headroom other generation-heavy tests
+  // in this file already use
+  it('never anchors a poi in water (coastal, shore-clipped buildings)', { timeout: 15000 }, () => {
     const inWater = (t: Terrain, p: { x: number; y: number }) =>
       t.water.some((poly) => pointInRings(p, poly.map((ring) => ring.map(([x, y]) => ({ x, y })))))
     for (const seed of [1, 42, 119560026]) {

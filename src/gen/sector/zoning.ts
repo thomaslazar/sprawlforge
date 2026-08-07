@@ -1,5 +1,6 @@
 import type { Pt } from '../geometry'
-import { bboxOf, pointInRings } from '../geometry'
+import { bboxOf, pointInRings, ringCentroid } from '../geometry'
+import { irregularityField } from '../partition/irregularity'
 import { distToPolyline } from '../terrain/rivers'
 import { hashSeed, mulberry32 } from '../rng'
 import type { District, SectorParams, Terrain, ZoneType } from '../types'
@@ -13,6 +14,18 @@ export const ZONE_IRREGULARITY: Record<ZoneType, number> = {
 }
 
 const clamp = (lo: number, hi: number, v: number) => Math.max(lo, Math.min(hi, v))
+
+/**
+ * One irregularity field per sector, shifted by the tag bias: arterials
+ * (roads.ts), zoning (below) and streets (roads.ts) all sample this exact
+ * function so organic/planned regions read as coherent through-lines across
+ * the whole road hierarchy instead of each layer rolling its own look.
+ */
+export function effectiveIrregularity(params: SectorParams): (p: Pt) => number {
+  const field = irregularityField(hashSeed(params.seed, 'irregularity-field'))
+  const bias = (params.irregularity - 0.5) * 0.6
+  return (p: Pt) => clamp(0.05, 0.95, field(p) + bias)
+}
 
 function isShore(poly: Pt[], terrain: Terrain): boolean {
   // sample the polygon's own vertices plus each edge midpoint
@@ -57,17 +70,19 @@ export function zoneWeights(params: SectorParams, shore: boolean): Record<ZoneTy
 
 export function assignZones(districtPolys: Pt[][], params: SectorParams, terrain: Terrain): District[] {
   const rng = mulberry32(hashSeed(params.seed, 'zones'))
+  const effective = effectiveIrregularity(params)
   const withBounds = districtPolys.map((poly) => ({ poly, bounds: bboxOf(poly) }))
   const sorted = withBounds.sort((a, b) => a.bounds.y - b.bounds.y || a.bounds.x - b.bounds.x)
   return sorted.map(({ poly, bounds }, i) => {
     const shore = isShore(poly, terrain)
     const weights = Object.entries(zoneWeights(params, shore)) as Array<[ZoneType, number]>
     const zone = rng.weighted(weights)
-    // overlapping zone bases + jitter + global tag bias; floor > 0 — no
-    // district is a perfect grid (spec §4.3)
+    // field-primary: spatial coherence (effective field at the district's
+    // centroid) dominates, zone base is a secondary bias, jitter only breaks
+    // ties — floor > 0 so no district is a perfect grid (spec §4.3)
     const irregularity = clamp(
       0.05, 0.95,
-      ZONE_IRREGULARITY[zone] + (rng.next() - 0.5) * 0.4 + (params.irregularity - 0.5) * 0.6,
+      effective(ringCentroid(poly)) * 0.7 + ZONE_IRREGULARITY[zone] * 0.3 + (rng.next() - 0.5) * 0.1,
     )
     return {
       id: `D${String(i + 1).padStart(2, '0')}`,

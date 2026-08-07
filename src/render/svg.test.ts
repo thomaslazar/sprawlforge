@@ -32,7 +32,11 @@ describe('renderSector', () => {
     for (const p of model.pois) expect(svg).toContain(`data-id="${p.id}"`)
     expect(svg.match(/<polygon data-id="BLD/g)!.length).toBe(model.buildings.length)
   })
-  it('has a metric scale bar', () => {
+  // field-driven irregularity samples the noise field per cut (arterials
+  // and streets both), so a 6km sector's extra fabric pushes this past the
+  // 5s default under parallel test load — same headroom bump other
+  // generation-heavy tests in this codebase already use
+  it('has a metric scale bar', { timeout: 15000 }, () => {
     expect(renderSector(model, getTheme('neon'))).toContain('500 m')
     const big = generateSector({ ...base, size: 6 })
     expect(renderSector(big, getTheme('neon'))).toContain('1 km')

@@ -208,9 +208,11 @@ describe('finalizeRoads (end to end: partition -> streets -> clip/bridge)', () =
     // organically (no shared grid alignment), so whether any pair of
     // opposing-edge arterials lands within OVERPASS_PERP_TOL is
     // seed-dependent — 119560026 (the old rect-BSP pin) no longer aligns;
-    // 42 does (checked against a sweep of nearby seeds).
+    // 42 stopped aligning once arterials sample the field-driven irregularity
+    // function instead of a flat scalar (phase 2) — 45 does (checked against
+    // a sweep of nearby seeds).
     const params: SectorParams = {
-      seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
+      seed: 45, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
       landform: 'coastal', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
     }
     const terrain = sampleTerrain(params, sizeM)
