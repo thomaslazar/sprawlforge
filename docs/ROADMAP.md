@@ -106,6 +106,16 @@ core (clipping, insetting, filling non-rectangular shapes).
   highway corridor is a cheap follow-up on the corridor mechanism.
 - **Street-fabric performance** — per-building polygon clipping; profile
   before optimizing.
+- **Improved building placement** — building lots are a rotated rect grid
+  clipped to the block polygon, which works for grid-like blocks (many
+  small buildings — fine, reads urban) but fails in organic blocks:
+  winding streets leave big weird-shaped clipped leftovers that get kept
+  as huge irregular buildings. Revisit placement so building size/shape
+  responds to block character (organic blocks → small buildings tracing
+  the street edges, courtyards, gap-toothed rows), and let placement
+  inform building KIND — POI assignment currently ignores footprint size,
+  so e.g. bars land in enormous buildings. Size/shape-aware building
+  semantics (what fits where) is the follow-up spec's core question.
 - **Reroll loading feedback** ✅ — generation moved to a Web Worker; a
   dimmed "Generating…" overlay covers the map while busy and pan/zoom stay
   interactive throughout (see `src/app/genWorker.ts`, `MapView.tsx`).
