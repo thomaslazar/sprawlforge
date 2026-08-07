@@ -114,6 +114,36 @@ describe('renderSector', () => {
     piers: [{ id: 'PR01', points: [{ x: 700, y: 500 }, { x: 760, y: 500 }], width: 6 }],
   }
 
+  it('scopes the glow filter to highway/arterial road strokes only, never labels or poi markers', () => {
+    const theme = getTheme('neon')
+    const glowModel: SectorModel = {
+      meta: { seed: 1, generatorVersion: GENERATOR_VERSION, params: base, sizeM: 1000, metroSeed: 1 },
+      terrain: {
+        landform: 'inland', river: false, lakes: false, islands: false, metroSeed: 1,
+        water: [], land: [[[[0, 0], [1000, 0], [1000, 1000], [0, 1000]]]], riverSlice: null,
+      },
+      roads: [
+        { id: 'RH', class: 'highway', points: [{ x: 0, y: 100 }, { x: 1000, y: 100 }], width: 20, name: 'Highway', bridge: false },
+        { id: 'RA', class: 'arterial', points: [{ x: 0, y: 200 }, { x: 1000, y: 200 }], width: 15, name: 'Arterial', bridge: false },
+        { id: 'RS', class: 'street', points: [{ x: 0, y: 300 }, { x: 1000, y: 300 }], width: 8, name: 'Street', bridge: false },
+      ],
+      districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, poly: rectPoly({ x: 0, y: 0, w: 1000, h: 1000 }), irregularity: 0.5, shore: false, labelAt: { x: 500, y: 500 } }],
+      blocks: [],
+      buildings: [],
+      pois: [poi('P01', 'Alpha Tower', 500, 600)],
+      piers: [],
+    }
+    const svg = renderSector(glowModel, theme)
+    // highway and arterial polylines carry the glow filter
+    expect(svg).toMatch(new RegExp(`stroke="${theme.road.highway}"[^/]*filter="url\\(#glow\\)"`))
+    expect(svg).toMatch(new RegExp(`stroke="${theme.road.arterial}"[^/]*filter="url\\(#glow\\)"`))
+    // street never does
+    expect(svg).not.toMatch(new RegExp(`stroke="${theme.road.street}"[^/]*filter="url\\(#glow\\)"`))
+    // labels (district + poi) and the poi marker never carry the glow filter
+    expect(svg.match(/<text[^>]*filter="url\(#glow\)"/)).toBeNull()
+    expect(svg.match(/<circle[^>]*filter="url\(#glow\)"/)).toBeNull()
+  })
+
   it('renders shallow band and shore glow via clip paths', () => {
     const svg = renderSector(wetModel, getTheme('neon'))
     expect(svg).toContain('id="water-clip"')

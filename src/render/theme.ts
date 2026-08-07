@@ -17,27 +17,31 @@ export interface Theme {
   glow: boolean
 }
 
+// "Restrained Neon" palette (docs/specs research): desaturated base + a
+// tight lightness ramp per district so all six zones separate at a glance,
+// glow reserved for highway/arterial strokes only (see svg.ts) rather than
+// blooming labels/markers into an indistinct mass.
 const neon: Theme = {
   id: 'neon',
   label: 'Neon',
-  bg: '#0a0a12',
-  water: '#0d1b2e',
-  waterShallow: '#16324f',
-  shoreGlow: '#000814',
+  bg: '#0a0c12',
+  water: '#0d1c2b',
+  waterShallow: '#163449',
+  shoreGlow: '#05080d',
   districtFill: {
-    corp: '#14203a',
-    residential: '#1a1a2e',
-    slum: '#241a1a',
-    industrial: '#1f2418',
-    entertainment: '#2a142e',
-    docks: '#12262c',
+    corp: '#172038',
+    residential: '#1b1c26',
+    slum: '#2a2019',
+    industrial: '#1a2117',
+    entertainment: '#23172c',
+    docks: '#12262a',
   },
-  districtLabel: '#7fdbff',
-  road: { highway: '#ff2975', arterial: '#00e5ff', street: '#2a3550' },
-  building: { fill: '#151d30', stroke: '#3a4a6b' },
-  poi: { marker: '#ffe066', label: '#ffe066' },
-  bridge: { deck: '#8a93a6', shadow: '#05070d' },
-  scaleBar: '#7fdbff',
+  districtLabel: '#9fb8c8',
+  road: { highway: '#e8577f', arterial: '#4fc9d9', street: '#3a4560' },
+  building: { fill: '#202840', stroke: '#4a5a7a' },
+  poi: { marker: '#ffb454', label: '#ffdca8' },
+  bridge: { deck: '#8a93a6', shadow: '#04060a' },
+  scaleBar: '#9fb8c8',
   glow: true,
 }
 

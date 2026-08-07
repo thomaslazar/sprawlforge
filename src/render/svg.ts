@@ -125,6 +125,9 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   }
   out.push('</defs>')
 
+  // glow is a hero accent for highway/arterial road strokes only — never on
+  // labels or POI markers, which use plain fill/luminance contrast instead
+  // (dense label text blooms into an indistinct mass under a blur filter)
   const glowAttr = theme.glow ? ' filter="url(#glow)"' : ''
 
   out.push(`<rect x="0" y="0" width="${S}" height="${S}" fill="${theme.bg}"/>`)
@@ -220,7 +223,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     const { dx, dy } = clampShift(raw, S)
     placedLabels.push({ ...raw, x: raw.x + dx, y: raw.y + dy })
     out.push(
-      `<text x="${n(cx + dx)}" y="${n(cy + dy)}" fill="${theme.districtLabel}" font-size="${n(fontD)}" text-anchor="middle" opacity="0.85"${glowAttr}>${esc(d.name)}</text>`,
+      `<text x="${n(cx + dx)}" y="${n(cy + dy)}" fill="${theme.districtLabel}" font-size="${n(fontD)}" text-anchor="middle" opacity="0.85">${esc(d.name)}</text>`,
     )
   }
 
@@ -229,7 +232,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   const markerR = (S * 0.004) / labelZoom
   for (const p of model.pois) {
     out.push(
-      `<circle data-id="${p.id}" cx="${n(p.at.x)}" cy="${n(p.at.y)}" r="${n(markerR)}" fill="${theme.poi.marker}"${glowAttr}><title>${esc(p.name)}</title></circle>`,
+      `<circle data-id="${p.id}" cx="${n(p.at.x)}" cy="${n(p.at.y)}" r="${n(markerR)}" fill="${theme.poi.marker}"><title>${esc(p.name)}</title></circle>`,
     )
   }
 
