@@ -8,6 +8,7 @@ export const TAG_GROUPS = {
   density: ['sparse', 'dense', 'packed'],
   power: ['corp-run', 'balanced', 'fringe'],
   activity: ['quiet', 'normal', 'lively'],
+  streets: ['planned', 'mixed', 'sprawl'],
 } as const
 
 
@@ -24,12 +25,13 @@ const TAG_EFFECTS: Record<string, Partial<SectorParams>> = {
   sparse: { density: 0.25 }, dense: { density: 0.6 }, packed: { density: 0.9 },
   'corp-run': { corpDominance: 0.85 }, balanced: { corpDominance: 0.5 }, fringe: { corpDominance: 0.15 },
   quiet: { poiDensity: 0.25 }, normal: { poiDensity: 0.5 }, lively: { poiDensity: 0.7 },
+  planned: { irregularity: 0.15 }, mixed: { irregularity: 0.5 }, sprawl: { irregularity: 0.85 },
   river: { river: true }, lakes: { lakes: true }, islands: { islands: true }, piers: { piers: true },
 }
 
 export const DEFAULT_PARAMS: Omit<SectorParams, 'seed' | 'pack' | 'theme'> = {
   landform: 'auto', river: false, lakes: false, islands: false,
-  size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, piers: false,
+  size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, piers: false,
 }
 
 /** last tag of a group wins; unknown tags are ignored */

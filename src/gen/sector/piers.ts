@@ -33,14 +33,16 @@ function distToRings(p: Pt, rings: Pt[][]): number {
   return best
 }
 
-/** every 30 m sample along a rect's perimeter */
-function edgeSamples(r: District['bounds'], step: number): Pt[] {
+/** every ~30 m sample along a polygon's perimeter */
+function perimeterSamples(poly: Pt[], step: number): Pt[] {
   const pts: Pt[] = []
-  for (let x = r.x; x <= r.x + r.w; x += step) {
-    pts.push({ x, y: r.y }, { x, y: r.y + r.h })
-  }
-  for (let y = r.y; y <= r.y + r.h; y += step) {
-    pts.push({ x: r.x, y }, { x: r.x + r.w, y })
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]
+    const b = poly[(i + 1) % poly.length]
+    const len = Math.hypot(b.x - a.x, b.y - a.y)
+    const steps = Math.max(1, Math.floor(len / step))
+    for (let k = 0; k < steps; k++)
+      pts.push({ x: a.x + ((b.x - a.x) * k) / steps, y: a.y + ((b.y - a.y) * k) / steps })
   }
   return pts
 }
@@ -76,7 +78,7 @@ export function placePiers(districts: District[], terrain: Terrain, params: Sect
   for (const district of districts) {
     if (district.zone !== 'docks' || !district.shore) continue
     let placedHere = 0
-    for (const root of edgeSamples(district.bounds, EDGE_STEP)) {
+    for (const root of perimeterSamples(district.poly, EDGE_STEP)) {
       if (placedHere >= MAX_PIERS_PER_DISTRICT) break
       if (!isLand(root) || distToWater(root) > ROOT_WATER_TOL) continue
 

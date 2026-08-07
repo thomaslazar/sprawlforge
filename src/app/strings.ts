@@ -7,7 +7,13 @@ export const strings = {
       pack: 'Flavor pack',
       theme: 'Theme',
       reroll: 'Reroll',
-      rerolling: 'Generating…',
+      update: 'Update',
+      dice: '🎲',
+      diceLabel: 'New random seed, keep tags',
+      showPois: 'Show POIs',
+    },
+    overlay: {
+      generating: 'Generating…',
     },
     tagGroups: {
       terrain: 'Terrain',
@@ -15,6 +21,7 @@ export const strings = {
       density: 'Density',
       power: 'Power',
       activity: 'Activity',
+      streets: 'Streets',
       water: 'Water',
     },
     tags: {
@@ -36,6 +43,9 @@ export const strings = {
       quiet: 'Quiet',
       normal: 'Normal',
       lively: 'Lively',
+      planned: 'Planned',
+      mixed: 'Mixed',
+      sprawl: 'Sprawl',
       piers: 'Piers',
       piersNeedsWater: 'Needs water — pick a wet terrain',
     },

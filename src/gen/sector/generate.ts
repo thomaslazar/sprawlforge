@@ -1,3 +1,4 @@
+import { ringArea, ringCentroid } from '../geometry'
 import { generateName } from '../names/names'
 import { getPack } from '../names/packs'
 import { hashSeed, mulberry32 } from '../rng'
@@ -6,7 +7,7 @@ import { GENERATOR_VERSION, type Block, type District, type SectorModel, type Se
 import { fillBuildings } from './buildings'
 import { placePiers } from './piers'
 import { placePois } from './pois'
-import { layoutRoads } from './roads'
+import { finalizeRoads, layoutStreets, partitionDistricts } from './roads'
 import { assignZones } from './zoning'
 
 /**
@@ -22,9 +23,10 @@ export function deriveDistricts(districts: District[], blocks: Block[]): Distric
     if (dBlocks.length === 0) return []
     let sx = 0, sy = 0, sArea = 0
     for (const b of dBlocks) {
-      const area = b.rect.w * b.rect.h
-      sx += (b.rect.x + b.rect.w / 2) * area
-      sy += (b.rect.y + b.rect.h / 2) * area
+      const area = Math.abs(ringArea(b.footprint))
+      const c = ringCentroid(b.footprint)
+      sx += c.x * area
+      sy += c.y * area
       sArea += area
     }
     return [{ ...d, labelAt: { x: sx / sArea, y: sy / sArea } }]
@@ -36,13 +38,10 @@ export function generateSector(params: SectorParams): SectorModel {
   const pack = getPack(params.pack)
 
   const terrain = sampleTerrain(params, sizeM)
-  const { roads, districtRects, blocksByDistrict } = layoutRoads(params, terrain, sizeM)
-  const districts = assignZones(districtRects, params, terrain)
-
-  // re-align blocksByDistrict to the sorted district order
-  const rectKey = (r: { x: number; y: number }) => `${r.x}:${r.y}`
-  const blockIndex = new Map(districtRects.map((r, i) => [rectKey(r), i]))
-  const alignedBlocks = districts.map((d) => blocksByDistrict[blockIndex.get(rectKey(d.bounds))!])
+  const { roads: skeleton, districtPolys } = partitionDistricts(params, terrain, sizeM)
+  const districts = assignZones(districtPolys, params, terrain)
+  const { streets, blocksByDistrict } = layoutStreets(districts, params)
+  const roads = finalizeRoads([...skeleton, ...streets], terrain)
 
   const nameRng = mulberry32(hashSeed(params.seed, 'names'))
   const namedDistricts = districts.map((d) => ({
@@ -55,7 +54,7 @@ export function generateSector(params: SectorParams): SectorModel {
       : { ...r, name: generateName(nameRng.pick(pack.streetPatterns), pack.tables, nameRng) },
   )
 
-  const { blocks, buildings } = fillBuildings(namedDistricts, alignedBlocks, params, terrain)
+  const { blocks, buildings } = fillBuildings(namedDistricts, blocksByDistrict, params, terrain)
   const finalDistricts = deriveDistricts(namedDistricts, blocks)
   const pois = placePois(finalDistricts, buildings, pack, params)
   const piers = placePiers(finalDistricts, terrain, params)

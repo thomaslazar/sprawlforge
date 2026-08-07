@@ -11,6 +11,15 @@ const fail = (msg) => {
   console.error(`FAIL: ${msg}`)
   process.exitCode = 1
 }
+// generation now round-trips through a worker (async) — an action that
+// should regenerate the map needs to wait for the new svg, not assume it
+// landed synchronously by the time the next Playwright command runs
+const waitForSvgChange = (prevHtml, timeout = 5000) =>
+  page.waitForFunction(
+    (prev) => document.querySelector('svg')?.innerHTML !== prev,
+    prevHtml,
+    { timeout },
+  )
 
 // fixed seed → reproducible assertions
 await page.goto(`${BASE}/?seed=42&tags=coastal,large&pack=generic&theme=neon`)
@@ -27,6 +36,20 @@ if (buildings < 50) fail(`expected a dense map, got ${buildings} buildings`)
 const pois = await page.locator('svg circle[data-id^="P"]').count()
 if (pois < 1) fail('no POIs rendered')
 
+// Show POIs toggle: instant display filter, no reroll/regeneration — url
+// stays put and no 'Generating…' busy flip, just the markers vanishing
+const urlBeforePoiToggle = page.url()
+const showPoisToggle = page.getByLabel(/Show POIs/)
+await showPoisToggle.click()
+if ((await page.locator('svg circle[data-id^="P"]').count()) !== 0)
+  fail('unchecking Show POIs did not hide poi markers')
+if (page.url() !== urlBeforePoiToggle) fail('toggling Show POIs changed the url')
+if (await page.getByText('Generating…').isVisible().catch(() => false))
+  fail('toggling Show POIs triggered a regenerate busy state')
+await showPoisToggle.click()
+if ((await page.locator('svg circle[data-id^="P"]').count()) < 1)
+  fail('rechecking Show POIs did not restore poi markers')
+
 // tag chips reflect the URL on load
 if (!(await page.getByRole('button', { name: 'Coastal', pressed: true }).isVisible()))
   fail('coastal chip not pressed from URL tags')
@@ -34,35 +57,66 @@ if (!(await page.getByRole('button', { name: 'Large', pressed: true }).isVisible
   fail('large chip not pressed from URL tags')
 
 // click a chip in another group → stages the tag (pressed) but does NOT
-// regenerate: no url change, no map change, until Reroll
+// regenerate: no url change, no map change, until Update
 const urlBeforeStage = page.url()
 const svgBeforeStage = await page.locator('svg').innerHTML()
 await page.getByRole('button', { name: 'Packed' }).click()
 if (!(await page.getByRole('button', { name: 'Packed', pressed: true }).isVisible()))
   fail('packed chip not pressed after click')
-if (page.url() !== urlBeforeStage) fail('clicking a chip changed the url before reroll')
+if (page.url() !== urlBeforeStage) fail('clicking a chip changed the url before update')
 if ((await page.locator('svg').innerHTML()) !== svgBeforeStage)
-  fail('clicking a chip regenerated the map before reroll')
+  fail('clicking a chip regenerated the map before update')
 
-// reroll applies the staged tag: url gains it, map changes
-await page.getByRole('button', { name: 'Reroll' }).click()
-if (!page.url().includes('packed')) fail('reroll did not apply staged packed tag to url')
-const svgAfterReroll = await page.locator('svg').innerHTML()
-if (svgAfterReroll === svgBeforeStage) fail('reroll did not change map')
+// Update applies the staged tag with the SAME seed: url gains the tag, seed
+// unchanged, map changes
+const seedBeforeUpdate = new URL(page.url()).searchParams.get('seed')
+await page.getByRole('button', { name: 'Update' }).click()
+if (!page.url().includes('packed')) fail('update did not apply staged packed tag to url')
+if (new URL(page.url()).searchParams.get('seed') !== seedBeforeUpdate)
+  fail('update changed the seed in the url')
+await waitForSvgChange(svgBeforeStage).catch(() => fail('update did not change map (timed out)'))
+const svgAfterUpdate = await page.locator('svg').innerHTML()
 
 // click the now-active chip again → stages removal (unpressed), again no
-// regen/url change until the next Reroll
+// regen/url change until the next Update
 await page.getByRole('button', { name: 'Packed' }).click()
 if (!(await page.getByRole('button', { name: 'Packed', pressed: false }).isVisible()))
   fail('packed chip still pressed after deselect')
-if (!page.url().includes('packed')) fail('deselecting a chip changed the url before reroll')
-if ((await page.locator('svg').innerHTML()) !== svgAfterReroll)
-  fail('deselecting a chip regenerated the map before reroll')
+if (!page.url().includes('packed')) fail('deselecting a chip changed the url before update')
+if ((await page.locator('svg').innerHTML()) !== svgAfterUpdate)
+  fail('deselecting a chip regenerated the map before update')
 
-// reroll applies the staged removal: url loses it, map changes again
+// Update applies the staged removal: url loses it, map changes again
+await page.getByRole('button', { name: 'Update' }).click()
+if (page.url().includes('packed')) fail('update did not apply staged tag removal to url')
+await waitForSvgChange(svgAfterUpdate).catch(() => fail('update did not change map (timed out)'))
+
+// Reroll: new random seed AND new map, staged chips survive (still pressed,
+// and now applied since reroll re-materializes the pending set with the
+// new seed)
+const svgBeforeReroll = await page.locator('svg').innerHTML()
+const seedBeforeReroll = new URL(page.url()).searchParams.get('seed')
+await page.getByRole('button', { name: 'Packed' }).click() // stage packed again
+if (!(await page.getByRole('button', { name: 'Packed', pressed: true }).isVisible()))
+  fail('packed chip not pressed after staging for the reroll test')
 await page.getByRole('button', { name: 'Reroll' }).click()
-if (page.url().includes('packed')) fail('reroll did not apply staged tag removal to url')
-if ((await page.locator('svg').innerHTML()) === svgAfterReroll) fail('reroll did not change map')
+if (new URL(page.url()).searchParams.get('seed') === seedBeforeReroll)
+  fail('reroll did not change the seed in the url')
+if (!page.url().includes('packed')) fail('reroll did not carry the staged tag into the url')
+if (!(await page.getByRole('button', { name: 'Packed', pressed: true }).isVisible()))
+  fail('staged chip did not survive reroll (should still be pressed)')
+await waitForSvgChange(svgBeforeReroll).catch(() => fail('reroll did not change the map (timed out)'))
+
+// Dice: new random seed, tag set in the url untouched
+const urlBeforeDice = new URL(page.url())
+const svgBeforeDice = await page.locator('svg').innerHTML()
+await page.getByRole('button', { name: 'New random seed, keep tags' }).click()
+const urlAfterDice = new URL(page.url())
+if (urlAfterDice.searchParams.get('seed') === urlBeforeDice.searchParams.get('seed'))
+  fail('dice did not change the seed in the url')
+if (urlAfterDice.searchParams.get('tags') !== urlBeforeDice.searchParams.get('tags'))
+  fail('dice changed the tag set in the url')
+await waitForSvgChange(svgBeforeDice).catch(() => fail('dice did not change the map (timed out)'))
 
 // pan/zoom survives repeated dense drags (regression: ref race unmounted the app)
 const map = await page.locator('svg').boundingBox()
@@ -134,13 +188,14 @@ if (!(await piersChip.isDisabled())) fail('piers chip not disabled when inland r
 await page.getByRole('button', { name: 'Lakes' }).click() // inland + lakes: no longer dry
 if (await piersChip.isDisabled()) fail('piers chip stayed disabled for inland+lakes')
 
-// reroll busy feedback: catching the transient 'Generating…' label reliably
-// in headless CI is racy, so this only checks the observable before/after —
-// button returns to its normal label and the map actually changed.
+// reroll busy feedback: catching the transient overlay reliably in headless
+// CI is racy, so this only checks the observable end state — the map
+// actually changed and the overlay is gone once it settles.
 const svgBeforeBusyReroll = await page.locator('svg').innerHTML()
 await page.getByRole('button', { name: 'Reroll' }).click()
-await page.getByRole('button', { name: 'Reroll', exact: true }).waitFor({ timeout: 2000 })
-if ((await page.locator('svg').innerHTML()) === svgBeforeBusyReroll) fail('reroll did not change the map')
+await waitForSvgChange(svgBeforeBusyReroll).catch(() => fail('reroll did not change the map (timed out)'))
+if (await page.getByText('Generating…').isVisible().catch(() => false))
+  fail('busy overlay still visible after reroll settled')
 
 // terrain sweep: the 3 landforms alone, plus composable combos —
 // every entry renders buildings, wet entries show water, river combos
@@ -184,6 +239,29 @@ for (const { tags, shot, wet, bridge, seed = 42 } of TERRAIN_SWEEP) {
     if (bridges < 1) fail(`terrain ${tags}: no bridge rendered`)
   }
 }
+
+// street-style tags: planned vs sprawl must both render dense fabric and differ
+await page.goto(`${BASE}/?seed=42&tags=coastal,planned`)
+await page.waitForSelector('svg')
+await page.screenshot({ path: `${OUT}/streets-planned.png` })
+const svgPlanned = await page.locator('svg').innerHTML()
+if ((await page.locator('svg polygon[data-id^="BLD"]').count()) < 50)
+  fail('planned: too few buildings')
+if (!(await page.getByRole('button', { name: 'Planned', pressed: true }).isVisible()))
+  fail('planned chip not pressed from URL tags')
+
+await page.goto(`${BASE}/?seed=42&tags=coastal,sprawl`)
+await page.waitForSelector('svg')
+await page.screenshot({ path: `${OUT}/streets-sprawl.png` })
+if ((await page.locator('svg polygon[data-id^="BLD"]').count()) < 50)
+  fail('sprawl: too few buildings')
+if ((await page.locator('svg').innerHTML()) === svgPlanned)
+  fail('planned and sprawl render identically')
+
+// water-heavy organic fabric: crooked streets + bridges coexist
+await page.goto(`${BASE}/?seed=42&tags=coastal,river,sprawl`)
+await page.waitForSelector('svg')
+await page.screenshot({ path: `${OUT}/streets-sprawl-river.png` })
 
 // bare URL (no tags) still auto-resolves a landform via resolveTerrain, but
 // the chips/URL must materialize that roll instead of showing nothing staged

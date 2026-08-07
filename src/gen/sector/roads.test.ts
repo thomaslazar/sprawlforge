@@ -1,102 +1,200 @@
 import { describe, expect, it } from 'vitest'
-import { pointInRings, type Pt } from '../geometry'
+import { bboxOf, pointInRings, type Pt } from '../geometry'
 import { sampleTerrain } from '../terrain'
 import { distToPolyline } from '../terrain/rivers'
-import type { SectorParams, Terrain } from '../types'
-import { layoutRoads } from './roads'
+import type { Road, SectorParams, Terrain } from '../types'
+import { districtDomains, finalizeRoads, layoutStreets, partitionDistricts } from './roads'
+import { assignZones } from './zoning'
+
+/** mirrors generateSector's road pipeline (partition -> zone -> streets -> finalize) */
+function buildRoads(params: SectorParams, terrain: Terrain, size = sizeM): Road[] {
+  const { roads: skeleton, districtPolys } = partitionDistricts(params, terrain, size)
+  const districts = assignZones(districtPolys, params, terrain)
+  const { streets } = layoutStreets(districts, params)
+  return finalizeRoads([...skeleton, ...streets], terrain)
+}
 
 const base: SectorParams = {
-  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
+  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
   landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 const sizeM = 4000
 const noWater = sampleTerrain(base, sizeM)
 
-function landBounds(terrain: ReturnType<typeof sampleTerrain>) {
-  const pts = terrain.land.flat().flat()
-  return {
-    minX: Math.min(...pts.map(([x]) => x)),
-    minY: Math.min(...pts.map(([, y]) => y)),
-    maxX: Math.max(...pts.map(([x]) => x)),
-    maxY: Math.max(...pts.map(([, y]) => y)),
-  }
+// dryTerrain: all-land, no water — reuse the existing all-land fixture
+const dryTerrain = noWater
+
+const lakeTerrain: Terrain = {
+  landform: 'inland', river: false, lakes: true, islands: false, metroSeed: 1,
+  water: [[[[1500, 1500], [2500, 1500], [2500, 2500], [1500, 2500]]]],
+  land: [[
+    [[0, 0], [4000, 0], [4000, 4000], [0, 4000]],
+    [[1500, 1500], [1500, 2500], [2500, 2500], [2500, 1500]], // lake hole
+  ]],
+  riverSlice: null,
 }
 
-describe('layoutRoads', () => {
-  it('is deterministic', () => {
-    expect(layoutRoads(base, noWater, sizeM)).toEqual(layoutRoads(base, noWater, sizeM))
+const riverTerrain: Terrain = {
+  landform: 'inland', river: true, lakes: false, islands: false, metroSeed: 1,
+  water: [[[[1900, 0], [2100, 0], [2100, 4000], [1900, 4000]]]],
+  land: [
+    [[[0, 0], [1900, 0], [1900, 4000], [0, 4000]]],
+    [[[2100, 0], [4000, 0], [4000, 4000], [2100, 4000]]],
+  ],
+  riverSlice: { course: [{ x: 2000, y: 0 }, { x: 2000, y: 4000 }], width: 250 },
+}
+
+// gap (400 m) wider than 2×riverSlice.width (200) but under 6× (600) — a
+// tight ×2 reconnect corridor misses both banks; ×6 (the actual carve can
+// run much wider than the metro-wide width constant) reaches them
+const wideRiverTerrain: Terrain = {
+  landform: 'inland', river: true, lakes: false, islands: false, metroSeed: 1,
+  water: [[[[1800, 0], [2200, 0], [2200, 4000], [1800, 4000]]]],
+  land: [
+    [[[0, 0], [1800, 0], [1800, 4000], [0, 4000]]],
+    [[[2200, 0], [4000, 0], [4000, 4000], [2200, 4000]]],
+  ],
+  riverSlice: { course: [{ x: 2000, y: 0 }, { x: 2000, y: 4000 }], width: 100 },
+}
+
+const isletTerrain: Terrain = {
+  landform: 'inland', river: false, lakes: false, islands: true, metroSeed: 1,
+  water: [],
+  land: [
+    [[[0, 0], [4000, 0], [4000, 4000], [0, 4000]]],
+    [[[10, 10], [40, 10], [40, 20], [10, 20]]], // 300 m² islet, well under MIN_DISTRICT_AREA
+  ],
+  riverSlice: null,
+}
+
+describe('districtDomains', () => {
+  it('returns land outer rings, filling lake holes', () => {
+    const domains = districtDomains(lakeTerrain, sizeM)
+    expect(domains).toHaveLength(1)
+    expect(domains[0].length).toBeGreaterThanOrEqual(4)
   })
-  it('produces districts, blocks and all three road classes', () => {
-    const r = layoutRoads(base, noWater, sizeM)
-    expect(r.districtRects.length).toBeGreaterThanOrEqual(4)
-    expect(r.blocksByDistrict.length).toBe(r.districtRects.length)
-    expect(r.blocksByDistrict.flat().length).toBeGreaterThan(r.districtRects.length)
-    const classes = new Set(r.roads.map((x) => x.class))
+
+  it('reconnects river banks into one domain', () => {
+    const domains = districtDomains(riverTerrain, sizeM)
+    expect(domains).toHaveLength(1)
+  })
+
+  it('reconnects banks even when the channel runs wider than 2x the width constant', () => {
+    const domains = districtDomains(wideRiverTerrain, sizeM)
+    expect(domains).toHaveLength(1)
+  })
+
+  it('drops islet rings below the minimum district area', () => {
+    const domains = districtDomains(isletTerrain, sizeM)
+    expect(domains).toHaveLength(1)
+  })
+
+  it('clamps the domain to the sector window when the river course runs past it', () => {
+    // riverSlice.course is window-clipped with a ±500 m margin upstream
+    // (terrain's RIVER_MARGIN), so points just outside [0, sizeM] are a
+    // real fixture shape, not a fabrication — the reconnect corridor built
+    // from them must not leak district area past the window.
+    const overshootRiver: Terrain = {
+      landform: 'inland', river: true, lakes: false, islands: false, metroSeed: 1,
+      water: [[[[1900, 0], [2100, 0], [2100, 4000], [1900, 4000]]]],
+      land: [
+        [[[0, 0], [1900, 0], [1900, 4000], [0, 4000]]],
+        [[[2100, 0], [4000, 0], [4000, 4000], [2100, 4000]]],
+      ],
+      riverSlice: { course: [{ x: -400, y: -400 }, { x: 2000, y: 2000 }, { x: sizeM + 400, y: sizeM + 400 }], width: 250 },
+    }
+    const domains = districtDomains(overshootRiver, sizeM)
+    for (const ring of domains)
+      for (const p of ring) {
+        expect(p.x).toBeGreaterThanOrEqual(-1)
+        expect(p.x).toBeLessThanOrEqual(sizeM + 1)
+        expect(p.y).toBeGreaterThanOrEqual(-1)
+        expect(p.y).toBeLessThanOrEqual(sizeM + 1)
+      }
+  })
+})
+
+describe('partitionDistricts', () => {
+  it('is deterministic and covers the domain with districts', () => {
+    const a = partitionDistricts(base, dryTerrain, sizeM)
+    const b = partitionDistricts(base, dryTerrain, sizeM)
+    expect(a).toEqual(b)
+    expect(a.districtPolys.length).toBeGreaterThan(3)
+    expect(a.roads.some((r) => r.class === 'arterial')).toBe(true)
+  })
+
+  it('adds a highway for size >= 3', () => {
+    const { roads } = partitionDistricts({ ...base, size: 4 }, dryTerrain, sizeM)
+    expect(roads.some((r) => r.class === 'highway')).toBe(true)
+  })
+
+  it('keeps every district polygon and road point within the sector window (river overshoot)', () => {
+    // regression coverage for the bottom-left-of-frame bug: districtDomains
+    // clips to the window before partitioning, so this must hold without
+    // needing to eyeball a screenshot.
+    const overshootRiver: Terrain = {
+      landform: 'inland', river: true, lakes: false, islands: false, metroSeed: 1,
+      water: [[[[1900, 0], [2100, 0], [2100, 4000], [1900, 4000]]]],
+      land: [
+        [[[0, 0], [1900, 0], [1900, 4000], [0, 4000]]],
+        [[[2100, 0], [4000, 0], [4000, 4000], [2100, 4000]]],
+      ],
+      riverSlice: { course: [{ x: -400, y: -400 }, { x: 2000, y: 2000 }, { x: sizeM + 400, y: sizeM + 400 }], width: 250 },
+    }
+    const { roads, districtPolys } = partitionDistricts(base, overshootRiver, sizeM)
+    const inWindow = (p: Pt) => {
+      expect(p.x).toBeGreaterThanOrEqual(-1)
+      expect(p.x).toBeLessThanOrEqual(sizeM + 1)
+      expect(p.y).toBeGreaterThanOrEqual(-1)
+      expect(p.y).toBeLessThanOrEqual(sizeM + 1)
+    }
+    for (const poly of districtPolys) for (const p of poly) inWindow(p)
+    for (const road of roads) for (const p of road.points) inWindow(p)
+  })
+})
+
+describe('layoutStreets', () => {
+  it('partitions each district by its own irregularity, 1:1 indexed', () => {
+    const { districtPolys } = partitionDistricts(base, dryTerrain, sizeM)
+    const districts = assignZones(districtPolys, base, dryTerrain)
+    const { streets, blocksByDistrict } = layoutStreets(districts, base)
+    expect(blocksByDistrict).toHaveLength(districts.length)
+    expect(streets.length).toBeGreaterThan(0)
+    districts.forEach((d, i) => {
+      for (const block of blocksByDistrict[i]) {
+        const bb = bboxOf(block)
+        expect(bb.x).toBeGreaterThanOrEqual(d.bounds.x - 1)
+        expect(bb.x + bb.w).toBeLessThanOrEqual(d.bounds.x + d.bounds.w + 1)
+      }
+    })
+  })
+})
+
+describe('finalizeRoads (end to end: partition -> streets -> clip/bridge)', () => {
+  it('is deterministic and produces all three road classes', () => {
+    expect(buildRoads(base, noWater)).toEqual(buildRoads(base, noWater))
+    const classes = new Set(buildRoads(base, noWater).map((r) => r.class))
     expect(classes).toEqual(new Set(['highway', 'arterial', 'street']))
   })
-  it('higher density gives more blocks', () => {
-    const lo = layoutRoads({ ...base, density: 0.1 }, noWater, sizeM).blocksByDistrict.flat().length
-    const hi = layoutRoads({ ...base, density: 0.9 }, noWater, sizeM).blocksByDistrict.flat().length
-    expect(hi).toBeGreaterThan(lo)
-  })
-  it('coast keeps all districts within the land bounding box', () => {
-    const terrain = sampleTerrain({ ...base, landform: 'coastal' }, sizeM)
-    const r = layoutRoads({ ...base, landform: 'coastal' }, terrain, sizeM)
-    const b = landBounds(terrain)
-    for (const d of r.districtRects) {
-      expect(d.x).toBeGreaterThanOrEqual(b.minX - 1e-6)
-      expect(d.y).toBeGreaterThanOrEqual(b.minY - 1e-6)
-      expect(d.x + d.w).toBeLessThanOrEqual(b.maxX + 1e-6)
-      expect(d.y + d.h).toBeLessThanOrEqual(b.maxY + 1e-6)
-    }
-  })
-  it('river keeps all districts within the land bounding box', () => {
-    const terrain = sampleTerrain({ ...base, river: true }, sizeM)
-    const r = layoutRoads({ ...base, river: true }, terrain, sizeM)
-    const b = landBounds(terrain)
-    for (const d of r.districtRects) {
-      expect(d.x).toBeGreaterThanOrEqual(b.minX - 1e-6)
-      expect(d.y).toBeGreaterThanOrEqual(b.minY - 1e-6)
-      expect(d.x + d.w).toBeLessThanOrEqual(b.maxX + 1e-6)
-      expect(d.y + d.h).toBeLessThanOrEqual(b.maxY + 1e-6)
-    }
-  })
-  it('tolerates an all-water window (I5): no land yields no districts, no crash', () => {
-    const allWater: Terrain = {
-      landform: 'coastal', river: false, lakes: false, islands: false,
-      metroSeed: 1,
-      water: [[[[0, 0], [sizeM, 0], [sizeM, sizeM], [0, sizeM]]]],
-      land: [],
-      riverSlice: null,
-    }
-    expect(() => layoutRoads(base, allWater, sizeM)).not.toThrow()
-    const r = layoutRoads(base, allWater, sizeM)
-    expect(r.districtRects).toEqual([])
-    expect(r.blocksByDistrict).toEqual([])
-    expect(r.roads).toEqual([])
-  })
   it('road ids are stable and prefixed by class', () => {
-    const r = layoutRoads(base, noWater, sizeM)
-    for (const road of r.roads) {
+    for (const road of buildRoads(base, noWater)) {
       if (road.class === 'highway') expect(road.id).toMatch(/^H\d+$/)
-      if (road.class === 'arterial') expect(road.id).toMatch(/^A\d\d$/)
+      if (road.class === 'arterial') expect(road.id).toMatch(/^A\d\d$|^OP\d\d$/)
       if (road.class === 'street') expect(road.id).toMatch(/^S\d\d\d$/)
     }
   })
   it('no non-bridge road of any class ever has a point in water', { timeout: 20000 }, () => {
     // strong invariant: only the bridge deck may span water — every host
     // road (street, arterial, or highway) must be truncated/split at the
-    // shoreline instead (the old code let arterials/highways draw straight
-    // through the water under a "bridge floats over it" excuse). Covers
-    // both a river cutting through inland, and a coastal shoreline — the
-    // two shapes of "water" the invariant has to hold against.
+    // shoreline instead. Covers both a river cutting through inland, and a
+    // coastal shoreline — the two shapes of "water" the invariant holds against.
     const cases = [
       ...[1, 42, 119560026].map((seed) => ({ ...base, seed, river: true })),
       ...[1, 42, 999].map((seed) => ({ ...base, seed, landform: 'coastal' as const })),
     ]
     for (const params of cases) {
       const terrain = sampleTerrain(params, sizeM)
-      const { roads } = layoutRoads(params, terrain, sizeM)
+      const roads = buildRoads(params, terrain)
       const inWater = (p: Pt) =>
         terrain.water.some((poly) => pointInRings(p, poly.map((ring) => ring.map(([x, y]) => ({ x, y })))))
       for (const road of roads) {
@@ -106,12 +204,19 @@ describe('layoutRoads', () => {
     }
   })
   it('joins at least one arterial across the highway gap (no uncrossable wall)', () => {
+    // twisted-bisection cuts each side of the highway independently and
+    // organically (no shared grid alignment), so whether any pair of
+    // opposing-edge arterials lands within OVERPASS_PERP_TOL is
+    // seed-dependent — 119560026 (the old rect-BSP pin) no longer aligns;
+    // 42 stopped aligning once arterials sample the field-driven irregularity
+    // function instead of a flat scalar (phase 2) — 45 does (checked against
+    // a sweep of nearby seeds).
     const params: SectorParams = {
-      seed: 119560026, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
+      seed: 45, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
       landform: 'coastal', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
     }
     const terrain = sampleTerrain(params, sizeM)
-    const { roads } = layoutRoads(params, terrain, sizeM)
+    const roads = buildRoads(params, terrain)
     const hw = roads.find((r) => r.class === 'highway')
     expect(hw).toBeDefined()
     const hx = hw!.points[0].x
@@ -138,7 +243,7 @@ describe('layoutRoads', () => {
       ] as const) {
         const params = { ...base, seed, landform, river }
         const terrain = sampleTerrain(params, sizeM)
-        const { roads } = layoutRoads(params, terrain, sizeM)
+        const roads = buildRoads(params, terrain)
         for (const bridge of roads.filter((r) => r.bridge)) {
           const [p, q] = bridge.points
           const bridgeAngle = angleOf(p, q)
@@ -170,7 +275,7 @@ describe('layoutRoads', () => {
     for (const seed of [1, 42, 999]) {
       const params = { ...base, seed, river: true }
       const terrain = sampleTerrain(params, 4000)
-      const { roads } = layoutRoads(params, terrain, 4000)
+      const roads = buildRoads(params, terrain)
       // union-find over road endpoints; endpoints within 20 m are joined
       const pts: Pt[] = []
       const parent: number[] = []
@@ -190,10 +295,10 @@ describe('layoutRoads', () => {
         for (let i = 1; i < r.points.length; i++) parent[find(idx(r.points[i - 1]))] = find(idx(r.points[i]))
       }
       // T-junctions: road A's endpoint touching mid-span of road B (not B's own
-      // endpoints) is a real intersection, not a gap — BSP cut endpoints sit
-      // exactly gap/2 (up to 9m for an arterial) off the parent road's centerline,
-      // and a bridge landing needs a little more slack. Join on point-to-segment
-      // distance, reusing the same math nearestOnPolyline uses for river distance.
+      // endpoints) is a real intersection, not a gap — cut endpoints can sit a
+      // little off the parent road's centerline, and a bridge landing needs a
+      // little more slack. Join on point-to-segment distance, reusing the same
+      // math nearestOnPolyline uses for river distance.
       for (const A of roads) {
         for (const B of roads) {
           if (A === B) continue

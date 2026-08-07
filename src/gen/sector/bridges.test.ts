@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Road, Terrain } from '../types'
-import { clipRoadsToLand, inWater, planBridges, truncateOverSpanRoads, truncateUnlandableRoads } from './bridges'
+import {
+  clipRoadsToLand,
+  inWater,
+  planBridges,
+  splitHostAtBridges,
+  truncateOverSpanRoads,
+  truncateUnlandableRoads,
+} from './bridges'
 
 // hand terrain: vertical river band x∈[450,550] in a 1000² window
 const banded: Terrain = {
@@ -155,6 +162,78 @@ describe('sea bridges roughly perpendicular to the shoreline', () => {
     const bridges = planBridges(spanTruncated, diagonalFinger)
     expect(bridges.length).toBe(1)
     expect(bridges[0].class).toBe('arterial')
+  })
+})
+
+// hand terrain: a vertical water strip x0..x1 spanning the 1000 window,
+// land = the two side slabs, no river — for polyline-road tests below
+const stripTerrain = (x0: number, x1: number): Terrain => ({
+  landform: 'inland', river: false, lakes: false, islands: false, metroSeed: 1,
+  water: [[[[x0, 0], [x1, 0], [x1, 1000], [x0, 1000]]]],
+  land: [
+    [[[0, 0], [x0, 0], [x0, 1000], [0, 1000]]],
+    [[[x1, 0], [1000, 0], [1000, 1000], [x1, 1000]]],
+  ],
+  riverSlice: null,
+})
+
+describe('polyline roads', () => {
+  it('clips a polyline street to land keeping interior vertices', () => {
+    const road: Road = {
+      id: 'S001', class: 'street', width: 9, name: null,
+      points: [{ x: 0, y: 100 }, { x: 300, y: 100 }, { x: 300, y: 500 }, { x: 900, y: 500 }],
+    }
+    const out = clipRoadsToLand([road], stripTerrain(400, 600))
+    // piece 1 must contain the corner (300,100)->(300,500) intact
+    const first = out[0]
+    expect(first.points.some((p) => p.x === 300 && p.y === 100)).toBe(true)
+    expect(first.points.some((p) => p.x === 300 && p.y === 500)).toBe(true)
+    // no kept point may be inside the strip
+    for (const r of out) for (const p of r.points) {
+      expect(p.x < 405 || p.x > 595).toBe(true)
+    }
+  })
+
+  it('bridges a polyline arterial with a straight 2-point deck', () => {
+    const road: Road = {
+      id: 'A01', class: 'arterial', width: 18, name: null,
+      points: [{ x: 0, y: 100 }, { x: 350, y: 120 }, { x: 900, y: 100 }],
+    }
+    const bridges = planBridges([road], stripTerrain(400, 600))
+    expect(bridges).toHaveLength(1)
+    expect(bridges[0].points).toHaveLength(2)
+    expect(bridges[0].bridge).toBe(true)
+    // both landings fall in [400,900] so they sit on the bent second segment
+    // (350,120)->(900,100), not on the straight (0,100)->(900,100) chord —
+    // check each landing's y against that segment's own line equation
+    const [p, q] = bridges[0].points
+    for (const pt of [p, q]) {
+      const expectedY = 120 + ((pt.x - 350) / (900 - 350)) * (100 - 120)
+      expect(pt.y).toBeCloseTo(expectedY, 6)
+    }
+  })
+
+  it('splitHostAtBridges cuts a 3+ point host at the landing points, keeping the dry interior vertex', () => {
+    const road: Road = {
+      id: 'A01', class: 'arterial', width: 18, name: null,
+      points: [{ x: 0, y: 300 }, { x: 200, y: 300 }, { x: 1000, y: 300 }],
+    }
+    const out = splitHostAtBridges([road], stripTerrain(400, 600))
+    expect(out).toHaveLength(2)
+    for (const r of out) for (const p of r.points) {
+      expect(p.x < 400 || p.x > 600).toBe(true)
+    }
+    // landings sit LANDING=15m onto land from the strip edge, plus up to one
+    // 10m sampling step of dry-rounding slop — road is straight and colinear
+    // through the crossing, so x-distance is exact arc-length distance
+    const firstEnd = out[0].points[out[0].points.length - 1]
+    const secondStart = out[1].points[0]
+    expect(400 - firstEnd.x).toBeGreaterThanOrEqual(14)
+    expect(400 - firstEnd.x).toBeLessThanOrEqual(26)
+    expect(secondStart.x - 600).toBeGreaterThanOrEqual(14)
+    expect(secondStart.x - 600).toBeLessThanOrEqual(26)
+    // interior dry-side vertex (200,300) survives intact in the first piece
+    expect(out[0].points.some((p) => p.x === 200 && p.y === 300)).toBe(true)
   })
 })
 

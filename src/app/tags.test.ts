@@ -19,6 +19,7 @@ describe('resolveTags', () => {
       density: 0.9,
       corpDominance: 0.85,
       poiDensity: 0.7,
+      irregularity: 0.5,
       piers: true,
     })
   })
@@ -128,4 +129,22 @@ describe('materialized tags drive generation honestly', () => {
       expect(tags.includes('islands')).toBe(model.terrain.islands)
     }
   }, 60000)
+})
+
+describe('streets tags', () => {
+  it('streets tags set irregularity', () => {
+    expect(resolveTags(['planned']).irregularity).toBe(0.15)
+    expect(resolveTags(['mixed']).irregularity).toBe(0.5)
+    expect(resolveTags(['sprawl']).irregularity).toBe(0.85)
+    expect(resolveTags([]).irregularity).toBe(0.5)
+  })
+
+  it('streets tags are mutually exclusive, last wins', () => {
+    expect(normalizeTags(['planned', 'sprawl'])).toEqual(['sprawl'])
+  })
+
+  it('materializeTags rolls a streets tag when none staged', () => {
+    const out = materializeTags(42, ['coastal'])
+    expect(out.filter((t) => ['planned', 'mixed', 'sprawl'].includes(t))).toHaveLength(1)
+  })
 })

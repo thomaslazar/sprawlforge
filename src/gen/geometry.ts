@@ -66,3 +66,88 @@ export function bspSplit(rect: Rect, opts: BspOpts): { cells: Rect[]; cuts: Cut[
   recurse(rect)
   return { cells, cuts }
 }
+
+export function polylineLength(pts: Pt[]): number {
+  let len = 0
+  for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
+  return len
+}
+
+/** point at fraction t (by arc length) along a polyline */
+export function pointAtT(pts: Pt[], t: number): Pt {
+  const total = polylineLength(pts)
+  let target = Math.max(0, Math.min(1, t)) * total
+  for (let i = 1; i < pts.length; i++) {
+    const seg = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
+    if (target <= seg || i === pts.length - 1) {
+      const f = seg === 0 ? 0 : target / seg
+      return { x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * f, y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * f }
+    }
+    target -= seg
+  }
+  return pts[pts.length - 1]
+}
+
+/** sub-polyline between arc-length fractions t0 < t1, interior vertices kept */
+export function slicePolyline(pts: Pt[], t0: number, t1: number): Pt[] {
+  const total = polylineLength(pts)
+  const out: Pt[] = [pointAtT(pts, t0)]
+  let acc = 0
+  for (let i = 1; i < pts.length - 1; i++) {
+    acc += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
+    const t = acc / total
+    if (t > t0 && t < t1) out.push(pts[i])
+  }
+  out.push(pointAtT(pts, t1))
+  return out
+}
+
+export function rotatePt(p: Pt, theta: number, c: Pt): Pt {
+  const cos = Math.cos(theta)
+  const sin = Math.sin(theta)
+  const dx = p.x - c.x
+  const dy = p.y - c.y
+  return { x: c.x + dx * cos - dy * sin, y: c.y + dx * sin + dy * cos }
+}
+
+export function bboxOf(pts: Pt[]): Rect {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const p of pts) {
+    if (p.x < minX) minX = p.x
+    if (p.y < minY) minY = p.y
+    if (p.x > maxX) maxX = p.x
+    if (p.y > maxY) maxY = p.y
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
+}
+
+/**
+ * shoelace centroid — always inside a simple polygon; vertex mean for degenerate rings.
+ *
+ * rect center can land in water for a shore-clipped footprint (the rect is
+ * the pre-clip bounding box); the footprint centroid always sits on the
+ * actual (clipped) shape, so anchor there instead. The plain vertex mean
+ * isn't that centroid — a shore clip can leave an L- or wedge-shaped
+ * (concave) footprint whose vertex-mean sits outside the shape entirely
+ * (e.g. in the water it was clipped away from). The shoelace-weighted
+ * polygon centroid always lands inside a simple polygon, concave or not.
+ */
+export function ringCentroid(pts: Pt[]): Pt {
+  let area = 0, cx = 0, cy = 0
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[i]
+    const b = pts[(i + 1) % pts.length]
+    const cross = a.x * b.y - b.x * a.y
+    area += cross
+    cx += (a.x + b.x) * cross
+    cy += (a.y + b.y) * cross
+  }
+  // degenerate (zero-area) footprint — fall back to the vertex mean
+  if (Math.abs(area) < 1e-9) {
+    return {
+      x: pts.reduce((s, p) => s + p.x, 0) / pts.length,
+      y: pts.reduce((s, p) => s + p.y, 0) / pts.length,
+    }
+  }
+  return { x: cx / (3 * area), y: cy / (3 * area) }
+}

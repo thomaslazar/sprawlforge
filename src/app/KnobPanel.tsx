@@ -13,9 +13,13 @@ interface Props {
   applied: AppState
   pendingTags: Tag[]
   busy: boolean
+  showPois: boolean
   onChange: (s: AppState) => void
   onPendingTagsChange: (tags: Tag[]) => void
   onReroll: () => void
+  onUpdate: () => void
+  onDice: () => void
+  onShowPoisChange: (show: boolean) => void
   onExport: (kind: 'svg' | 'png' | 'pdf') => void
 }
 
@@ -62,7 +66,19 @@ function Chip({
   )
 }
 
-export function KnobPanel({ applied, pendingTags, busy, onChange, onPendingTagsChange, onReroll, onExport }: Props) {
+export function KnobPanel({
+  applied,
+  pendingTags,
+  busy,
+  showPois,
+  onChange,
+  onPendingTagsChange,
+  onReroll,
+  onUpdate,
+  onDice,
+  onShowPoisChange,
+  onExport,
+}: Props) {
   const setPack = (pack: string) => onChange({ ...applied, pack })
   const setTheme = (theme: string) => onChange({ ...applied, theme })
 
@@ -99,19 +115,36 @@ export function KnobPanel({ applied, pendingTags, busy, onChange, onPendingTagsC
     <div style={{ width: 260, padding: 16, overflowY: 'auto' }}>
       <h1 style={{ fontSize: 18 }}>{t.appTitle}</h1>
       <h2 style={{ fontSize: 14, opacity: 0.7 }}>{t.toolTitle}</h2>
-      <button onClick={onReroll} disabled={busy} style={{ width: '100%', padding: 8, margin: '12px 0' }}>
-        {busy ? t.knobs.rerolling : t.knobs.reroll}
-      </button>
+      <div style={{ display: 'flex', gap: 8, margin: '12px 0' }}>
+        <button onClick={onReroll} disabled={busy} style={{ flex: 1, padding: 8 }}>
+          {t.knobs.reroll}
+        </button>
+        <button onClick={onUpdate} disabled={busy} style={{ flex: 1, padding: 8 }}>
+          {t.knobs.update}
+        </button>
+      </div>
       <label style={{ display: 'block', marginBottom: 12 }}>
         {t.knobs.seed}
-        <input
-          type="number"
-          value={seedInput}
-          onChange={(e) => setSeedInput(e.target.value)}
-          onBlur={commitSeed}
-          onKeyDown={(e) => e.key === 'Enter' && commitSeed()}
-          style={{ width: '100%' }}
-        />
+        <div style={{ display: 'flex', gap: 6 }}>
+          <input
+            type="number"
+            value={seedInput}
+            onChange={(e) => setSeedInput(e.target.value)}
+            onBlur={commitSeed}
+            onKeyDown={(e) => e.key === 'Enter' && commitSeed()}
+            style={{ flex: 1, minWidth: 0 }}
+          />
+          <button
+            type="button"
+            onClick={onDice}
+            disabled={busy}
+            aria-label={t.knobs.diceLabel}
+            title={t.knobs.diceLabel}
+            style={{ padding: '4px 8px' }}
+          >
+            {t.knobs.dice}
+          </button>
+        </div>
       </label>
       {(Object.keys(TAG_GROUPS) as TagGroup[]).map((group) => (
         <div key={group} style={{ marginBottom: 12 }}>
@@ -145,6 +178,15 @@ export function KnobPanel({ applied, pendingTags, busy, onChange, onPendingTagsC
           ))}
         </div>
       </div>
+      <label style={{ display: 'block', marginBottom: 12 }}>
+        <input
+          type="checkbox"
+          checked={showPois}
+          onChange={(e) => onShowPoisChange(e.target.checked)}
+          style={{ marginRight: 6 }}
+        />
+        {t.knobs.showPois}
+      </label>
       <label style={{ display: 'block', marginBottom: 12 }}>
         {t.knobs.pack}
         <select value={applied.pack} onChange={(e) => setPack(e.target.value)} style={{ width: '100%' }}>

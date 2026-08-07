@@ -1,6 +1,8 @@
-import { bspSplit, type Cut, type Pt, type Rect } from '../geometry'
-import { hashSeed, mulberry32, type Rng } from '../rng'
-import type { Road, SectorParams, Terrain } from '../types'
+import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
+import { bboxOf, ringArea, type Pt } from '../geometry'
+import { corridorPolygon, fromRing, partitionPolygon, toRing } from '../partition/twisted'
+import { hashSeed, mulberry32 } from '../rng'
+import type { District, Road, SectorParams, Terrain } from '../types'
 import {
   clipRoadsToLand,
   planBridges,
@@ -8,9 +10,13 @@ import {
   truncateOverSpanRoads,
   truncateUnlandableRoads,
 } from './bridges'
+import { effectiveIrregularity, ZONE_IRREGULARITY } from './zoning'
 
-// tolerance on the endpoint-to-highway-edge distance (float slop from BSP
-// recursion, not a real search radius)
+// islets below this get no district (ROADMAP defers islet settlement)
+const MIN_DISTRICT_AREA = 250_000
+
+// tolerance on the endpoint-to-highway-edge distance (float slop from
+// polygon-clipping / chord intersection, not a real search radius)
 const OVERPASS_EDGE_TOL = 3
 // how far apart (perpendicular to the highway) two facing endpoints may sit
 // and still count as "facing" — genre-accurate highways have limited,
@@ -18,30 +24,33 @@ const OVERPASS_EDGE_TOL = 3
 const OVERPASS_PERP_TOL = 20
 
 /**
- * Arterials dead-end on both sides of the highway strip (bspSplit lays out
- * each side's district grid independently) — that makes the highway an
- * uncrossable wall. Where a road on the left touches the strip's left edge
- * and a road on the right touches the right edge at roughly the same
- * position, merge them into one continuous arterial across the gap. These
- * are plain road continuity, not bridges — no deck, and highways keep their
- * "limited exits" feel since only arterials (not streets) get joined.
+ * Arterials dead-end on both sides of the highway strip (the twisted
+ * partition lays out each side of the highway corridor independently) —
+ * that makes the highway an uncrossable wall. Where a road on the left
+ * touches the strip's left edge and a road on the right touches the right
+ * edge at roughly the same position, merge them into one continuous arterial
+ * across the gap. These are plain road continuity, not bridges — no deck,
+ * and highways keep their "limited exits" feel since only arterials
+ * (not streets) get joined.
  */
 function joinArterialsAcrossHighway(roads: Road[]): Road[] {
   const highways = roads.filter((r) => r.class === 'highway')
   if (highways.length === 0) return roads
   const merged = new Set<Road>()
   const replaced: Road[] = []
-  const endInfo = (r: Road, x: number): { at: Pt; other: Pt } | null => {
-    const [a, b] = r.points
-    if (Math.abs(a.y - b.y) > 1) return null // only a horizontal road can face a vertical highway
-    if (Math.abs(a.x - x) <= OVERPASS_EDGE_TOL) return { at: a, other: b }
-    if (Math.abs(b.x - x) <= OVERPASS_EDGE_TOL) return { at: b, other: a }
+  // polyline cuts are no longer axis-aligned (twisted bisection), so a road
+  // "faces" the highway edge if either endpoint of its polyline sits on it —
+  // no horizontality check.
+  const endInfo = (r: Road, x: number): { at: Pt } | null => {
+    const first = r.points[0]
+    const last = r.points[r.points.length - 1]
+    if (Math.abs(first.x - x) <= OVERPASS_EDGE_TOL) return { at: first }
+    if (Math.abs(last.x - x) <= OVERPASS_EDGE_TOL) return { at: last }
     return null
   }
-  // connectors are their own 2-point roads — every water-clipping/truncation
-  // function assumes roads are straight 2-point segments, and merged 4-point
-  // polylines slipped through unclipped (rendered as diagonal roads crossing
-  // water). The originals stay untouched; only the short gap segment is new.
+  // connectors are their own 2-point roads — a short straight gap join is
+  // the simplest correct geometry. The originals stay untouched; only the
+  // short gap segment is new.
   let n = 0
   for (const hw of highways) {
     const hx = hw.points[0].x
@@ -75,105 +84,151 @@ const HIGHWAY_W = 32
 const ARTERIAL_W = 18
 const STREET_W = 9
 
-function cutToRoad(cut: Cut, id: string, cls: Road['class'], width: number): Road {
-  const s = cut.strip
-  const points =
-    cut.axis === 'x'
-      ? [{ x: s.x + s.w / 2, y: s.y }, { x: s.x + s.w / 2, y: s.y + s.h }]
-      : [{ x: s.x, y: s.y + s.h / 2 }, { x: s.x + s.w, y: s.y + s.h / 2 }]
-  return { id, class: cls, points, width, name: null }
+const clamp = (lo: number, hi: number, v: number) => Math.max(lo, Math.min(hi, v))
+
+// Road.width visualizes hierarchy (depth = how many cuts deep this road sits
+// in its parent's recursion); the corridor `gap` fed to partitionPolygon
+// stays ARTERIAL_W/STREET_W at every depth on purpose — varying the actual
+// cut width by depth would change the partition geometry itself (cell sizes,
+// downstream cut placement), not just how the road is drawn. Keeping gap
+// uniform holds the geometry stable across a reroll; only the rendered
+// width tiers by depth.
+const arterialWidthByDepth = (depth: number) => (depth <= 1 ? 24 : depth === 2 ? 18 : 14)
+const streetWidthByDepth = (depth: number) => (depth <= 1 ? 9 : 6)
+
+/**
+ * Domain rings for district partitioning (spec §4.1): outer rings of
+ * `union(land, riverCorridor)` — lakes fill in (roads cross them; the
+ * polyline pipeline clips/bridges), sea stays out, and the river corridor
+ * reconnects the banks so an arterial cut across it becomes a bridge
+ * candidate. Rings under MIN_DISTRICT_AREA (tiny islets) get no districts.
+ *
+ * `terrain.riverSlice.course` is window-clipped with a margin (terrain's
+ * RIVER_MARGIN), so the reconnect corridor can poke outside the sector
+ * window — intersect with the [0,sizeM]² window ring before anything else
+ * (outer-ring extraction, area filter, sort) so partitioning never sees
+ * domain area beyond the map frame.
+ */
+export function districtDomains(terrain: Terrain, sizeM: number): Pt[][] {
+  const land: MultiPolygon = terrain.land.map((poly) => [poly[0]])
+  if (land.length === 0) return []
+  const river = terrain.riverSlice
+  // ponytail: riverSlice.width is a metro-wide constant, but the actually
+  // carved channel can run several times wider locally (envelope taper ×
+  // multiplier × near-sea-level spread) — a tight ×2 corridor can miss one
+  // bank and leave the domain split with no arterial crossing. ×6 is
+  // generous on purpose: over-coverage here is harmless (only feeds the
+  // union; near-bank fabric still clips to land downstream). Pass a
+  // locally-sampled carve width instead if river-heavy maps ever show
+  // disconnected banks.
+  const domain = river
+    ? polygonClipping.union(land, corridorPolygon(river.course, river.width * 6).map((r) => [toRing(r)]))
+    : polygonClipping.union(land)
+  const window: [number, number][] = [[0, 0], [sizeM, 0], [sizeM, sizeM], [0, sizeM]]
+  const clipped = polygonClipping.intersection(domain, [[window]])
+  return clipped
+    .map((p) => fromRing(p[0]))
+    .filter((r) => Math.abs(ringArea(r)) >= MIN_DISTRICT_AREA)
+    .sort((a, b) => bboxOf(a).y - bboxOf(b).y || bboxOf(a).x - bboxOf(b).x)
 }
 
-// Bounding box of the land multipolygon — the one slab districts lay out
-// into before roads, blocks and buildings each clip to the actual waterline.
-function landSlabs(terrain: Terrain): Rect[] {
-  const rings = terrain.land.flat()
-  // no land at all (window entirely underwater) — nothing to lay roads on
-  if (rings.length === 0) return []
-  let minX = Infinity
-  let minY = Infinity
-  let maxX = -Infinity
-  let maxY = -Infinity
-  for (const ring of rings) {
-    for (const [x, y] of ring) {
-      if (x < minX) minX = x
-      if (y < minY) minY = y
-      if (x > maxX) maxX = x
-      if (y > maxY) maxY = y
-    }
-  }
-  return [{ x: minX, y: minY, w: maxX - minX, h: maxY - minY }]
-}
-
-function splitByHighway(slabs: Rect[], params: SectorParams, rng: Rng, roads: Road[]): Rect[] {
-  if (params.size < 3) return slabs
-  const out: Rect[] = []
-  const landW = Math.max(...slabs.map((s) => s.x + s.w))
-  const hx = landW * (1 / 3 + rng.next() / 3)
-  let n = 0
-  for (const slab of slabs) {
-    if (hx > slab.x + 200 && hx < slab.x + slab.w - 200) {
-      n += 1
-      roads.push({
-        id: `H${n}`,
-        class: 'highway',
-        points: [{ x: hx, y: slab.y }, { x: hx, y: slab.y + slab.h }],
-        width: HIGHWAY_W,
-        name: null,
-      })
-      out.push({ ...slab, w: hx - HIGHWAY_W / 2 - slab.x })
-      out.push({ ...slab, x: hx + HIGHWAY_W / 2, w: slab.x + slab.w - hx - HIGHWAY_W / 2 })
-    } else {
-      out.push(slab)
-    }
-  }
-  return out
-}
-
-export function layoutRoads(
+/**
+ * Highway corridor split (planned infrastructure, spec §4.1) plus arterial
+ * twisted-bisection cuts (spec §4.2) — domain polygons in, district polygons
+ * and their bounding roads out.
+ */
+export function partitionDistricts(
   params: SectorParams,
   terrain: Terrain,
   sizeM: number,
-): { roads: Road[]; districtRects: Rect[]; blocksByDistrict: Rect[][] } {
-  // no longer needed now that landSlabs reads bounds straight off
-  // terrain.land, but kept in the public signature — callers pass it
-  // positionally and future waterline-aware slab logic will want it back
-  void sizeM
+): { roads: Road[]; districtPolys: Pt[][] } {
   const rng = mulberry32(hashSeed(params.seed, 'roads'))
   const roads: Road[] = []
+  let domains = districtDomains(terrain, sizeM)
 
-  const slabs = splitByHighway(landSlabs(terrain), params, rng, roads)
-
-  const districtRects: Rect[] = []
-  let a = 0
-  for (const slab of slabs) {
-    const { cells, cuts } = bspSplit(slab, { minCell: 500, gap: ARTERIAL_W, jitter: 0.18, rng })
-    for (const cut of cuts) {
-      a += 1
-      roads.push(cutToRoad(cut, `A${String(a).padStart(2, '0')}`, 'arterial', ARTERIAL_W))
+  // highway: straight vertical corridor, planned infrastructure (spec §4.1)
+  if (params.size >= 3 && domains.length > 0) {
+    const maxX = Math.max(...domains.flat().map((p) => p.x))
+    const hx = maxX * (1 / 3 + rng.next() / 3)
+    const next: Pt[][] = []
+    let n = 0
+    for (const domain of domains) {
+      const bb = bboxOf(domain)
+      if (hx > bb.x + 200 && hx < bb.x + bb.w - 200) {
+        n += 1
+        roads.push({
+          id: `H${n}`, class: 'highway', width: HIGHWAY_W, name: null,
+          points: [{ x: hx, y: bb.y }, { x: hx, y: bb.y + bb.h }],
+        })
+        const corridorRings = corridorPolygon(
+          [{ x: hx, y: bb.y - HIGHWAY_W }, { x: hx, y: bb.y + bb.h + HIGHWAY_W }], HIGHWAY_W)
+        const pieces = polygonClipping.difference([toRing(domain)], corridorRings.map((r) => [toRing(r)]))
+        next.push(...pieces.map((p) => fromRing(p[0])).filter((r) => Math.abs(ringArea(r)) >= MIN_DISTRICT_AREA))
+      } else {
+        next.push(domain)
+      }
     }
-    districtRects.push(...cells)
+    domains = next
   }
 
+  // arterials sample the sector's own irregularity field (spec §4.2): organic
+  // regions genuinely squiggle past the meander threshold, planned regions
+  // stay near-straight — no more flat per-sector ceiling
+  const effective = effectiveIrregularity(params)
+  const arterialIrr = (p: Pt) => 0.05 + effective(p) * 0.65
+  const districtPolys: Pt[][] = []
+  let a = 0
+  for (const domain of domains) {
+    const { cells, cuts } = partitionPolygon(domain, {
+      minCell: 500, gap: ARTERIAL_W, irregularity: arterialIrr, rng,
+    })
+    for (const cut of cuts) {
+      a += 1
+      roads.push({ id: `A${String(a).padStart(2, '0')}`, class: 'arterial',
+        points: cut.points, width: arterialWidthByDepth(cut.depth), name: null })
+    }
+    districtPolys.push(...cells)
+  }
+  return { roads, districtPolys }
+}
+
+/** Street-level twisted bisection, per district, each at its own irregularity. */
+export function layoutStreets(
+  districts: District[],
+  params: SectorParams,
+): { streets: Road[]; blocksByDistrict: Pt[][][] } {
+  const rng = mulberry32(hashSeed(params.seed, 'streets'))
+  const effective = effectiveIrregularity(params)
   const streetCell = 160 - params.density * 70
-  const blocksByDistrict: Rect[][] = []
+  const streets: Road[] = []
+  const blocksByDistrict: Pt[][][] = []
   let s = 0
-  for (const district of districtRects) {
-    const { cells, cuts } = bspSplit(district, { minCell: streetCell, gap: STREET_W, jitter: 0.2, rng })
+  for (const district of districts) {
+    // intra-district fabric follows the same field the district's own
+    // (scalar, centroid-sampled) irregularity was derived from, so streets
+    // stay coherent with the block they're carving, zone as a minor bias
+    const irr = (p: Pt) => clamp(0.05, 0.95, effective(p) * 0.8 + ZONE_IRREGULARITY[district.zone] * 0.2)
+    const { cells, cuts } = partitionPolygon(district.poly, {
+      minCell: streetCell, gap: STREET_W, irregularity: irr, rng,
+    })
     for (const cut of cuts) {
       s += 1
-      roads.push(cutToRoad(cut, `S${String(s).padStart(3, '0')}`, 'street', STREET_W))
+      streets.push({ id: `S${String(s).padStart(3, '0')}`, class: 'street',
+        points: cut.points, width: streetWidthByDepth(cut.depth), name: null })
     }
     blocksByDistrict.push(cells)
   }
+  return { streets, blocksByDistrict }
+}
 
+/** Overpass join + clip/truncate/bridge chain shared by every road-layout path. */
+export function finalizeRoads(roads: Road[], terrain: Terrain): Road[] {
   const overpassed = joinArterialsAcrossHighway(roads)
-
   const grounded = clipRoadsToLand(overpassed, terrain)
   const spanTruncated = truncateOverSpanRoads(grounded, terrain)
   const truncated = truncateUnlandableRoads(spanTruncated, terrain)
   const bridges = planBridges(truncated, terrain)
   // only the bridge deck may span the water — the host road stops at the banks
   const hostSplit = splitHostAtBridges(truncated, terrain)
-  return { roads: [...hostSplit, ...bridges], districtRects, blocksByDistrict }
+  return [...hostSplit, ...bridges]
 }

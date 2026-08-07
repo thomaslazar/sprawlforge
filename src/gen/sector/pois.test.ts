@@ -1,20 +1,25 @@
 import { describe, expect, it } from 'vitest'
+import type { Pt, Rect } from '../geometry'
 import { getPack } from '../names/packs'
 import type { Building, District, SectorParams } from '../types'
 import { placePois } from './pois'
 
+const rectPoly = (r: Rect): Pt[] => [
+  { x: r.x, y: r.y }, { x: r.x + r.w, y: r.y },
+  { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h },
+]
+
 const base: SectorParams = {
-  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
+  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
   landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 const districts: District[] = [
-  { id: 'D01', zone: 'corp', name: 'Test Heights', bounds: { x: 0, y: 0, w: 600, h: 600 }, shore: false, labelAt: { x: 300, y: 300 } },
+  { id: 'D01', zone: 'corp', name: 'Test Heights', bounds: { x: 0, y: 0, w: 600, h: 600 }, poly: rectPoly({ x: 0, y: 0, w: 600, h: 600 }), irregularity: 0.5, shore: false, labelAt: { x: 300, y: 300 } },
 ]
 const buildings: Building[] = Array.from({ length: 30 }, (_, i) => ({
   id: `BLD0101${String(i + 1).padStart(2, '0')}`,
   blockId: 'B0101',
   districtId: 'D01',
-  rect: { x: i * 20, y: 0, w: 15, h: 15 },
   footprint: [{ x: i * 20, y: 0 }, { x: i * 20 + 15, y: 0 }, { x: i * 20 + 15, y: 15 }, { x: i * 20, y: 15 }],
 }))
 
@@ -37,13 +42,12 @@ describe('placePois', () => {
       })
     }
   })
-  it('anchors at the footprint centroid, not the rect center (shore-clipped buildings)', () => {
-    // a shore-clipped building's rect is the pre-clip bounding box — its
-    // center (10,10) can sit in water even though the clipped footprint
-    // (centroid (4,4)) is entirely on land
+  it('anchors at the footprint centroid, not the pre-clip bbox center (shore-clipped buildings)', () => {
+    // a shore-clipped building's pre-clip bounding box center (10,10) can sit
+    // in water even though the clipped footprint (centroid (4,4)) is
+    // entirely on land
     const clipped: Building = {
       id: 'BLD010101', blockId: 'B0101', districtId: 'D01',
-      rect: { x: 0, y: 0, w: 20, h: 20 },
       footprint: [{ x: 0, y: 0 }, { x: 8, y: 0 }, { x: 8, y: 8 }, { x: 0, y: 8 }],
     }
     const pois = placePois(districts, [clipped], pack, base)
@@ -56,7 +60,6 @@ describe('placePois', () => {
     // centroid must land inside the polygon instead
     const lShaped: Building = {
       id: 'BLD010101', blockId: 'B0101', districtId: 'D01',
-      rect: { x: 0, y: 0, w: 20, h: 20 },
       footprint: [
         { x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 10 },
         { x: 10, y: 10 }, { x: 10, y: 20 }, { x: 0, y: 20 },
@@ -74,5 +77,9 @@ describe('placePois', () => {
     const hi = placePois(districts, buildings, pack, { ...base, poiDensity: 1 })
     expect(hi.length).toBeGreaterThan(lo.length)
     expect(new Set(hi.map((p) => p.buildingId)).size).toBe(hi.length)
+  })
+
+  it('poiDensity 0 places no POIs at all', () => {
+    expect(placePois(districts, buildings, pack, { ...base, poiDensity: 0 })).toEqual([])
   })
 })

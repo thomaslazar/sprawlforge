@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>partition toy</title>
+    <style>
+      body { background: #111; color: #ddd; font-family: system-ui, sans-serif; margin: 16px; }
+      .grid { display: grid; grid-template-columns: repeat(4, 320px); gap: 8px; }
+      figure { margin: 0; }
+      figcaption { font-size: 12px; opacity: 0.7; }
+      svg { background: #1a1a2a; width: 320px; height: 320px; }
+      label { margin-right: 16px; }
+    </style>
+  </head>
+  <body>
+    <div>
+      <label>seed <input id="seed" type="number" value="42" /></label>
+      <label>minCell <input id="mincell" type="number" value="120" /></label>
+    </div>
+    <div id="out" class="grid"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest'
 import { generateSector } from '../gen/sector/generate'
+import type { Pt, Rect } from '../gen/geometry'
 import { GENERATOR_VERSION, type SectorModel, type SectorParams } from '../gen/types'
 import { renderSector } from './svg'
 import { getTheme, themes } from './theme'
 
+const rectPoly = (r: Rect): Pt[] => [
+  { x: r.x, y: r.y }, { x: r.x + r.w, y: r.y },
+  { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h },
+]
+
 const base: SectorParams = {
-  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5,
+  seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
   landform: 'coastal', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 const model = generateSector(base)
@@ -26,7 +32,11 @@ describe('renderSector', () => {
     for (const p of model.pois) expect(svg).toContain(`data-id="${p.id}"`)
     expect(svg.match(/<polygon data-id="BLD/g)!.length).toBe(model.buildings.length)
   })
-  it('has a metric scale bar', () => {
+  // field-driven irregularity samples the noise field per cut (arterials
+  // and streets both), so a 6km sector's extra fabric pushes this past the
+  // 5s default under parallel test load — same headroom bump other
+  // generation-heavy tests in this codebase already use
+  it('has a metric scale bar', { timeout: 15000 }, () => {
     expect(renderSector(model, getTheme('neon'))).toContain('500 m')
     const big = generateSector({ ...base, size: 6 })
     expect(renderSector(big, getTheme('neon'))).toContain('1 km')
@@ -97,7 +107,7 @@ describe('renderSector', () => {
     ],
     // spans the full window, deliberately overlapping the water square —
     // proves the land-clip actually confines the fill (C2)
-    districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, shore: true, labelAt: { x: 500, y: 500 } }],
+    districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, poly: rectPoly({ x: 0, y: 0, w: 1000, h: 1000 }), irregularity: 0.5, shore: true, labelAt: { x: 500, y: 500 } }],
     blocks: [],
     buildings: [],
     pois: [],
@@ -141,8 +151,8 @@ describe('renderSector', () => {
   it('clips district fills to the land shape and the river to the frame (C2/I3)', () => {
     const svg = renderSector(wetModel, getTheme('neon'))
     expect(svg).toContain('id="frame-clip"')
-    // district rects sit inside a land-clipped group, not painted bare
-    expect(svg).toMatch(/<g clip-path="url\(#land-clip\)">[\s\S]*<rect data-id="D01"[\s\S]*<\/g>/)
+    // district polys sit inside a land-clipped group, not painted bare
+    expect(svg).toMatch(/<g clip-path="url\(#land-clip\)">[\s\S]*<polygon data-id="D01"[\s\S]*<\/g>/)
     // the river polyline sits inside a frame-clipped group
     expect(svg).toMatch(/<g clip-path="url\(#frame-clip\)">[\s\S]*<polyline[\s\S]*<\/g>/)
   })

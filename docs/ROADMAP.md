@@ -4,7 +4,7 @@
 
 1. **Sector generator** — v1 per `docs/specs/2026-08-03-sprawlforge-design.md` ✅
 2. **Terrain v2 + organic map redesign** — phases 1+2 ✅; phase 3 (organic
-   streets) needs its own spec; see below
+   streets) ✅; see below
 3. **Metroplex generator** — parent of sectors, proves linkage chain.
    Candidate metroplex-scale landform: **city on an island** — a whole
    metro occupying an island, distinct from the sector-scale `islands`
@@ -17,9 +17,9 @@
 Phases 1+2 are specced: `docs/specs/2026-08-04-terrain-v2-design.md`
 (metro-scale heightfield, one-pass water contouring, carved rivers,
 bridges, waterline clipping, shore zoning, piers). Phase 3 (organic
-streets) remains a future spec. Additional deferrals recorded in that
-spec §8: tributaries/confluences, elevation rendering, shallow-water
-bands, ships/harbor props.
+streets) is specced and shipped: `docs/specs/2026-08-06-organic-streets-design.md`.
+Additional deferrals recorded in that spec §8: tributaries/confluences,
+elevation rendering, shallow-water bands, ships/harbor props.
 
 v1 water is a toy (straight east coast, horizontal river band, coast wins
 over river, no bridges, land clipped as rectangle) and the BSP street grid
@@ -36,16 +36,8 @@ core (clipping, insetting, filling non-rectangular shapes).
    (waterfront buildings reach the river's edge), dock zones biased to
    the shore, roads crossing water become bridges (rendered as such,
    network stays connected).
-3. **Organic street patterns** — options, in ascending effort:
-   - **A: perturbation pass** — keep BSP skeleton; jitter road
-     centerlines, rotate district lattices a few degrees, buildings
-     inherit rotation. Planned-city-that-aged look.
-   - **C: zone-hybrid** — perturbed grid for corp/industrial/residential
-     (planned megacity fabric), separate irregular generator for
-     slum/old-quarter districts (crooked dense lanes). Zone contrast as
-     storytelling.
-   - **B: full Voronoi partition** — fully organic street fabric everywhere.
-     Only if A/C prove insufficient; several times their cost.
+3. **Organic street patterns** ✅ — see
+   `docs/specs/2026-08-06-organic-streets-design.md`.
 
 ## Deferred (explicit v1 excludes — do not forget)
 
@@ -59,6 +51,27 @@ core (clipping, insetting, filling non-rectangular shapes).
   one via the generic BSP/clipping pipeline is tolerated, not designed
   for). Deliberately settling an islet, connected back to the mainland by a
   causeway/bridge, is a follow-up.
+- **Coastal & water character v2** — one follow-up spec, all in
+  `src/gen/terrain/` (same-seed water shifts → `GENERATOR_VERSION` bump).
+  Reference case: seed 2908896298 large/bay/river/lakes/islands.
+  - *Coastal detail band*: bare coastlines are one smooth low-frequency
+    arc — boring. Add a medium-frequency domain-warped noise octave
+    concentrated near the waterline for natural inlets, headlands, coves.
+  - *Lakes are inland lakes*: the metro-center radial dip often lands in
+    sea/river on coastal maps and merges into the bay (accidental — and
+    currently the only thing making coasts interesting). Constrain basins
+    to land away from coast gradient and river corridor, and break the
+    uniform-blob shape (stronger shore noise, chained sub-basins).
+  - *Rivers meander and pool*: courses read as near-straight lines,
+    especially on large maps. Meander wavelength control (min
+    self-distance; real meanders run ~10× channel width — oxbow-tight
+    loop repro: seed 2882370099 inland/small) plus deliberate lake-like
+    carve-outs along the course (pools/widenings, the look that today
+    only happens when a lake accidentally intersects a river).
+  - *Archipelago islands*: islet candidates sample uniformly over all
+    water, so a large bay gets one lonely 300 m dot. Sample in an
+    offshore band along the coast, scale count with wet area, vary radii
+    — islands as a coastal feature with intent, no extra knob.
 - **Ships and harbor props** — ocean-going vessels, docks, shipping infrastructure.
 - **Transit lines** — rail/metro/monorail layer. Good v2 candidate for
   sector maps.
@@ -104,12 +117,23 @@ core (clipping, insetting, filling non-rectangular shapes).
   around because zoom scales from the transform origin.
 - **Cursor styling** — default pointer over the map; the grab hand only
   while actually dragging (currently the hand shows permanently).
-- **Reroll loading feedback** — a visually distinct generating state
-  (loading animation/overlay on the map, not just the button label
-  flipping to "Generating…"). Note: generation currently runs
-  synchronously on the main thread, which freezes CSS animations —
-  a real spinner needs the generator moved into a Web Worker, which
-  also unblocks the UI during generation. Worth doing together.
+- **Curved highways** — the highway strip stays straight; a gently bent
+  highway corridor is a cheap follow-up on the corridor mechanism.
+- **Street-fabric performance** — per-building polygon clipping; profile
+  before optimizing.
+- **Improved building placement** — building lots are a rotated rect grid
+  clipped to the block polygon, which works for grid-like blocks (many
+  small buildings — fine, reads urban) but fails in organic blocks:
+  winding streets leave big weird-shaped clipped leftovers that get kept
+  as huge irregular buildings. Revisit placement so building size/shape
+  responds to block character (organic blocks → small buildings tracing
+  the street edges, courtyards, gap-toothed rows), and let placement
+  inform building KIND — POI assignment currently ignores footprint size,
+  so e.g. bars land in enormous buildings. Size/shape-aware building
+  semantics (what fits where) is the follow-up spec's core question.
+- **Reroll loading feedback** ✅ — generation moved to a Web Worker; a
+  dimmed "Generating…" overlay covers the map while busy and pan/zoom stay
+  interactive throughout (see `src/app/genWorker.ts`, `MapView.tsx`).
 
 ## Cross-cutting
 

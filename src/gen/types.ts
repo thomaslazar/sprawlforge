@@ -1,6 +1,6 @@
 import type { Pt, Rect } from './geometry'
 
-export const GENERATOR_VERSION = 3
+export const GENERATOR_VERSION = 4
 
 export const ZONE_TYPES = [
   'corp', 'residential', 'slum', 'industrial', 'entertainment', 'docks',
@@ -24,6 +24,8 @@ export interface SectorParams {
   corpDominance: number
   /** 0..1 — POI frequency */
   poiDensity: number
+  /** 0..1 — street-fabric organicness bias (planned ↔ sprawl) */
+  irregularity: number
   /** base landform; 'auto' resolves deterministically from the seed */
   landform: Landform | 'auto'
   /** water modifiers — independent of landform and each other */
@@ -77,7 +79,11 @@ export interface District {
   zone: ZoneType
   name: string
   bounds: Rect
+  /** district shape; bounds is its bbox */
+  poly: Pt[]
   shore: boolean
+  /** 0.05..0.95 — this district's street-fabric organicness */
+  irregularity: number
   /** area-weighted centroid of the district's surviving blocks — where the
    * label anchors; unlike bounds' center, never falls in open water. */
   labelAt: Pt
@@ -86,8 +92,9 @@ export interface District {
 export interface Block {
   id: string
   districtId: string
-  rect: Rect
-  /** outer ring, meters; equals rect's 4 corners unless clipped by water */
+  /** block outline, meters, in its local street-fabric orientation */
+  poly: Pt[]
+  /** outer ring, meters; equals poly unless clipped by water */
   footprint: Pt[]
 }
 
@@ -95,8 +102,7 @@ export interface Building {
   id: string
   blockId: string
   districtId: string
-  rect: Rect
-  /** outer ring, meters; equals rect's 4 corners unless clipped by water */
+  /** outer ring, meters; a rotated BSP lot clipped to its block's footprint */
   footprint: Pt[]
 }
 
