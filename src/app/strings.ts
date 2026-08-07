@@ -7,7 +7,9 @@ export const strings = {
       pack: 'Flavor pack',
       theme: 'Theme',
       reroll: 'Reroll',
-      rerolling: 'Generating…',
+      update: 'Update',
+      dice: '🎲',
+      diceLabel: 'New random seed, keep tags',
       showPois: 'Show POIs',
     },
     overlay: {

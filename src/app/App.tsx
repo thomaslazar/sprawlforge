@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { hashSeed } from '../gen/rng'
 import type { SectorModel, SectorParams } from '../gen/types'
 import { renderSector } from '../render/svg'
 import { getTheme } from '../render/theme'
@@ -48,12 +47,23 @@ export function App() {
     return () => worker.terminate()
   }, [])
 
+  // three seed/tag actions, all routed through the same worker (see the
+  // genParams effect below) — see KnobPanel for what each does:
+  // Reroll = new random seed, unstaged groups re-rolled from it;
+  // Update = same seed, apply staged tags as-is;
+  // Dice = new random seed, tag set untouched.
   const reroll = () => {
-    const seed = hashSeed(applied.seed, 'reroll')
+    const seed = randomSeed()
     const tags = materializeTags(seed, pendingTags)
     setPendingTags(tags)
     update({ ...applied, tags, seed })
   }
+  const applyUpdate = () => {
+    const tags = materializeTags(applied.seed, pendingTags)
+    setPendingTags(tags)
+    update({ ...applied, tags })
+  }
+  const rerollSeed = () => update({ ...applied, seed: randomSeed() })
 
   useEffect(() => {
     window.history.replaceState(null, '', stateToSearch(applied))
@@ -127,6 +137,8 @@ export function App() {
         onChange={update}
         onPendingTagsChange={setPendingTags}
         onReroll={reroll}
+        onUpdate={applyUpdate}
+        onDice={rerollSeed}
         onShowPoisChange={setShowPois}
         onExport={onExport}
       />
