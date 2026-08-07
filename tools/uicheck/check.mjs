@@ -22,8 +22,14 @@ const ALL_TAGS = [
 ]
 // generation now round-trips through a worker (async) — an action that
 // should regenerate the map needs to wait for the new svg, not assume it
-// landed synchronously by the time the next Playwright command runs
-const waitForSvgChange = (prevHtml, timeout = 5000) =>
+// landed synchronously by the time the next Playwright command runs.
+// Measured: large/packed tag combos take up to ~7s worker round-trip under
+// CI/sandbox CPU contention — a 5s budget was intermittently too tight,
+// and a timed-out wait here doesn't abort, it lets the caller capture a
+// stale "after" baseline that the still-in-flight reply then mutates later,
+// which surfaces as an unrelated *next* assertion falsely accusing that
+// step of an unwanted regenerate.
+const waitForSvgChange = (prevHtml, timeout = 15000) =>
   page.waitForFunction(
     (prev) => document.querySelector('svg')?.innerHTML !== prev,
     prevHtml,
