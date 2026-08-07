@@ -39,6 +39,18 @@ const SHAPES: Array<{ name: string; make: (seed: number) => Pt[] }> = [
 
 const HUES = [200, 260, 320, 20, 80, 140]
 
+// Road hierarchy: cut depth 0-1 is the first split(s) of a polygon (few, long,
+// dominant), depth 2 a middle tier, depth 3+ deep, thin fabric — mirrors the
+// OSM refs (temp/street-refs/01-barcelona.png, 08-pittsburgh.png): a handful
+// of bright avenues, then connectors, then hairline lanes receding into the
+// background. `base` is the depth-0/1 (avenue) look; deeper tiers shrink and
+// dim from it.
+function tierStyle(depth: number, base: { width: number; opacity: number }): { width: number; opacity: number } {
+  if (depth <= 1) return base
+  if (depth === 2) return { width: base.width * 0.45, opacity: base.opacity * 0.65 }
+  return { width: base.width * 0.16, opacity: base.opacity * 0.35 }
+}
+
 function draw(): void {
   const seed = Number((document.getElementById('seed') as HTMLInputElement).value) >>> 0
   const minCell = Number((document.getElementById('mincell') as HTMLInputElement).value)
@@ -54,7 +66,10 @@ function draw(): void {
           `<polygon points="${c.map((p) => `${p.x},${p.y}`).join(' ')}" fill="hsl(${HUES[i % 6]} 40% 30%)" stroke="#0af" stroke-width="1.5"/>`)
         .join('')
       const cutsSvg = cuts
-        .map((c) => `<polyline points="${c.points.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="#fff" stroke-width="3" opacity="0.5"/>`)
+        .map((c) => {
+          const { width, opacity } = tierStyle(c.depth, { width: 5, opacity: 1 })
+          return `<polyline points="${c.points.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="#fff" stroke-width="${width}" opacity="${opacity}"/>`
+        })
         .join('')
       out.insertAdjacentHTML(
         'beforeend',
@@ -92,11 +107,15 @@ function draw(): void {
       blockCount += blocks.length
       for (const b of blocks)
         parts.push(`<polygon points="${b.map((p) => `${p.x},${p.y}`).join(' ')}" fill="hsl(${HUES[di % 6]} 30% 28%)" stroke="#08c" stroke-width="0.8"/>`)
-      for (const s of streets)
-        parts.push(`<polyline points="${s.points.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="#9ab" stroke-width="1.5" opacity="0.8"/>`)
+      for (const s of streets) {
+        const { width, opacity } = tierStyle(s.depth, { width: 3.2, opacity: 0.95 })
+        parts.push(`<polyline points="${s.points.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="#9ab" stroke-width="${width}" opacity="${opacity}"/>`)
+      }
     })
-    for (const a of arterials)
-      parts.push(`<polyline points="${a.points.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="#fff" stroke-width="5" opacity="0.7"/>`)
+    for (const a of arterials) {
+      const { width, opacity } = tierStyle(a.depth, { width: 9, opacity: 1 })
+      parts.push(`<polyline points="${a.points.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="#fff" stroke-width="${width}" opacity="${opacity}"/>`)
+    }
     out.insertAdjacentHTML(
       'beforeend',
       `<figure><svg viewBox="0 0 1000 1000">${parts.join('')}</svg>

@@ -24,6 +24,8 @@ export interface PolyCut {
   /** cut centerline, boundary to boundary (2 points straight, 3 when bent) */
   points: Pt[]
   width: number
+  /** recursion depth at which this cut was made — 0 = first split of the parent polygon */
+  depth: number
 }
 
 const MAX_DEPTH = 26
@@ -405,7 +407,7 @@ export function partitionPolygon(poly: Pt[], opts: PartitionOpts): { cells: Pt[]
         .filter((r) => r.length >= 3 && Math.abs(ringArea(r)) > area * 0.001)
       if (rings.length < 2) continue
       if (rings.some((r) => Math.abs(ringArea(r)) > area * DEGENERATE_SHARE)) continue
-      cuts.push({ points: cut, width: opts.gap })
+      cuts.push({ points: cut, width: opts.gap, depth })
       for (const r of rings) recurse(r, depth + 1)
       return
     }

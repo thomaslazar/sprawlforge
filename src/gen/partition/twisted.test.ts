@@ -51,6 +51,13 @@ describe('partitionPolygon', () => {
     expect(cuts.length).toBe(cells.length - 1)
   })
 
+  it('records cut depth: 0 for the polygon\'s first split, deeper for cuts made further down the recursion', () => {
+    const { cuts } = partitionPolygon(square(1000), { ...OPTS, irregularity: 0.5, rng: mulberry32(1) })
+    expect(cuts[0].depth).toBe(0)
+    for (const cut of cuts) expect(Number.isInteger(cut.depth) && cut.depth >= 0).toBe(true)
+    expect(cuts.some((c) => c.depth >= 1)).toBe(true)
+  })
+
   it('emits a too-small polygon as a single cell', () => {
     const { cells, cuts } = partitionPolygon(square(150), { ...OPTS, irregularity: 0.5, rng: mulberry32(1) })
     expect(cells).toEqual([square(150)])
