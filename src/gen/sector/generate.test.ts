@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { pointInRings } from '../geometry'
+import { pointInRings, type Pt } from '../geometry'
+import { ISLET_MOAT_OUTER_FACTOR, ISLET_RADIUS_MAX } from '../terrain/field'
 import { GENERATOR_VERSION, type Block, type District, type SectorParams, type Terrain } from '../types'
 import { deriveDistricts, generateSector } from './generate'
 
@@ -86,6 +87,51 @@ describe('generateSector', () => {
     for (const seed of [2882370099, 4, 40, 95, 96]) {
       expect(() => generateSector({ ...params, seed })).not.toThrow()
     }
+  }, 20000) // 5 sector generations at islands:true — the moat's extra per-sample
+  // work (fix: islets carve a moat) pushed this right up against the 5s default
+  it('islets never dam a river: every river-course point is either wet or ringed by a wet moat (seed 2882370099)', () => {
+    // deterministic repro for the islands-dam-the-river bug: an islet's core
+    // bump used to raise land clear across a river channel (islet radius
+    // 150-300m vs a ~60-120m channel). generateSector must not throw, and
+    // any river-course point that lands on land must be explainable as
+    // sitting on an islet — i.e. some radius around it is a full wet ring
+    // (the moat), not just an unrelated dry patch swallowing the channel.
+    const params: SectorParams = {
+      seed: 2882370099, size: 2, density: 0.6, corpDominance: 0.5, poiDensity: 0.5,
+      irregularity: 0.85, landform: 'inland', river: true, lakes: false, islands: true,
+      piers: false, pack: 'generic', theme: 'neon',
+    }
+    let m: ReturnType<typeof generateSector> | undefined
+    expect(() => {
+      m = generateSector(params)
+    }).not.toThrow()
+    const sizeM = params.size * 1000
+    const inWater = (p: Pt) =>
+      m!.terrain.water.some((poly) => pointInRings(p, poly.map((ring) => ring.map(([x, y]) => ({ x, y })))))
+    // generous upper bound on how far an islet's moat ring could possibly
+    // sit from its own center — any real moat ring must be found at or
+    // under this radius
+    const maxMoatR = ISLET_RADIUS_MAX * ISLET_MOAT_OUTER_FACTOR
+    const ringedByMoat = (p: Pt) => {
+      const angles = 24
+      for (let r = 20; r <= maxMoatR + 60; r += 20) {
+        let allWet = true
+        for (let a = 0; a < angles; a++) {
+          const theta = (a / angles) * Math.PI * 2
+          if (!inWater({ x: p.x + Math.cos(theta) * r, y: p.y + Math.sin(theta) * r })) {
+            allWet = false
+            break
+          }
+        }
+        if (allWet) return true
+      }
+      return false
+    }
+    const course = m!.terrain.riverSlice?.course ?? []
+    const inWindow = course.filter((p) => p.x >= 0 && p.x <= sizeM && p.y >= 0 && p.y <= sizeM)
+    expect(inWindow.length, 'river actually crosses this window').toBeGreaterThan(0)
+    const dammed = inWindow.filter((p) => !inWater(p) && !ringedByMoat(p))
+    expect(dammed).toEqual([])
   })
 })
 

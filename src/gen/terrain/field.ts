@@ -235,10 +235,17 @@ export function makeFieldBase(
 // reaches it); an islet only matters if it lands inside the sector actually
 // being viewed, so candidates are sampled within the window itself rather
 // than at a fixed metro-scale position. Applied on top of the fully-resolved
-// height (post river-carve) so islets never land athwart a carved channel,
-// and never touch heightSea — same reasoning as lakes: heightSea is the
-// river tracer's "is this still sea" probe, and an islet breaching to land
-// there would falsely end a river next to open water it should keep tracing.
+// height (post river-carve): an islet CAN land athwart a carved channel —
+// candidates are picked from wherever the post-carve field already reads
+// wet, which very much includes river channels (a river is only ~60-120m
+// wide, well inside the 150-300m islet radius). So every islet also carves a
+// MOAT (see below): an annulus around its core that's forced below the wet
+// threshold regardless of the terrain underneath, guaranteeing a closed
+// water ring around the island — on a river that ring widens the channel
+// locally so it flows around the island instead of damming it. Still never
+// touches heightSea — same reasoning as lakes: heightSea is the river
+// tracer's "is this still sea" probe, and an islet breaching to land there
+// would falsely end a river next to open water it should keep tracing.
 const ISLET_WET_THRESHOLD = -0.08
 // ponytail: 60 uniform-random samples over the window is a probabilistic
 // hit test, not a guarantee — a seed whose wet area is a small fraction of
@@ -249,9 +256,27 @@ const ISLET_WET_THRESHOLD = -0.08
 const ISLET_CANDIDATE_SAMPLES = 60
 const ISLET_MIN_COUNT = 1
 const ISLET_MAX_COUNT = 3
-const ISLET_RADIUS_MIN = 150
-const ISLET_RADIUS_MAX = 300
+export const ISLET_RADIUS_MIN = 150
+export const ISLET_RADIUS_MAX = 300
 const ISLET_BREACH_MARGIN = 0.1 // guarantees the bump clears 0, not just touches it
+// Moat geometry, both relative to the islet's own (150-300m) rolled radius:
+// the core (visible land) shrinks to half that radius, leaving room for a
+// moat outside it; the moat's outer edge sits 1.6x the rolled radius out.
+// Forcing height down in the annulus is a hard ceiling (min), not a dip
+// added to h like the core bump — so unlike the bump it's independent of
+// whatever terrain is underneath, which is what makes the closed-ring
+// guarantee unconditional (true for any local terrain) rather than probable.
+// Exported so tests can derive the guaranteed-wet "moat ring" radius
+// analytically instead of reaching into applyIslands' closure.
+export const ISLET_CORE_FACTOR = 0.5
+export const ISLET_MOAT_OUTER_FACTOR = 1.6
+const ISLET_MOAT_DEPTH = -0.3 // comfortably below both the water contour's 0 and ISLET_WET_THRESHOLD
+const ISLET_MOAT_CEILING_FAR = 10 // "no clamp" outside the moat band — always above any real height
+
+const smoothstep01 = (edge0: number, edge1: number, x: number) => {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)))
+  return t * t * (3 - 2 * t)
+}
 
 export function applyIslands(
   height: (x: number, y: number) => number,
@@ -272,13 +297,34 @@ export function applyIslands(
     const center = rng.pick(candidates)
     const radius = ISLET_RADIUS_MIN + rng.next() * (ISLET_RADIUS_MAX - ISLET_RADIUS_MIN)
     const shoreNoise = fractalNoise2D(hashSeed(metroSeed, 'islet-shore', i))
+    const coreR = radius * ISLET_CORE_FACTOR
     const bump = -height(center.x, center.y) + ISLET_BREACH_MARGIN
-    return { center, radius, shoreNoise, bump }
+    const moatOuterR = radius * ISLET_MOAT_OUTER_FACTOR
+    // band each annulus edge ramps over, sized so the annulus's middle
+    // third always sits at mask===1 (fully forced) — that's the "moat ring"
+    // radius the field/index tests probe for a guaranteed-wet sample ring
+    const band = (moatOuterR - coreR) * 0.35
+    return { center, coreR, shoreNoise, bump, moatOuterR, band }
   })
 
   return (x, y) => {
     let h = height(x, y)
-    for (const isl of islets) h += isl.bump * basinFalloff(x, y, isl.center, isl.radius, isl.shoreNoise)
+    // core bumps first (land), then moat ceilings (water), folded in with
+    // Math.min after all bumps are summed — min is commutative/associative,
+    // so which islet's ceiling applies first doesn't matter, only that
+    // ceilings are evaluated against the fully-summed land height.
+    // ponytail: doesn't defend an islet's own core against a NEIGHBORING
+    // islet's moat when two islets roll within about half a radius of each
+    // other — max 3 islets over a >=2000m window makes this rare; revisit
+    // if smoke/uicheck ever show a dry ring next to a crowded island cluster.
+    for (const isl of islets) h += isl.bump * basinFalloff(x, y, isl.center, isl.coreR, isl.shoreNoise)
+    for (const isl of islets) {
+      const d = Math.hypot(x - isl.center.x, y - isl.center.y)
+      const mask =
+        smoothstep01(isl.coreR, isl.coreR + isl.band, d) *
+        (1 - smoothstep01(isl.moatOuterR - isl.band, isl.moatOuterR, d))
+      if (mask > 0) h = Math.min(h, ISLET_MOAT_CEILING_FAR - (ISLET_MOAT_CEILING_FAR - ISLET_MOAT_DEPTH) * mask)
+    }
     return h
   }
 }

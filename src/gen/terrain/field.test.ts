@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Landform } from '../types'
-import { METRO_SIZE, applyIslands, makeFieldBase, sectorWindow } from './field'
+import {
+  ISLET_MOAT_OUTER_FACTOR,
+  ISLET_RADIUS_MAX,
+  METRO_SIZE,
+  applyIslands,
+  makeFieldBase,
+  sectorWindow,
+} from './field'
 
 const sizeM = 4000
 const DRY = { river: false, lakes: false, islands: false }
@@ -123,5 +130,55 @@ describe('applyIslands', () => {
       }
       expect(breached, `seed ${seed}`).toBe(true)
     }
+  })
+  it('carves a moat: a full ring around the islet core is guaranteed wet even when the terrain just outside the core is dry (river-channel-like)', () => {
+    // synthetic field: a narrow wet "channel" through an otherwise dry
+    // window, narrower than the ~150-300m islet radius — the exact geometry
+    // that used to let an islet dam a river (a real river is ~60-120m wide)
+    const win = { x: 0, y: 0, w: 1200, h: 1200 }
+    const channelHalfWidth = 100
+    const cx = win.x + win.w / 2
+    const height = (x: number) => (Math.abs(x - cx) < channelHalfWidth ? -0.5 : 0.5)
+
+    const withIslands = applyIslands(height, 42, win)
+
+    // find the islet's core: the highest point in the window
+    const n = 240 // grid spacing 5m
+    let peak = { x: cx, y: win.h / 2 }
+    let peakH = -Infinity
+    for (let j = 0; j <= n; j++) {
+      for (let i = 0; i <= n; i++) {
+        const x = win.x + (i / n) * win.w
+        const y = win.y + (j / n) * win.h
+        const h = withIslands(x, y)
+        if (h > peakH) {
+          peakH = h
+          peak = { x, y }
+        }
+      }
+    }
+    expect(peakH, 'islet core reads as land').toBeGreaterThanOrEqual(0)
+
+    // sweep outward from the peak for the smallest radius at which a full
+    // ring of samples all reads wet — the guaranteed moat ring. Bounded by
+    // the widest an islet's moat could possibly reach, so a false positive
+    // (wandering into an unrelated dry/wet seam) can't pass silently.
+    const maxPossibleMoatR = ISLET_RADIUS_MAX * ISLET_MOAT_OUTER_FACTOR
+    const angles = 32
+    let ringFound = -1
+    for (let r = 10; r <= maxPossibleMoatR + 50 && ringFound < 0; r += 5) {
+      let allWet = true
+      for (let a = 0; a < angles; a++) {
+        const theta = (a / angles) * Math.PI * 2
+        const x = peak.x + Math.cos(theta) * r
+        const y = peak.y + Math.sin(theta) * r
+        if (withIslands(x, y) >= 0) {
+          allWet = false
+          break
+        }
+      }
+      if (allWet) ringFound = r
+    }
+    expect(ringFound, 'a full wet ring exists around the islet core').toBeGreaterThan(0)
   })
 })

@@ -145,11 +145,16 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
 
   if (model.terrain.riverSlice) {
     const pts = model.terrain.riverSlice.course.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
-    out.push(`<g clip-path="url(#frame-clip)">`)
+    // clipped to BOTH the viewport (I3, overrun at the frame edge) and the
+    // water shape — an islet can now sit mid-channel (the moat carves a
+    // ring of water around it, but the island's own core is still land),
+    // so without the water clip this decorative stroke would paint a water
+    // stripe straight across the island
+    out.push(`<g clip-path="url(#frame-clip)"><g clip-path="url(#water-clip)">`)
     out.push(
       `<polyline points="${pts}" fill="none" stroke="${theme.water}" stroke-width="${n(model.terrain.riverSlice.width)}" stroke-linecap="round"/>`,
     )
-    out.push('</g>')
+    out.push('</g></g>')
   }
 
   // district polys include filled lakes and the river corridor (twisted
