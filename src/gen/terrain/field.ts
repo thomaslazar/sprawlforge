@@ -238,14 +238,25 @@ export function makeFieldBase(
 // height (post river-carve): an islet CAN land athwart a carved channel —
 // candidates are picked from wherever the post-carve field already reads
 // wet, which very much includes river channels (a river is only ~60-120m
-// wide, well inside the 150-300m islet radius). So every islet also carves a
-// MOAT (see below): an annulus around its core that's forced below the wet
-// threshold regardless of the terrain underneath, guaranteeing a closed
-// water ring around the island — on a river that ring widens the channel
-// locally so it flows around the island instead of damming it. Still never
-// touches heightSea — same reasoning as lakes: heightSea is the river
-// tracer's "is this still sea" probe, and an islet breaching to land there
-// would falsely end a river next to open water it should keep tracing.
+// wide, well inside the 150-300m default islet radius). So every islet also
+// carves a MOAT (see below): an annulus around its core that's forced below
+// the wet threshold regardless of the terrain underneath, guaranteeing a
+// closed water ring around the island — on a river that ring widens the
+// channel locally so it flows around the island instead of damming it.
+// On a NARROW channel a full-size (150-300m) moat is itself the bug: its
+// ~240-480m outer diameter is 6-10x a real river's width, so the ring
+// bulges out past the channel and welds across neighboring bends of a tight
+// meander (the "pretzel" report) — water balloons into a shape with land
+// pockets trapped inside it instead of a river reading as a river. So the
+// radius itself is capped to the LOCAL water width (see
+// probeLocalWaterWidth) before the moat proportions are derived from it:
+// open water (sea/lake) probes wide and the cap never binds, a tight
+// channel shrinks the islet (and its moat) down to fit, and a channel too
+// narrow to host a legible island skips the candidate outright (see
+// ISLET_RADIUS_FLOOR). Still never touches heightSea — same reasoning as
+// lakes: heightSea is the river tracer's "is this still sea" probe, and an
+// islet breaching to land there would falsely end a river next to open
+// water it should keep tracing.
 const ISLET_WET_THRESHOLD = -0.08
 // ponytail: 60 uniform-random samples over the window is a probabilistic
 // hit test, not a guarantee — a seed whose wet area is a small fraction of
@@ -272,10 +283,52 @@ export const ISLET_CORE_FACTOR = 0.5
 export const ISLET_MOAT_OUTER_FACTOR = 1.6
 const ISLET_MOAT_DEPTH = -0.3 // comfortably below both the water contour's 0 and ISLET_WET_THRESHOLD
 const ISLET_MOAT_CEILING_FAR = 10 // "no clamp" outside the moat band — always above any real height
+// Moat outer diameter (2 * radius * ISLET_MOAT_OUTER_FACTOR) is capped to
+// this many times the LOCAL water width (see probeLocalWaterWidth) — keeps
+// it in the "modest bulge" range on a narrow channel instead of ballooning
+// into a multi-bend-spanning disc. Sea/lake water probes far wider than any
+// possible radius, so the cap never binds there — the 150-300m default
+// range is unaffected.
+export const ISLET_MOAT_WIDTH_FACTOR = 2.2
+// below this rolled radius an "island" is too small to read as one against
+// a channel this narrow — skip the candidate rather than draw a speck
+export const ISLET_RADIUS_FLOOR = 30
+const ISLET_PROBE_DIRS = 8 // compass directions — plenty for a width estimate
+const ISLET_PROBE_STEP = 20 // m per probe step
+// open sea/lake never resolves a shore within this walk, so it reads as
+// "wide" (no clamp) rather than needing an unbounded walk
+const ISLET_PROBE_MAX_WALK = 800
 
 const smoothstep01 = (edge0: number, edge1: number, x: number) => {
   const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)))
   return t * t * (3 - 2 * t)
+}
+
+// Estimates how wide the body of water at `center` is: walks rays out in 8
+// compass directions, in fixed steps, until each clears the wet threshold
+// (dry land), then takes the narrowest opposite-pair span. A river channel
+// reads narrow on the axis that crosses it; open water never resolves
+// within ISLET_PROBE_MAX_WALK, so every pair reads "wide" and the result
+// can't constrain the islet radius. Deterministic — uses only `height`, no
+// rng draws, so it doesn't disturb the fixed per-slot draw count below.
+function probeLocalWaterWidth(height: (x: number, y: number) => number, center: Pt): number {
+  const dist: number[] = []
+  for (let i = 0; i < ISLET_PROBE_DIRS; i++) {
+    const theta = (i / ISLET_PROBE_DIRS) * Math.PI * 2
+    const dx = Math.cos(theta)
+    const dy = Math.sin(theta)
+    let d = ISLET_PROBE_MAX_WALK
+    for (let s = ISLET_PROBE_STEP; s <= ISLET_PROBE_MAX_WALK; s += ISLET_PROBE_STEP) {
+      if (height(center.x + dx * s, center.y + dy * s) >= ISLET_WET_THRESHOLD) {
+        d = s
+        break
+      }
+    }
+    dist.push(d)
+  }
+  let minSpan = Infinity
+  for (let i = 0; i < ISLET_PROBE_DIRS / 2; i++) minSpan = Math.min(minSpan, dist[i] + dist[i + ISLET_PROBE_DIRS / 2])
+  return minSpan
 }
 
 export function applyIslands(
@@ -293,9 +346,19 @@ export function applyIslands(
   if (candidates.length === 0) return height
 
   const count = rng.int(ISLET_MIN_COUNT, ISLET_MAX_COUNT)
+  // Every slot draws a center + raw radius unconditionally (fixed rng
+  // consumption, 2 draws/slot) — clamping/skipping happens AFTER drawing,
+  // so a slot that gets filtered out below never shifts what later slots
+  // roll (see ISLET_RADIUS_FLOOR).
   const islets = Array.from({ length: count }, (_, i) => {
     const center = rng.pick(candidates)
-    const radius = ISLET_RADIUS_MIN + rng.next() * (ISLET_RADIUS_MAX - ISLET_RADIUS_MIN)
+    const rawRadius = ISLET_RADIUS_MIN + rng.next() * (ISLET_RADIUS_MAX - ISLET_RADIUS_MIN)
+    const localWidth = probeLocalWaterWidth(height, center)
+    // moat outer diameter is 2 * radius * ISLET_MOAT_OUTER_FACTOR — invert
+    // that to cap radius so the diameter stays within
+    // ISLET_MOAT_WIDTH_FACTOR times the local water width
+    const radiusCap = (ISLET_MOAT_WIDTH_FACTOR * localWidth) / (2 * ISLET_MOAT_OUTER_FACTOR)
+    const radius = Math.min(rawRadius, radiusCap)
     const shoreNoise = fractalNoise2D(hashSeed(metroSeed, 'islet-shore', i))
     const coreR = radius * ISLET_CORE_FACTOR
     const bump = -height(center.x, center.y) + ISLET_BREACH_MARGIN
@@ -304,8 +367,8 @@ export function applyIslands(
     // third always sits at mask===1 (fully forced) — that's the "moat ring"
     // radius the field/index tests probe for a guaranteed-wet sample ring
     const band = (moatOuterR - coreR) * 0.35
-    return { center, coreR, shoreNoise, bump, moatOuterR, band }
-  })
+    return { center, radius, coreR, shoreNoise, bump, moatOuterR, band }
+  }).filter((isl) => isl.radius >= ISLET_RADIUS_FLOOR)
 
   return (x, y) => {
     let h = height(x, y)

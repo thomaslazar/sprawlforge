@@ -181,4 +181,99 @@ describe('applyIslands', () => {
     }
     expect(ringFound, 'a full wet ring exists around the islet core').toBeGreaterThan(0)
   })
+
+  it('clamps islet radius to local water width: a narrow river-like channel gets a modest bulge, not a 6-10x-wide disc', () => {
+    // same synthetic channel shape as the moat test above, but width 80m —
+    // squarely in the "real river" 60-120m range the bug report names.
+    // Outside the channel the field is plain dry land (no other wet
+    // features), so the wet/dry transition found below IS the moat's outer
+    // edge — unlike the wide-water case, where "outside the moat" is still
+    // wet on its own and the transition can't be observed this way.
+    const win = { x: 0, y: 0, w: 1200, h: 1200 }
+    const channelHalfWidth = 40
+    const channelWidth = channelHalfWidth * 2
+    const cx = win.x + win.w / 2
+    const height = (x: number) => (Math.abs(x - cx) < channelHalfWidth ? -0.5 : 0.5)
+
+    const withIslands = applyIslands(height, 42, win)
+
+    // find the islet's core (same grid-search as the moat test)
+    const n = 240
+    let peak = { x: cx, y: win.h / 2 }
+    let peakH = -Infinity
+    for (let j = 0; j <= n; j++) {
+      for (let i = 0; i <= n; i++) {
+        const x = win.x + (i / n) * win.w
+        const y = win.y + (j / n) * win.h
+        const h = withIslands(x, y)
+        if (h > peakH) {
+          peakH = h
+          peak = { x, y }
+        }
+      }
+    }
+    expect(peakH, 'islet still forms in an 80m channel').toBeGreaterThanOrEqual(0)
+
+    // walk outward along x from the peak (perpendicular to the channel,
+    // where the ambient field is dry, so any wet sample out here can only
+    // be the moat forcing it) and record the farthest offset that's still
+    // wet — the moat's outer edge, since past it the field reverts to the
+    // dry ambient and (moving straight away from cx) never re-enters water
+    let moatOuterX = 0
+    for (let dx = 0; dx <= 500; dx += 2) {
+      if (withIslands(peak.x + dx, peak.y) < 0) moatOuterX = dx
+    }
+    const bulgeDiameter = moatOuterX * 2
+    expect(bulgeDiameter, 'moat bulge stays within ~2.5x the channel width, not 6-10x it').toBeLessThanOrEqual(
+      channelWidth * 2.5,
+    )
+  })
+
+  it('does not clamp islet radius in wide open water: core lands in the original 150-300m-derived range', () => {
+    // synthetic "sea": wet everywhere, comfortably larger than the probe's
+    // max walk in every direction, so probeLocalWaterWidth reads it as wide
+    // open water and the radius cap never binds — radius should roll
+    // exactly as it did before this fix (ISLET_RADIUS_MIN-MAX)
+    const win = { x: 0, y: 0, w: 3000, h: 3000 }
+    const height = () => -0.5
+
+    const withIslands = applyIslands(height, 42, win)
+
+    // find the islet core
+    const n = 200
+    let peak = { x: win.w / 2, y: win.h / 2 }
+    let peakH = -Infinity
+    for (let j = 0; j <= n; j++) {
+      for (let i = 0; i <= n; i++) {
+        const x = win.x + (i / n) * win.w
+        const y = win.y + (j / n) * win.h
+        const h = withIslands(x, y)
+        if (h > peakH) {
+          peakH = h
+          peak = { x, y }
+        }
+      }
+    }
+    expect(peakH, 'islet breaches in open water').toBeGreaterThanOrEqual(0)
+
+    // ambient water is already wet (-0.5) everywhere here, so — unlike the
+    // narrow-channel test — the moat's forced ring is invisible (min(h,
+    // ceiling) never binds when ambient is already wetter than the moat
+    // depth). The only observable signal is where the CORE BUMP's smooth
+    // falloff crosses back below zero into that wet ambient. That crossing
+    // is a fixed fraction of coreR (it solves t²(3-2t) = 0.5/bump for the
+    // falloff's shape function, independent of radius) — small for a
+    // radius near ISLET_RADIUS_FLOOR (30 → coreR 15 → crossing ~4-5m) and
+    // meaningfully bigger for the unclamped range (radius 150-300 → coreR
+    // 75-150 → crossing ~13-53m, ±shoreline wobble). [8, 60] cleanly
+    // separates "unclamped" from "clamped to the floor" without pinning an
+    // exact value that shoreline noise would make flaky.
+    let landR = 0
+    for (let dx = 0; dx <= 400; dx += 1) {
+      if (withIslands(peak.x + dx, peak.y) >= 0) landR = dx
+      else break
+    }
+    expect(landR, 'core radius consistent with unclamped 150-300m islet, not a floor-clamped one').toBeGreaterThan(8)
+    expect(landR, 'core radius within the unclamped range, not runaway').toBeLessThan(60)
+  })
 })
