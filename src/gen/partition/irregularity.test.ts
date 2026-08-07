@@ -20,6 +20,23 @@ describe('irregularityField', () => {
     }
   })
 
+  it('genuinely spans grid (<0.15) and wild (>0.85) ends, not just mid-range', () => {
+    for (const seed of [1, 7, 42, 99, 123]) {
+      const field = irregularityField(seed)
+      let min = Infinity
+      let max = -Infinity
+      for (let x = -3000; x <= 3000; x += 137) {
+        for (let y = -3000; y <= 3000; y += 191) {
+          const v = field({ x, y })
+          if (v < min) min = v
+          if (v > max) max = v
+        }
+      }
+      expect(min).toBeLessThan(0.15)
+      expect(max).toBeGreaterThan(0.85)
+    }
+  })
+
   it('is smooth: nearby points differ less than far-apart points, on average', () => {
     const field = irregularityField(99)
     let nearSum = 0

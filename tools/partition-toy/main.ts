@@ -67,10 +67,14 @@ function draw(): void {
   // fifth row: one shape (the big square), irregularity supplied by a
   // spatial field instead of a constant — each column its own field seed, so
   // a single cut region shows grid-like patches transitioning into
-  // meandering ones as the field varies across the domain.
+  // meandering ones as the field varies across the domain. Scale is well
+  // below the 1000m toy square (vs. the ~1km production default) so the
+  // square spans several noise periods and actually shows multiple regions,
+  // not just one.
+  const FIELD_ROW_SCALE = 400
   for (let column = 0; column < 4; column++) {
     const poly = square()
-    const field = irregularityField(hashSeed(seed, 'field-row', column))
+    const field = irregularityField(hashSeed(seed, 'field-row', column), { scale: FIELD_ROW_SCALE })
     const rng = mulberry32(hashSeed(seed, 'field', column))
     const { cells, cuts } = partitionPolygon(poly, { minCell, gap: 9, irregularity: field, rng })
     const cellsSvg = cells
