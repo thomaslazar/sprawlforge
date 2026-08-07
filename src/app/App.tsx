@@ -99,7 +99,12 @@ export function App() {
   // semantic zoom: labels re-render per zoom band (1|2|4|8) so more of them
   // fit as you zoom in; generation itself never re-runs for this
   const [labelZoom, setLabelZoom] = useState(1)
-  const visibleModel = model ? (showPois ? model : { ...model, pois: [] }) : null
+  // memoized so the {...model} spread doesn't mint a new object every App
+  // re-render while POIs are hidden (would invalidate the svg memo below)
+  const visibleModel = useMemo(
+    () => (model ? (showPois ? model : { ...model, pois: [] }) : null),
+    [model, showPois],
+  )
   const svg = useMemo(
     () => (visibleModel ? renderSector(visibleModel, getTheme(params.theme), { labelZoom }) : ''),
     [visibleModel, params.theme, labelZoom],
