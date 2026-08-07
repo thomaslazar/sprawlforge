@@ -64,30 +64,43 @@ function draw(): void {
     }
   }
 
-  // fifth row: one shape (the big square), irregularity supplied by a
-  // spatial field instead of a constant — each column its own field seed, so
-  // a single cut region shows grid-like patches transitioning into
-  // meandering ones as the field varies across the domain. Scale is well
-  // below the 1000m toy square (vs. the ~1km production default) so the
-  // square spans several noise periods and actually shows multiple regions,
-  // not just one.
+  // fifth row: whole-map preview — TWO partition levels like the real
+  // sector (arterials carve districts, streets carve blocks), both driven
+  // by one spatial irregularity field sampled per cut. Style lives in the
+  // street-scale fabric, so this row is what a full map's texture will do:
+  // grid quarters flowing into meandering ones within a single map.
+  // Column 0 is a synthetic vertical ramp (bottom = 0.05 planned grid,
+  // top = 0.95 organic) — the capability demo, decoupled from noise luck;
+  // columns 1-3 are real noise fields at toy scale.
   const FIELD_ROW_SCALE = 400
+  const ramp = (p: Pt): number => 0.05 + 0.9 * Math.min(1, Math.max(0, (950 - p.y) / 900))
   for (let column = 0; column < 4; column++) {
     const poly = square()
-    const field = irregularityField(hashSeed(seed, 'field-row', column), { scale: FIELD_ROW_SCALE })
+    const field = column === 0
+      ? ramp
+      : irregularityField(hashSeed(seed, 'field-row', column), { scale: FIELD_ROW_SCALE })
     const rng = mulberry32(hashSeed(seed, 'field', column))
-    const { cells, cuts } = partitionPolygon(poly, { minCell, gap: 9, irregularity: field, rng })
-    const cellsSvg = cells
-      .map((c, i) =>
-        `<polygon points="${c.map((p) => `${p.x},${p.y}`).join(' ')}" fill="hsl(${HUES[i % 6]} 40% 30%)" stroke="#0af" stroke-width="1.5"/>`)
-      .join('')
-    const cutsSvg = cuts
-      .map((c) => `<polyline points="${c.points.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="#fff" stroke-width="3" opacity="0.5"/>`)
-      .join('')
+    const { cells: districts, cuts: arterials } = partitionPolygon(poly, {
+      minCell: 300, gap: 12, irregularity: field, rng,
+    })
+    const parts: string[] = []
+    let blockCount = 0
+    districts.forEach((district, di) => {
+      const { cells: blocks, cuts: streets } = partitionPolygon(district, {
+        minCell: 80, gap: 4, irregularity: field, rng,
+      })
+      blockCount += blocks.length
+      for (const b of blocks)
+        parts.push(`<polygon points="${b.map((p) => `${p.x},${p.y}`).join(' ')}" fill="hsl(${HUES[di % 6]} 30% 28%)" stroke="#08c" stroke-width="0.8"/>`)
+      for (const s of streets)
+        parts.push(`<polyline points="${s.points.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="#9ab" stroke-width="1.5" opacity="0.8"/>`)
+    })
+    for (const a of arterials)
+      parts.push(`<polyline points="${a.points.map((p) => `${p.x},${p.y}`).join(' ')}" fill="none" stroke="#fff" stroke-width="5" opacity="0.7"/>`)
     out.insertAdjacentHTML(
       'beforeend',
-      `<figure><svg viewBox="0 0 1000 1000">${cellsSvg}${cutsSvg}</svg>
-       <figcaption>field col=${column} cells=${cells.length}</figcaption></figure>`,
+      `<figure><svg viewBox="0 0 1000 1000">${parts.join('')}</svg>
+       <figcaption>${column === 0 ? 'field ramp (bottom grid → top organic)' : `field col=${column}`} blocks=${blockCount}</figcaption></figure>`,
     )
   }
 }
