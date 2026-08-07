@@ -258,19 +258,76 @@ function extendEnds(line: Pt[], by: number): Pt[] {
 // revisited) so this phase's cut-shape change doesn't ripple into sector
 // road layout; streets (uncapped per-district irregularity) meander freely
 const MEANDER_MIN_IRR = 0.4
-const MEANDER_SEG_MIN = 250
-const MEANDER_SEG_MAX = 400
-const MEANDER_AMP_K = 0.22
+const MEANDER_SEG_MIN = 150
+const MEANDER_SEG_MAX = 250
+// amp = irr * segLen * K; tuned so amp stays well under segLen (amp ≈
+// segLen would fold the curve back on itself) while still reading as a
+// continuous wander once low-passed and Chaikin-smoothed — see the "at irr
+// 0.8 a long cut winds smoothly" test for the target sinuosity/turn-angle band
+const MEANDER_AMP_K = 1.1
 const MEANDER_RETRIES = 2 // + the initial full-amplitude attempt
+const CHAIKIN_ROUNDS = 2
 
 /**
- * Subdivides a cut polyline into ~250-400m segments and displaces interior
+ * Chaikin corner-cutting: replace each edge (a,b) with the two points at
+ * 1/4 and 3/4 along it. Pure and deterministic (no rng); pins both original
+ * endpoints exactly so boundary contact and near-perpendicular entry survive
+ * unchanged. A straight polyline stays straight — every inserted point is
+ * still collinear with its neighbors, only the point count grows.
+ */
+function chaikin(pts: Pt[], rounds: number): Pt[] {
+  let cur = pts
+  for (let r = 0; r < rounds; r++) {
+    if (cur.length < 3) break
+    const out: Pt[] = [cur[0]]
+    for (let i = 0; i < cur.length - 1; i++) {
+      const a = cur[i]
+      const b = cur[i + 1]
+      out.push({ x: a.x * 0.75 + b.x * 0.25, y: a.y * 0.75 + b.y * 0.25 })
+      out.push({ x: a.x * 0.25 + b.x * 0.75, y: a.y * 0.25 + b.y * 0.75 })
+    }
+    out.push(cur[cur.length - 1])
+    cur = out
+  }
+  return cur
+}
+
+// Chaikin ~4x's the point count per pair of rounds; corridorPolygon turns
+// every point into its own quad + union, so the smoothed curve's shape is
+// worth far more than most of its points. Drop points whose turn is below
+// this threshold before building the corridor — visually identical curve,
+// a fraction of the quads.
+const DECIMATE_ANGLE_RAD = (0.5 * Math.PI) / 180
+
+/** keeps a point only if it bends the line by more than DECIMATE_ANGLE_RAD from its kept neighbors; endpoints always kept */
+function decimateCollinear(pts: Pt[]): Pt[] {
+  if (pts.length < 3) return pts
+  const out: Pt[] = [pts[0]]
+  for (let i = 1; i < pts.length - 1; i++) {
+    const a = out[out.length - 1]
+    const b = pts[i]
+    const c = pts[i + 1]
+    const v1x = b.x - a.x, v1y = b.y - a.y
+    const v2x = c.x - b.x, v2y = c.y - b.y
+    const l1 = Math.hypot(v1x, v1y) || 1
+    const l2 = Math.hypot(v2x, v2y) || 1
+    const cos = Math.max(-1, Math.min(1, (v1x * v2x + v1y * v2y) / (l1 * l2)))
+    if (Math.acos(cos) > DECIMATE_ANGLE_RAD) out.push(b)
+  }
+  out.push(pts[pts.length - 1])
+  return out
+}
+
+/**
+ * Subdivides a cut polyline into ~150-250m segments and displaces interior
  * points perpendicular to the local direction (midpoint-displacement),
  * amplitude ∝ irregularity × segment length. Endpoints are untouched (they
  * already meet the boundary near-perpendicular). Displacement fractions are
  * drawn once so retries (halving amplitude on containment violation) stay
  * deterministic without extra rng draws; falls back to the straight polyline
- * if even the smallest amplitude still escapes the parent.
+ * if even the smallest amplitude still escapes the parent. The displaced
+ * polyline is then run through Chaikin smoothing so the result reads as a
+ * continuously curving road rather than a zigzag of straight kinks.
  */
 function meanderLine(poly: Pt[], line: Pt[], irr: number, rng: Rng): Pt[] {
   if (irr <= MEANDER_MIN_IRR) return line
@@ -278,7 +335,15 @@ function meanderLine(poly: Pt[], line: Pt[], irr: number, rng: Rng): Pt[] {
   const segLen = MEANDER_SEG_MIN + rng.next() * (MEANDER_SEG_MAX - MEANDER_SEG_MIN)
   const segments = Math.round(total / segLen)
   if (segments < 2) return line
-  const draws = Array.from({ length: segments - 1 }, () => (rng.next() - 0.5) * 2)
+  const rawDraws = Array.from({ length: segments - 1 }, () => (rng.next() - 0.5) * 2)
+  // low-pass the raw draws so neighboring offsets don't flip sign abruptly —
+  // turns high-frequency zigzag into a gentle wander (a real meander is one
+  // slow wave, not noise); pure smoothing, no extra rng draws, same length
+  const draws = rawDraws.map((d, i) => {
+    const prev = i > 0 ? rawDraws[i - 1] : d
+    const next = i < rawDraws.length - 1 ? rawDraws[i + 1] : d
+    return (prev + 2 * d + next) / 4
+  })
   const EPS = 1e-3
   for (let attempt = 0; attempt <= MEANDER_RETRIES; attempt++) {
     const scale = 1 / 2 ** attempt
@@ -301,9 +366,9 @@ function meanderLine(poly: Pt[], line: Pt[], irr: number, rng: Rng): Pt[] {
       pts.push(pt)
     }
     pts.push(line[line.length - 1])
-    if (ok) return pts
+    if (ok) return decimateCollinear(chaikin(pts, CHAIKIN_ROUNDS))
   }
-  return line
+  return decimateCollinear(chaikin(line, CHAIKIN_ROUNDS))
 }
 
 function planCut(poly: Pt[], opts: PartitionOpts): Pt[] | null {

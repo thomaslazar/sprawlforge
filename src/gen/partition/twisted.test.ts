@@ -111,6 +111,31 @@ describe('partitionPolygon', () => {
     for (const p of longCut.points.slice(1, -1)) expect(pointInRings(p, [parent])).toBe(true)
   })
 
+  it('at irr 0.8 a long cut winds smoothly: bounded turn angle, sinuous but not hairpin-y', () => {
+    const parent = square(2000)
+    const { cuts } = partitionPolygon(parent, { ...OPTS, irregularity: 0.8, rng: mulberry32(11) })
+    const longCut = cuts.reduce((a, b) =>
+      Math.hypot(b.points[b.points.length - 1].x - b.points[0].x, b.points[b.points.length - 1].y - b.points[0].y) >
+      Math.hypot(a.points[a.points.length - 1].x - a.points[0].x, a.points[a.points.length - 1].y - a.points[0].y) ? b : a)
+    const pts = longCut.points
+    let maxTurn = 0
+    for (let i = 1; i < pts.length - 1; i++) {
+      const v1 = { x: pts[i].x - pts[i - 1].x, y: pts[i].y - pts[i - 1].y }
+      const v2 = { x: pts[i + 1].x - pts[i].x, y: pts[i + 1].y - pts[i].y }
+      const l1 = Math.hypot(v1.x, v1.y) || 1
+      const l2 = Math.hypot(v2.x, v2.y) || 1
+      const cos = Math.max(-1, Math.min(1, (v1.x * v2.x + v1.y * v2.y) / (l1 * l2)))
+      const turnDeg = (Math.acos(cos) * 180) / Math.PI
+      if (turnDeg > maxTurn) maxTurn = turnDeg
+    }
+    const arc = pts.reduce((s, p, i) => (i === 0 ? 0 : s + Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y)), 0)
+    const chord = Math.hypot(pts[pts.length - 1].x - pts[0].x, pts[pts.length - 1].y - pts[0].y)
+    const sinuosity = arc / chord
+    expect(maxTurn).toBeLessThan(35)
+    expect(sinuosity).toBeGreaterThan(1.05)
+    expect(sinuosity).toBeLessThan(1.6)
+  })
+
   it('accepts a per-cell irregularity function, sampled at each cut cell centroid, deterministically', () => {
     const field = (p: Pt) => (p.x < 500 ? 0.05 : 0.9)
     const a = partitionPolygon(square(1000), { ...OPTS, irregularity: field, rng: mulberry32(9) })
