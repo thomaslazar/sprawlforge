@@ -179,8 +179,8 @@ describe('finalizeRoads (end to end: partition -> streets -> clip/bridge)', () =
   it('road ids are stable and prefixed by class', () => {
     for (const road of buildRoads(base, noWater)) {
       if (road.class === 'highway') expect(road.id).toMatch(/^H\d+$/)
-      if (road.class === 'arterial') expect(road.id).toMatch(/^A\d\d$|^OP\d\d$/)
-      if (road.class === 'street') expect(road.id).toMatch(/^S\d\d\d$/)
+      if (road.class === 'arterial') expect(road.id).toMatch(/^A\d{3}$|^OP\d\d$/)
+      if (road.class === 'street') expect(road.id).toMatch(/^S\d{4}$/)
     }
   })
   it('no non-bridge road of any class ever has a point in water', { timeout: 20000 }, () => {

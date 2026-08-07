@@ -184,7 +184,7 @@ export function partitionDistricts(
     })
     for (const cut of cuts) {
       a += 1
-      roads.push({ id: `A${String(a).padStart(2, '0')}`, class: 'arterial',
+      roads.push({ id: `A${String(a).padStart(3, '0')}`, class: 'arterial',
         points: cut.points, width: arterialWidthByDepth(cut.depth), name: null })
     }
     districtPolys.push(...cells)
@@ -213,7 +213,7 @@ export function layoutStreets(
     })
     for (const cut of cuts) {
       s += 1
-      streets.push({ id: `S${String(s).padStart(3, '0')}`, class: 'street',
+      streets.push({ id: `S${String(s).padStart(4, '0')}`, class: 'street',
         points: cut.points, width: streetWidthByDepth(cut.depth), name: null })
     }
     blocksByDistrict.push(cells)

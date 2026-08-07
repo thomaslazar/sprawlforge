@@ -95,9 +95,6 @@ core (clipping, insetting, filling non-rectangular shapes).
   entityId)` per name; v1 draws all names from one sequential RNG stream
   seeded once. Switching later renames everything on existing URLs —
   needs a `GENERATOR_VERSION` bump when it happens.
-- **Road/building id format overflow** — ids are fixed-width
-  (`A99`/`S999`/`BLD999999`); a large enough sector (e.g. size 8) can
-  exceed the padding and produce colliding/malformed ids.
 - **Massively extend flavor-pack name tables** — current tables are ~10
   words each, so names repeat quickly across a map. Grow every table
   (adj/place/corpA/corpB/street/venue) by an order of magnitude in both

@@ -146,7 +146,7 @@ export function fillBuildings(
       const blockFp = clipToLand(poly)
       if (!blockFp || blockFp.area < MIN_BLOCK_AREA) return
 
-      const blockId = `B${dd}${String(bi + 1).padStart(2, '0')}`
+      const blockId = `B${dd}${String(bi + 1).padStart(3, '0')}`
       blocks.push({ id: blockId, districtId: district.id, poly, footprint: blockFp.pts })
 
       const theta = longestEdgeAngle(poly)
@@ -163,7 +163,7 @@ export function fillBuildings(
         if (!clipped || clipped.area < MIN_BUILDING_AREA) continue
         n += 1
         buildings.push({
-          id: `BLD${dd}${String(bi + 1).padStart(2, '0')}${String(n).padStart(2, '0')}`,
+          id: `BLD${dd}${String(bi + 1).padStart(3, '0')}${String(n).padStart(3, '0')}`,
           blockId,
           districtId: district.id,
           footprint: clipped.pts,

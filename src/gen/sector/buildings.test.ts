@@ -80,9 +80,9 @@ describe('fillBuildings', () => {
   })
   it('block and building ids encode district and block ordinals', () => {
     const { blocks, buildings } = fillBuildings(districts, blocksByDistrict, base, dryTerrain)
-    expect(blocks[0].id).toBe('B0101')
-    expect(blocks.every((b) => /^B\d{4}$/.test(b.id))).toBe(true)
-    expect(buildings.every((b) => /^BLD\d{6}$/.test(b.id))).toBe(true)
+    expect(blocks[0].id).toBe('B01001')
+    expect(blocks.every((b) => /^B\d{5}$/.test(b.id))).toBe(true)
+    expect(buildings.every((b) => /^BLD\d{8}$/.test(b.id))).toBe(true)
   })
   it('density knob raises building count', () => {
     const lo = fillBuildings(districts, blocksByDistrict, { ...base, density: 0 }, dryTerrain).buildings.length
