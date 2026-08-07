@@ -51,6 +51,12 @@ core (clipping, insetting, filling non-rectangular shapes).
   one via the generic BSP/clipping pipeline is tolerated, not designed
   for). Deliberately settling an islet, connected back to the mainland by a
   causeway/bridge, is a follow-up.
+- **River meander wavelength control** — the metro-scale river tracer can
+  produce oxbow-tight loops (near-self-touching horseshoes within one small
+  sector window, e.g. seed 2882370099 inland/small). Real meanders have a
+  wavelength ~10× channel width; add a minimum self-distance or wavelength
+  constraint to the tracer. Terrain-only change, but same-seed river courses
+  shift → `GENERATOR_VERSION` bump when it lands.
 - **Ships and harbor props** — ocean-going vessels, docks, shipping infrastructure.
 - **Transit lines** — rail/metro/monorail layer. Good v2 candidate for
   sector maps.
