@@ -198,17 +198,14 @@ for (let round = 0; round < 8; round++) {
 if ((await page.locator('svg').count()) !== 1) fail('map vanished after pan/zoom drags')
 if ((await page.locator('#root').textContent()).includes('hit an error')) fail('error boundary tripped during pan')
 
-// theme switch, screenshot all themes
-await page.getByLabel(/Theme/).selectOption('print')
-await page.screenshot({ path: `${OUT}/print.png`, fullPage: true })
-await page.getByLabel(/Theme/).selectOption('blueprint')
-await page.screenshot({ path: `${OUT}/blueprint.png`, fullPage: true })
-await page.getByLabel(/Theme/).selectOption('neon')
-await page.screenshot({ path: `${OUT}/neon.png`, fullPage: true })
-await page.getByLabel(/Theme/).selectOption('synthwave')
-await page.screenshot({ path: `${OUT}/synthwave.png`, fullPage: true })
-await page.getByLabel(/Theme/).selectOption('tokyo-night')
-await page.screenshot({ path: `${OUT}/tokyo-night.png`, fullPage: true })
+// theme switch: assert each theme renders its distinct bg color, then screenshot
+const THEME_BG = { print: '#ffffff', blueprint: '#0b2e59', neon: '#0a0c12', synthwave: '#14091f', 'tokyo-night': '#1a1b26' }
+for (const [theme, bgHex] of Object.entries(THEME_BG)) {
+  await page.getByLabel(/Theme/).selectOption(theme)
+  const svg = await page.locator('svg').innerHTML()
+  if (!svg.includes(bgHex)) fail(`theme ${theme}: bg color ${bgHex} not found in rendered svg`)
+  await page.screenshot({ path: `${OUT}/${theme}.png`, fullPage: true })
+}
 
 // png export resolution knob: select exists, defaults to 2x, and can be changed
 const pngScaleSelect = page.getByLabel(/PNG resolution/)

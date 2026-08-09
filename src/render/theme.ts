@@ -145,7 +145,7 @@ const tokyoNight: Theme = {
   glow: false,
 }
 
-export const themes: Record<string, Theme> = { neon, print, blueprint, synthwave, tokyoNight }
+export const themes: Record<string, Theme> = { neon, print, blueprint, synthwave, 'tokyo-night': tokyoNight }
 
 export function getTheme(id: string): Theme {
   return Object.hasOwn(themes, id) ? themes[id] : neon

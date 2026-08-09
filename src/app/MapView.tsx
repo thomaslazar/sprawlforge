@@ -66,6 +66,10 @@ export function MapView({
         drag.current = null
         setDragging(false)
       }}
+      onPointerCancel={() => {
+        drag.current = null
+        setDragging(false)
+      }}
     >
       <div
         className="map-viewport"
