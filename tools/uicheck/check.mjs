@@ -198,13 +198,17 @@ for (let round = 0; round < 8; round++) {
 if ((await page.locator('svg').count()) !== 1) fail('map vanished after pan/zoom drags')
 if ((await page.locator('#root').textContent()).includes('hit an error')) fail('error boundary tripped during pan')
 
-// theme switch, screenshot all three
+// theme switch, screenshot all themes
 await page.getByLabel(/Theme/).selectOption('print')
 await page.screenshot({ path: `${OUT}/print.png`, fullPage: true })
 await page.getByLabel(/Theme/).selectOption('blueprint')
 await page.screenshot({ path: `${OUT}/blueprint.png`, fullPage: true })
 await page.getByLabel(/Theme/).selectOption('neon')
 await page.screenshot({ path: `${OUT}/neon.png`, fullPage: true })
+await page.getByLabel(/Theme/).selectOption('synthwave')
+await page.screenshot({ path: `${OUT}/synthwave.png`, fullPage: true })
+await page.getByLabel(/Theme/).selectOption('tokyo-night')
+await page.screenshot({ path: `${OUT}/tokyo-night.png`, fullPage: true })
 
 // png export resolution knob: select exists, defaults to 2x, and can be changed
 const pngScaleSelect = page.getByLabel(/PNG resolution/)

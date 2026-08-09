@@ -53,7 +53,7 @@ describe('renderSector', () => {
     expect(svg).toContain('A &amp; B &lt;X&gt;')
   })
   it('ships neon, print and blueprint themes; getTheme falls back to neon', () => {
-    expect(Object.keys(themes).sort()).toEqual(['blueprint', 'neon', 'print'])
+    expect(Object.keys(themes).sort()).toEqual(['blueprint', 'neon', 'print', 'synthwave', 'tokyoNight'])
     expect(getTheme('nope').id).toBe('neon')
   })
   it('getTheme falls back to neon for prototype-polluting ids', () => {
