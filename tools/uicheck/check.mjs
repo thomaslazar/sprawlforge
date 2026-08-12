@@ -11,10 +11,25 @@ const fail = (msg) => {
   console.error(`FAIL: ${msg}`)
   process.exitCode = 1
 }
+// chip labels are just capitalized tag ids (see strings.ts t.tags) — used to
+// assert the pressed chip set matches the url's tags param exactly
+const TAG_LABEL = (tag) => tag.charAt(0).toUpperCase() + tag.slice(1)
+const ALL_TAGS = [
+  'inland', 'coastal', 'bay', 'river', 'lakes', 'islands',
+  'small', 'medium', 'large', 'sparse', 'dense', 'packed',
+  'corp-run', 'balanced', 'fringe', 'quiet', 'normal', 'lively',
+  'planned', 'mixed', 'sprawl', 'piers',
+]
 // generation now round-trips through a worker (async) — an action that
 // should regenerate the map needs to wait for the new svg, not assume it
-// landed synchronously by the time the next Playwright command runs
-const waitForSvgChange = (prevHtml, timeout = 5000) =>
+// landed synchronously by the time the next Playwright command runs.
+// Measured: large/packed tag combos take up to ~7s worker round-trip under
+// CI/sandbox CPU contention — a 5s budget was intermittently too tight,
+// and a timed-out wait here doesn't abort, it lets the caller capture a
+// stale "after" baseline that the still-in-flight reply then mutates later,
+// which surfaces as an unrelated *next* assertion falsely accusing that
+// step of an unwanted regenerate.
+const waitForSvgChange = (prevHtml, timeout = 15000) =>
   page.waitForFunction(
     (prev) => document.querySelector('svg')?.innerHTML !== prev,
     prevHtml,
@@ -35,6 +50,39 @@ if (buildings < 50) fail(`expected a dense map, got ${buildings} buildings`)
 
 const pois = await page.locator('svg circle[data-id^="P"]').count()
 if (pois < 1) fail('no POIs rendered')
+
+// cursor-anchored zoom: the world point under the cursor must stay fixed on
+// screen — read the map-viewport's translate/scale transform straight from
+// the DOM before and after a wheel tick and check it against the formula
+// (newX = c.x - (c.x - oldX) * newZoom/oldZoom, same for y) rather than
+// relying on hit-testing a specific element.
+const readTransform = () =>
+  page.locator('.map-viewport').evaluate((el) => {
+    const m = el.style.transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([-\d.]+)\)/)
+    return { x: Number(m[1]), y: Number(m[2]), zoom: Number(m[3]) }
+  })
+const mapContainerBox = await page.locator('.map-viewport').locator('xpath=..').boundingBox()
+const zx = mapContainerBox.x + 200
+const zy = mapContainerBox.y + 150
+await page.mouse.move(zx, zy)
+const beforeZoom = await readTransform()
+await page.mouse.wheel(0, -240)
+await page.waitForTimeout(50)
+const afterZoom = await readTransform()
+if (afterZoom.zoom === beforeZoom.zoom) fail('wheel over the map did not change zoom')
+const cx = zx - mapContainerBox.x
+const cy = zy - mapContainerBox.y
+const ratio = afterZoom.zoom / beforeZoom.zoom
+const expectedX = cx - (cx - beforeZoom.x) * ratio
+const expectedY = cy - (cy - beforeZoom.y) * ratio
+if (Math.abs(afterZoom.x - expectedX) > 1 || Math.abs(afterZoom.y - expectedY) > 1)
+  fail(
+    `wheel zoom is not cursor-anchored: got (${afterZoom.x}, ${afterZoom.y}), ` +
+      `expected (${expectedX}, ${expectedY})`,
+  )
+// reset pan/zoom for the rest of the checks below (which assume load defaults)
+await page.goto(`${BASE}/?seed=42&tags=coastal,large&pack=generic&theme=neon`)
+await page.waitForSelector('svg')
 
 // Show POIs toggle: instant display filter, no reroll/regeneration — url
 // stays put and no 'Generating…' busy flip, just the markers vanishing
@@ -91,20 +139,26 @@ await page.getByRole('button', { name: 'Update' }).click()
 if (page.url().includes('packed')) fail('update did not apply staged tag removal to url')
 await waitForSvgChange(svgAfterUpdate).catch(() => fail('update did not change map (timed out)'))
 
-// Reroll: new random seed AND new map, staged chips survive (still pressed,
-// and now applied since reroll re-materializes the pending set with the
-// new seed)
+// Reroll: new random seed AND every tag group freshly re-rolled from it
+// (materializeTags from an empty set — the same full surprise-me roll a
+// bare URL gets). Staged chips are NOT kept — the pressed set after Reroll
+// must equal exactly whatever the fresh roll put in the url, nothing staged
+// beforehand survives on its own.
 const svgBeforeReroll = await page.locator('svg').innerHTML()
 const seedBeforeReroll = new URL(page.url()).searchParams.get('seed')
-await page.getByRole('button', { name: 'Packed' }).click() // stage packed again
-if (!(await page.getByRole('button', { name: 'Packed', pressed: true }).isVisible()))
-  fail('packed chip not pressed after staging for the reroll test')
+await page.getByRole('button', { name: 'Packed' }).click() // stage packed (must NOT survive the reroll)
 await page.getByRole('button', { name: 'Reroll' }).click()
-if (new URL(page.url()).searchParams.get('seed') === seedBeforeReroll)
+const urlAfterReroll = new URL(page.url())
+if (urlAfterReroll.searchParams.get('seed') === seedBeforeReroll)
   fail('reroll did not change the seed in the url')
-if (!page.url().includes('packed')) fail('reroll did not carry the staged tag into the url')
-if (!(await page.getByRole('button', { name: 'Packed', pressed: true }).isVisible()))
-  fail('staged chip did not survive reroll (should still be pressed)')
+const rerolledTags = (urlAfterReroll.searchParams.get('tags') ?? '').split(',').filter(Boolean)
+if (rerolledTags.length === 0) fail('reroll produced no tags in the url')
+for (const tag of ALL_TAGS) {
+  const pressed =
+    (await page.getByRole('button', { name: TAG_LABEL(tag) }).getAttribute('aria-pressed')) === 'true'
+  if (pressed !== rerolledTags.includes(tag))
+    fail(`reroll: chip "${tag}" pressed=${pressed} but url tags includes=${rerolledTags.includes(tag)}`)
+}
 await waitForSvgChange(svgBeforeReroll).catch(() => fail('reroll did not change the map (timed out)'))
 
 // Dice: new random seed, tag set in the url untouched
@@ -144,11 +198,22 @@ for (let round = 0; round < 8; round++) {
 if ((await page.locator('svg').count()) !== 1) fail('map vanished after pan/zoom drags')
 if ((await page.locator('#root').textContent()).includes('hit an error')) fail('error boundary tripped during pan')
 
-// theme switch, screenshot both
-await page.getByLabel(/Theme/).selectOption('print')
-await page.screenshot({ path: `${OUT}/print.png`, fullPage: true })
-await page.getByLabel(/Theme/).selectOption('neon')
-await page.screenshot({ path: `${OUT}/neon.png`, fullPage: true })
+// theme switch: assert each theme renders its distinct bg color, then screenshot
+const THEME_BG = { print: '#ffffff', blueprint: '#0b2e59', neon: '#0a0c12', synthwave: '#14091f', 'tokyo-night': '#1a1b26' }
+for (const [theme, bgHex] of Object.entries(THEME_BG)) {
+  await page.getByLabel(/Theme/).selectOption(theme)
+  const svg = await page.locator('svg').innerHTML()
+  if (!svg.includes(bgHex)) fail(`theme ${theme}: bg color ${bgHex} not found in rendered svg`)
+  await page.screenshot({ path: `${OUT}/${theme}.png`, fullPage: true })
+}
+
+// png export resolution knob: select exists, defaults to 2x, and can be changed
+const pngScaleSelect = page.getByLabel(/PNG resolution/)
+if ((await pngScaleSelect.inputValue()) !== '2') fail('png scale select did not default to 2x')
+if (!(await pngScaleSelect.locator('option').allTextContents()).every((t, i) => t === `${[1, 2, 4][i]}×`))
+  fail('png scale select is missing the 1x/2x/4x options')
+await pngScaleSelect.selectOption('4')
+if ((await pngScaleSelect.inputValue()) !== '4') fail('png scale select did not change to 4x')
 
 // exports: each button fires a real download with the expected filename
 for (const [label, ext] of [

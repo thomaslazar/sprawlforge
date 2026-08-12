@@ -12,6 +12,9 @@ export function MapView({
 }) {
   const [view, setView] = useState({ x: 0, y: 0, zoom: 1 })
   const drag = useRef<{ x: number; y: number } | null>(null)
+  // drag state itself lives in the ref above (read/written mid-gesture
+  // without a re-render); this just flips the cursor style at drag start/end
+  const [dragging, setDragging] = useState(false)
   // synchronous zoom mirror: wheel handlers read/write it directly, so rapid
   // events compound correctly and the updater below never reads mutable state
   const zoomRef = useRef(1)
@@ -29,18 +32,26 @@ export function MapView({
         flex: 1,
         overflow: 'hidden',
         position: 'relative',
-        cursor: drag.current ? 'grabbing' : 'grab',
+        cursor: dragging ? 'grabbing' : 'default',
       }}
       onWheel={(e) => {
         const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15
-        const zoom = Math.min(20, Math.max(0.2, zoomRef.current * factor))
+        const oldZoom = zoomRef.current
+        const zoom = Math.min(20, Math.max(0.2, oldZoom * factor))
         zoomRef.current = zoom
-        setView((v) => ({ ...v, zoom }))
+        // anchor zoom to the cursor: keep the world point under it fixed on
+        // screen — c.x - (c.x - view.x) * (newZoom/oldZoom), same for y
+        const rect = e.currentTarget.getBoundingClientRect()
+        const cx = e.clientX - rect.left
+        const cy = e.clientY - rect.top
+        const ratio = zoom / oldZoom
+        setView((v) => ({ x: cx - (cx - v.x) * ratio, y: cy - (cy - v.y) * ratio, zoom }))
         clearTimeout(zoomDebounce.current)
         zoomDebounce.current = setTimeout(() => onZoom?.(zoom), 150)
       }}
       onPointerDown={(e) => {
         drag.current = { x: e.clientX - view.x, y: e.clientY - view.y }
+        setDragging(true)
         e.currentTarget.setPointerCapture(e.pointerId)
       }}
       onPointerMove={(e) => {
@@ -51,7 +62,14 @@ export function MapView({
         const y = e.clientY - drag.current.y
         setView((v) => ({ ...v, x, y }))
       }}
-      onPointerUp={() => (drag.current = null)}
+      onPointerUp={() => {
+        drag.current = null
+        setDragging(false)
+      }}
+      onPointerCancel={() => {
+        drag.current = null
+        setDragging(false)
+      }}
     >
       <div
         className="map-viewport"

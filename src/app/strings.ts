@@ -53,6 +53,7 @@ export const strings = {
       svg: 'Export SVG',
       png: 'Export PNG',
       pdf: 'Export PDF',
+      pngScale: 'PNG resolution',
     },
     crash: {
       title: 'SprawlForge hit an error and stopped.',

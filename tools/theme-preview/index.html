@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>theme preview</title>
+    <style>
+      body { background: #111; color: #ddd; font-family: system-ui, sans-serif; margin: 16px; }
+      .grid { display: grid; grid-template-columns: repeat(2, minmax(480px, 1fr)); gap: 12px; }
+      figure { margin: 0; }
+      figcaption { font-size: 13px; opacity: 0.8; padding: 4px 0; }
+      svg { width: 100%; height: auto; display: block; }
+      label { margin-right: 16px; }
+    </style>
+  </head>
+  <body>
+    <div>
+      <label>seed <input id="seed" type="number" value="42" /></label>
+      <label>tags <input id="tags" type="text" value="coastal,medium,dense,balanced,normal,mixed,river" size="50" /></label>
+    </div>
+    <div id="out" class="grid"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

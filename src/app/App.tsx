@@ -25,6 +25,8 @@ export function App() {
   // display-only, session-scoped (no URL persistence): toggling re-renders
   // the SVG from the existing model with pois filtered out — zero regen
   const [showPois, setShowPois] = useState(true)
+  // export-only knob, session-scoped like showPois — never part of the URL
+  const [pngScale, setPngScale] = useState(2)
 
   // generation runs in a worker (off the main thread) — model is null until
   // the first reply lands, so the initial load shows the busy overlay
@@ -49,12 +51,14 @@ export function App() {
 
   // three seed/tag actions, all routed through the same worker (see the
   // genParams effect below) — see KnobPanel for what each does:
-  // Reroll = new random seed, unstaged groups re-rolled from it;
+  // Reroll = new random seed AND every tag group freshly re-rolled from it
+  // (materializeTags from an empty set — the same full surprise-me roll a
+  // bare URL gets), staged tags are discarded, not kept;
   // Update = same seed, apply staged tags as-is;
   // Dice = new random seed, tag set untouched.
   const reroll = () => {
     const seed = randomSeed()
-    const tags = materializeTags(seed, pendingTags)
+    const tags = materializeTags(seed, [])
     setPendingTags(tags)
     update({ ...applied, tags, seed })
   }
@@ -124,7 +128,7 @@ export function App() {
         m.downloadSvg(exportSvg, exportName)
         break
       case 'png':
-        await m.downloadPng(exportSvg, 2, exportName)
+        await m.downloadPng(exportSvg, pngScale, exportName)
         break
       case 'pdf':
         await m.downloadPdf(exportSvg, exportName)
@@ -139,12 +143,14 @@ export function App() {
         pendingTags={pendingTags}
         busy={busy}
         showPois={showPois}
+        pngScale={pngScale}
         onChange={update}
         onPendingTagsChange={setPendingTags}
         onReroll={reroll}
         onUpdate={applyUpdate}
         onDice={rerollSeed}
         onShowPoisChange={setShowPois}
+        onPngScaleChange={setPngScale}
         onExport={onExport}
       />
       <MapView

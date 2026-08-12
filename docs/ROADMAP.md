@@ -80,7 +80,6 @@ core (clipping, insetting, filling non-rectangular shapes).
   data) — data model deliberately keeps wall/door semantics so this stays
   possible.
 - **Poster-tiling PDF** for printing battlemaps across multiple pages.
-- **Blueprint theme** — third theme; cheap once theme system exists.
 - **Better label placement** — v1 ships good-enough overlap heuristics.
 - **Annotation layer + JSON override export/import** — user labels, markers,
   renames stored as diffs against generated state (spec §3). Follow-up plan
@@ -89,15 +88,10 @@ core (clipping, insetting, filling non-rectangular shapes).
   actually hurts.
 - **Zone-mix knob** — spec §4 lists zone mix weights as a district knob;
   v1 UI only exposes corp dominance (zoning derives the rest).
-- **PNG resolution knob** — spec §3 calls for a resolution knob; v1 export
-  is fixed at 2x.
 - **Hierarchical per-entity naming** — spec §3 specifies `hash(seed,
   entityId)` per name; v1 draws all names from one sequential RNG stream
   seeded once. Switching later renames everything on existing URLs —
   needs a `GENERATOR_VERSION` bump when it happens.
-- **Road/building id format overflow** — ids are fixed-width
-  (`A99`/`S999`/`BLD999999`); a large enough sector (e.g. size 8) can
-  exceed the padding and produce colliding/malformed ids.
 - **Massively extend flavor-pack name tables** — current tables are ~10
   words each, so names repeat quickly across a map. Grow every table
   (adj/place/corpA/corpB/street/venue) by an order of magnitude in both
@@ -112,11 +106,6 @@ core (clipping, insetting, filling non-rectangular shapes).
   commerce, underworld — exact categories to be worked out). Flavor-pack
   poi types get a category field; the UI gets per-category visibility
   toggles. Display-layer only, no generation change.
-- **Cursor-anchored zoom** — wheel zoom should keep the point under the
-  mouse cursor fixed while zooming in/out; currently the view jumps
-  around because zoom scales from the transform origin.
-- **Cursor styling** — default pointer over the map; the grab hand only
-  while actually dragging (currently the hand shows permanently).
 - **Curved highways** — the highway strip stays straight; a gently bent
   highway corridor is a cheap follow-up on the corridor mechanism.
 - **Street-fabric performance** — per-building polygon clipping; profile

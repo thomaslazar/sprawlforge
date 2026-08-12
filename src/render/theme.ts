@@ -17,27 +17,31 @@ export interface Theme {
   glow: boolean
 }
 
+// "Restrained Neon" palette (docs/specs research): desaturated base + a
+// tight lightness ramp per district so all six zones separate at a glance,
+// glow reserved for highway/arterial strokes only (see svg.ts) rather than
+// blooming labels/markers into an indistinct mass.
 const neon: Theme = {
   id: 'neon',
   label: 'Neon',
-  bg: '#0a0a12',
-  water: '#0d1b2e',
-  waterShallow: '#16324f',
-  shoreGlow: '#000814',
+  bg: '#0a0c12',
+  water: '#0d1c2b',
+  waterShallow: '#163449',
+  shoreGlow: '#05080d',
   districtFill: {
-    corp: '#14203a',
-    residential: '#1a1a2e',
-    slum: '#241a1a',
-    industrial: '#1f2418',
-    entertainment: '#2a142e',
-    docks: '#12262c',
+    corp: '#172038',
+    residential: '#1b1c26',
+    slum: '#2a2019',
+    industrial: '#1a2117',
+    entertainment: '#23172c',
+    docks: '#12262a',
   },
-  districtLabel: '#7fdbff',
-  road: { highway: '#ff2975', arterial: '#00e5ff', street: '#2a3550' },
-  building: { fill: '#151d30', stroke: '#3a4a6b' },
-  poi: { marker: '#ffe066', label: '#ffe066' },
-  bridge: { deck: '#8a93a6', shadow: '#05070d' },
-  scaleBar: '#7fdbff',
+  districtLabel: '#9fb8c8',
+  road: { highway: '#e8577f', arterial: '#4fc9d9', street: '#3a4560' },
+  building: { fill: '#202840', stroke: '#4a5a7a' },
+  poi: { marker: '#ffb454', label: '#ffdca8' },
+  bridge: { deck: '#8a93a6', shadow: '#04060a' },
+  scaleBar: '#9fb8c8',
   glow: true,
 }
 
@@ -65,7 +69,83 @@ const print: Theme = {
   glow: false,
 }
 
-export const themes: Record<string, Theme> = { neon, print }
+// classic architectural-drafting look: deep blueprint-blue field, near-white
+// linework for roads/buildings (buildings barely filled, read as outlines),
+// white-cyan labels, no glow — district fills are barely-differentiated blue
+// tints so zoning still reads without competing with the linework
+const blueprint: Theme = {
+  id: 'blueprint',
+  label: 'Blueprint',
+  bg: '#0b2e59',
+  water: '#082444',
+  waterShallow: '#0e3a6b',
+  shoreGlow: '#0b2e59',
+  districtFill: {
+    corp: '#0f3564',
+    residential: '#0d3160',
+    slum: '#0b2c58',
+    industrial: '#0e3462',
+    entertainment: '#11386a',
+    docks: '#0c305d',
+  },
+  districtLabel: '#dff3ff',
+  road: { highway: '#ffffff', arterial: '#f1fbff', street: '#9dc4e0' },
+  building: { fill: '#0e335f', stroke: '#e4f4ff' },
+  poi: { marker: '#eaf7ff', label: '#dff3ff' },
+  bridge: { deck: '#e4f4ff', shadow: '#071c38' },
+  scaleBar: '#dff3ff',
+  glow: false,
+}
+
+const synthwave: Theme = {
+  id: 'synthwave',
+  label: 'Synthwave',
+  bg: '#14091f',
+  water: '#190f33',
+  waterShallow: '#2c1a4a',
+  shoreGlow: '#0a0616',
+  districtFill: {
+    corp: '#201040',
+    residential: '#241629',
+    slum: '#2e1220',
+    industrial: '#16202e',
+    entertainment: '#33184a',
+    docks: '#12203a',
+  },
+  districtLabel: '#d9b8ff',
+  road: { highway: '#ff3fa4', arterial: '#33c2e6', street: '#4a3a66' },
+  building: { fill: '#251a3a', stroke: '#6b4f99' },
+  poi: { marker: '#ffe14d', label: '#fff2cc' },
+  bridge: { deck: '#a893c9', shadow: '#0c0616' },
+  scaleBar: '#d9b8ff',
+  glow: true,
+}
+
+const tokyoNight: Theme = {
+  id: 'tokyo-night',
+  label: 'Tokyo Night',
+  bg: '#1a1b26',
+  water: '#13141f',
+  waterShallow: '#232b45',
+  shoreGlow: '#0f1019',
+  districtFill: {
+    corp: '#202340',
+    residential: '#22242f',
+    slum: '#2a2230',
+    industrial: '#202a22',
+    entertainment: '#2a2140',
+    docks: '#1c2735',
+  },
+  districtLabel: '#c0caf5',
+  road: { highway: '#f7768e', arterial: '#7dcfff', street: '#414868' },
+  building: { fill: '#24283b', stroke: '#565f89' },
+  poi: { marker: '#e0af68', label: '#f0c894' },
+  bridge: { deck: '#a9b1d6', shadow: '#0d0e14' },
+  scaleBar: '#c0caf5',
+  glow: false,
+}
+
+export const themes: Record<string, Theme> = { neon, print, blueprint, synthwave, 'tokyo-night': tokyoNight }
 
 export function getTheme(id: string): Theme {
   return Object.hasOwn(themes, id) ? themes[id] : neon
