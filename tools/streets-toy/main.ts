@@ -139,6 +139,8 @@ function draw(): void {
     pack: 'generic', theme: 'neon',
   }
 
+  const irregularityAt = effectiveIrregularity(params)
+
   const terrain = timeIt('terrain', () => sampleTerrain(params, sizeM))
   const field = terrain && timeIt('field', () => buildRoadField(params, terrain, sizeM))
 
@@ -158,7 +160,7 @@ function draw(): void {
         ]
         return traceLayer(
           field, 'major', seeds, terrain, sizeM, index, MAJOR,
-          mulberry32(hashSeed(seed, 'arterials')), effectiveIrregularity(params), 'A', 'arterial',
+          mulberry32(hashSeed(seed, 'arterials')), irregularityAt, 'A', 'arterial',
         )
       }) ?? []
     : []
@@ -168,7 +170,21 @@ function draw(): void {
         const seeds = arterials.flatMap((a) => seedsAlong(a.points, 100, true))
         return traceLayer(
           field, 'minor', seeds, terrain, sizeM, index, MINOR,
-          mulberry32(hashSeed(seed, 'streets')), effectiveIrregularity(params), 'S', 'street',
+          mulberry32(hashSeed(seed, 'streets')), irregularityAt, 'S', 'street',
+        )
+      }) ?? []
+    : []
+
+  // R13 fix round 1: the first minor pass alone only seeds streets off
+  // arterials (combs, one direction) — a second minor pass seeded off the
+  // streets themselves, walking the 'major' axis, closes the grid the other
+  // way. Same class/width as streets (both are street-grade).
+  const lanes: Road[] = terrain && field
+    ? timeIt('lanes', () => {
+        const seeds = streets.flatMap((s) => seedsAlong(s.points, 100, true))
+        return traceLayer(
+          field, 'major', seeds, terrain, sizeM, index, MINOR,
+          mulberry32(hashSeed(seed, 'streets-2')), irregularityAt, 'L', 'street',
         )
       }) ?? []
     : []
@@ -184,7 +200,7 @@ function draw(): void {
   let blockFaces: Pt[][] = []
   let crossroads: Pt[] = []
   timeIt('block-faces', () => {
-    const g = pruneDanglers(buildPlanarGraph([...majorRoads, ...streets], boundaries))
+    const g = pruneDanglers(buildPlanarGraph([...majorRoads, ...streets, ...lanes], boundaries))
     blockFaces = facesOf(g)
     crossroads = degree4Vertices(g)
   })
@@ -194,7 +210,7 @@ function draw(): void {
   out.innerHTML =
     figure(sizeM, `patches (${field?.patches.length ?? 0})`, bg + safe(() => patchesSvg(field))) +
     figure(sizeM, 'field', bg + safe(() => fieldSvg(field, sizeM))) +
-    figure(sizeM, `roads (H=${highway.points.length > 0 ? 1 : 0} A=${arterials.length} S=${streets.length})`, bg + safe(() => roadsSvg(highway, arterials, streets))) +
+    figure(sizeM, `roads (H=${highway.points.length > 0 ? 1 : 0} A=${arterials.length} S=${streets.length} L=${lanes.length})`, bg + safe(() => roadsSvg(highway, arterials, [...streets, ...lanes]))) +
     figure(sizeM, `faces (district=${districtFaces.length} block=${blockFaces.length} x=${crossroads.length})`, bg + safe(() => facesSvg(districtFaces, blockFaces, crossroads)))
 
   const totalMs = performance.now() - t0
@@ -202,7 +218,7 @@ function draw(): void {
     `tag=${tag} seed=${seed} size=${sizeKm}km irregularity=${irregularity}`,
     ...statsLines,
     `total=${totalMs.toFixed(1)}ms`,
-    `counts: patches=${field?.patches.length ?? 0} highway=${highway.points.length > 0 ? 1 : 0} arterials=${arterials.length} streets=${streets.length} districtFaces=${districtFaces.length} blockFaces=${blockFaces.length} crossroads=${crossroads.length}`,
+    `counts: patches=${field?.patches.length ?? 0} highway=${highway.points.length > 0 ? 1 : 0} arterials=${arterials.length} streets=${streets.length} lanes=${lanes.length} districtFaces=${districtFaces.length} blockFaces=${blockFaces.length} crossroads=${crossroads.length}`,
     ...(errors.length ? ['ERRORS:', ...errors] : []),
   ].join('\n')
   document.getElementById('stats')!.textContent = statsText
