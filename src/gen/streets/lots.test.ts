@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import polygonClipping from 'polygon-clipping'
+import { describe, expect, it, vi } from 'vitest'
 import { pointInRings, type Pt } from '../geometry'
 import type { Block, District, SectorParams, Terrain } from '../types'
 import { fillLots, insetRing } from './lots'
@@ -112,6 +113,43 @@ describe('fillLots', () => {
     for (const bld of buildings) {
       expect(bld.blockId).toBe(block.id)
       expect(bld.districtId).toBe(block.districtId)
+    }
+  })
+
+  it('concave block never gets an unclipped lot across its notch', () => {
+    // U shape: 200x200 with an 80 m deep, 40 m wide notch cut from the bottom;
+    // the 80 m industrial grid puts a lot's corners either side of the notch
+    const u: Pt[] = [
+      { x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 140, y: 200 },
+      { x: 140, y: 120 }, { x: 100, y: 120 }, { x: 100, y: 200 }, { x: 0, y: 200 },
+    ]
+    const block: Block = { id: 'B0001', districtId: 'D03', poly: u, footprint: u, flags: {} }
+    const industrial: District = { ...corpDistrict, id: 'D03', zone: 'industrial' }
+    const inset = insetRing(u, 6)!
+    const buildings = fillLots([industrial], [block], base, dryTerrain, [])
+    expect(buildings.length).toBeGreaterThan(0)
+    for (const bld of buildings) {
+      const f = bld.footprint
+      for (let i = 0; i < f.length; i++) {
+        const q = f[(i + 1) % f.length]
+        const mid = { x: (f[i].x + q.x) / 2, y: (f[i].y + q.y) / 2 }
+        expect(insideOrOnEdge(f[i], inset)).toBe(true)
+        expect(insideOrOnEdge(mid, inset)).toBe(true)
+      }
+    }
+  })
+
+  it('a clipping failure drops the lot instead of throwing', () => {
+    const block = makeBlock('D01') // corp 60 m cells on a 108 m inset: straddling lots need clipping
+    const clean = fillLots([corpDistrict], [block], base, dryTerrain, [])
+    const spy = vi.spyOn(polygonClipping, 'intersection')
+    // first clipped lot fails on the initial try and all three epsilon retries
+    for (let i = 0; i < 4; i++) spy.mockImplementationOnce(() => { throw new Error('Unable to complete output ring') })
+    try {
+      const hit = fillLots([corpDistrict], [block], base, dryTerrain, [])
+      expect(hit.length).toBe(clean.length - 1)
+    } finally {
+      spy.mockRestore()
     }
   })
 })

@@ -33,6 +33,39 @@ function largestRing(result: MultiPolygon): Pt[] | null {
   return best
 }
 
+// polygon-clipping can throw "Unable to complete output ring" on simple but
+// numerically hard input (near-tangential crossings). Same workaround as
+// sector/buildings.ts: nudge the lot by a tiny epsilon and retry; if every
+// attempt throws, drop the lot rather than crash the sector.
+// ponytail: a dropped lot is silent; finer epsilon ladder if it ever shows.
+const CLIP_NUDGES = [0, 1e-6, -1e-6, 3e-6]
+
+function safeClip(lot: Pt[], run: (ring: [number, number][]) => MultiPolygon): MultiPolygon {
+  for (const eps of CLIP_NUDGES) {
+    try {
+      return run(toRing(lot).map(([x, y]) => [x + eps, y + eps] as [number, number]))
+    } catch {
+      continue
+    }
+  }
+  return []
+}
+
+/** true when every consecutive edge turn has the same sign (zero turns ignored) */
+function isConvex(ring: Pt[]): boolean {
+  let pos = false
+  let neg = false
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i]
+    const b = ring[(i + 1) % ring.length]
+    const c = ring[(i + 2) % ring.length]
+    const cross = (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)
+    if (cross > 1e-9) pos = true
+    else if (cross < -1e-9) neg = true
+  }
+  return !(pos && neg)
+}
+
 /** angle of a polygon's longest edge — the lot grid inherits this orientation */
 function longestEdgeAngle(poly: Pt[]): number {
   let best = 0
@@ -101,7 +134,7 @@ export function insetRing(ring: Pt[], d: number): Pt[] | null {
 
 /**
  * Fill each block's buildable inset with a rotated grid of lots. A lot fully
- * inside the inset and outside every no-build ring is kept as-is; a
+ * inside a convex inset and outside every no-build ring is kept as-is; a
  * straddling lot is clipped to the inset (and, if any no-build rings exist,
  * to their complement) and kept only if what's left is >= 40 m².
  */
@@ -124,6 +157,9 @@ export function fillLots(
     const inset = insetRing(block.footprint, SIDEWALK)
     if (!inset || Math.abs(ringArea(inset)) < MIN_BLOCK_AREA) continue
 
+    // corner tests miss a notch narrower than a lot, so only a convex inset
+    // may skip clipping
+    const convex = isConvex(inset)
     const profile = ZONE_BUILD[district.zone]
     const theta = longestEdgeAngle(block.footprint)
     const c = ringCentroid(inset)
@@ -144,16 +180,17 @@ export function fillLots(
         ]
         const lot = corners.map((p) => rotatePt(p, theta, c))
 
-        const allInside = lot.every((p) =>
+        const allInside = convex && lot.every((p) =>
           pointInRings(p, [inset]) && noBuild.every((nb) => !pointInRings(p, [nb])))
 
         let pts: Pt[] | null
         if (allInside) {
           pts = lot
         } else {
-          let clipped = polygonClipping.intersection([toRing(lot)], [toRing(inset)])
-          if (noBuildPolys.length > 0) clipped = polygonClipping.difference(clipped, ...noBuildPolys)
-          pts = largestRing(clipped)
+          pts = largestRing(safeClip(lot, (ring) => {
+            const clipped = polygonClipping.intersection([ring], [toRing(inset)])
+            return noBuildPolys.length > 0 ? polygonClipping.difference(clipped, ...noBuildPolys) : clipped
+          }))
         }
         if (!pts || Math.abs(ringArea(pts)) < MIN_BUILDING_AREA) continue
         if (inWater(terrain, ringCentroid(pts))) continue
