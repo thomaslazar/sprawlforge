@@ -107,7 +107,7 @@ describe('renderSector', () => {
     ],
     // spans the full window, deliberately overlapping the water square —
     // proves the land-clip actually confines the fill (C2)
-    districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, poly: rectPoly({ x: 0, y: 0, w: 1000, h: 1000 }), irregularity: 0.5, shore: true, labelAt: { x: 500, y: 500 } }],
+    districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, poly: rectPoly({ x: 0, y: 0, w: 1000, h: 1000 }), irregularity: 0.5, shore: true, labelAt: { x: 500, y: 500 }, flags: {} }],
     blocks: [],
     buildings: [],
     pois: [],
@@ -127,7 +127,7 @@ describe('renderSector', () => {
         { id: 'RA', class: 'arterial', points: [{ x: 0, y: 200 }, { x: 1000, y: 200 }], width: 15, name: 'Arterial', bridge: false },
         { id: 'RS', class: 'street', points: [{ x: 0, y: 300 }, { x: 1000, y: 300 }], width: 8, name: 'Street', bridge: false },
       ],
-      districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, poly: rectPoly({ x: 0, y: 0, w: 1000, h: 1000 }), irregularity: 0.5, shore: false, labelAt: { x: 500, y: 500 } }],
+      districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, poly: rectPoly({ x: 0, y: 0, w: 1000, h: 1000 }), irregularity: 0.5, shore: false, labelAt: { x: 500, y: 500 }, flags: {} }],
       blocks: [],
       buildings: [],
       pois: [poi('P01', 'Alpha Tower', 500, 600)],

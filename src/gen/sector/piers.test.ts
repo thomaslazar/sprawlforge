@@ -28,6 +28,7 @@ const docksDistrict: District = {
   poly: rectPoly({ x: 2490, y: 1000, w: 510, h: 800 }),
   irregularity: 0.5,
   labelAt: { x: 2745, y: 1400 },
+  flags: {},
 }
 const waterRings = eastWater.water.map((poly) => poly.map((r) => r.map(([x, y]) => ({ x, y }))))
 const inWater = (p: { x: number; y: number }) => waterRings.some((rings) => pointInRings(p, rings))

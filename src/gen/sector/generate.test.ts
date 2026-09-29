@@ -144,7 +144,7 @@ const block = (id: string, districtId: string, rect: { x: number; y: number; w: 
     { x: rect.x, y: rect.y }, { x: rect.x + rect.w, y: rect.y },
     { x: rect.x + rect.w, y: rect.y + rect.h }, { x: rect.x, y: rect.y + rect.h },
   ]
-  return { id, districtId, poly, footprint: poly }
+  return { id, districtId, poly, footprint: poly, flags: {} }
 }
 const district = (id: string, bounds: { x: number; y: number; w: number; h: number }): District => ({
   id, zone: 'corp', name: 'X', bounds,
@@ -154,6 +154,7 @@ const district = (id: string, bounds: { x: number; y: number; w: number; h: numb
   ],
   irregularity: 0.5, shore: false,
   labelAt: { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 },
+  flags: {},
 })
 
 describe('deriveDistricts', () => {

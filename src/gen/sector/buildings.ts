@@ -147,7 +147,7 @@ export function fillBuildings(
       if (!blockFp || blockFp.area < MIN_BLOCK_AREA) return
 
       const blockId = `B${dd}${String(bi + 1).padStart(3, '0')}`
-      blocks.push({ id: blockId, districtId: district.id, poly, footprint: blockFp.pts })
+      blocks.push({ id: blockId, districtId: district.id, poly, footprint: blockFp.pts, flags: {} })
 
       const theta = longestEdgeAngle(poly)
       const c = ringCentroid(poly)

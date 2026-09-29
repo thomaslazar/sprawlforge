@@ -88,6 +88,7 @@ export function assignZones(districtPolys: Pt[][], params: SectorParams, terrain
       id: `D${String(i + 1).padStart(2, '0')}`,
       zone, name: '', bounds, poly, shore, irregularity,
       labelAt: { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 },
+      flags: {},
     }
   })
 }
