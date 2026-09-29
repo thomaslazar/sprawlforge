@@ -90,26 +90,52 @@ export class RoadIndex {
     }
   }
 
-  nearest(
-    p: Pt, radius: number, filter?: (cls: RoadClass) => boolean,
-  ): { id: string; at: Pt; dist: number; segAngle: number } | null {
+  private forEachInRadius(p: Pt, radius: number, visit: (seg: Seg, pt: Pt, d: number) => void): void {
     const cx0 = Math.floor((p.x - radius) / this.cellSize)
     const cx1 = Math.floor((p.x + radius) / this.cellSize)
     const cy0 = Math.floor((p.y - radius) / this.cellSize)
     const cy1 = Math.floor((p.y + radius) / this.cellSize)
-    let best: { id: string; at: Pt; dist: number; segAngle: number } | null = null
     for (let cx = cx0; cx <= cx1; cx++) {
       for (let cy = cy0; cy <= cy1; cy++) {
         const bucket = this.cells.get(`${cx},${cy}`)
         if (!bucket) continue
         for (const seg of bucket) {
-          if (filter && !filter(seg.cls)) continue
           const { pt, d } = nearestOnSegment(p, seg.a, seg.b)
-          if (d <= radius && (!best || d < best.dist))
-            best = { id: seg.id, at: pt, dist: d, segAngle: Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x) }
+          if (d <= radius) visit(seg, pt, d)
         }
       }
     }
+  }
+
+  nearest(
+    p: Pt, radius: number, filter?: (cls: RoadClass) => boolean,
+  ): { id: string; at: Pt; dist: number; segAngle: number } | null {
+    let best: { id: string; at: Pt; dist: number; segAngle: number } | null = null
+    this.forEachInRadius(p, radius, (seg, pt, d) => {
+      if (filter && !filter(seg.cls)) return
+      if (!best || d < best.dist)
+        best = { id: seg.id, at: pt, dist: d, segAngle: Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x) }
+    })
+    return best
+  }
+
+  /**
+   * Nearest segment within radius that ALSO satisfies `test` (given its id,
+   * distance and direction) — unlike `nearest`, a closer segment that fails
+   * `test` doesn't hide a farther one that passes it. Needed for rule 4
+   * (parallel-road stop): a genuinely near-parallel neighbor can sit farther
+   * away than some closer, merely-crossing road, and `nearest`'s "closest
+   * point wins outright" would silently mask the one that actually matters.
+   */
+  nearestMatching(
+    p: Pt, radius: number, test: (hit: { id: string; dist: number; segAngle: number }) => boolean,
+  ): { id: string; at: Pt; dist: number; segAngle: number } | null {
+    let best: { id: string; at: Pt; dist: number; segAngle: number } | null = null
+    this.forEachInRadius(p, radius, (seg, pt, d) => {
+      const segAngle = Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x)
+      if (!test({ id: seg.id, dist: d, segAngle })) return
+      if (!best || d < best.dist) best = { id: seg.id, at: pt, dist: d, segAngle }
+    })
     return best
   }
 }
@@ -194,9 +220,15 @@ function traceHalf(
     const hitSame = index.nearest(next, 0.3 * sep, sameOrHigher)
     if (hitSame && !isSource(hitSame.id)) { pts.push(hitSame.at); break }
 
-    const hitPar = index.nearest(next, 0.7 * sep)
-    if (hitPar && !isSource(hitPar.id) && angleGapLines(Math.atan2(newDir.y, newDir.x), hitPar.segAngle) < PARALLEL_ANGLE)
-      break
+    // nearestMatching, not nearest: a closer but merely-CROSSING road (angle
+    // >= 25°) must not hide a farther but genuinely near-parallel one — with
+    // plain `nearest` a doubled lane could sit safely past whatever nearer
+    // road happens to win the distance comparison and never get caught.
+    const dirAngle = Math.atan2(newDir.y, newDir.x)
+    const hitPar = index.nearestMatching(
+      next, 0.7 * sep, (hit) => !isSource(hit.id) && angleGapLines(dirAngle, hit.segAngle) < PARALLEL_ANGLE,
+    )
+    if (hitPar) break
 
     pts.push(next)
     p = next
@@ -341,23 +373,32 @@ export function riverCrossingSeeds(terrain: Terrain, rng: Rng): Seed[] {
   return seeds
 }
 
+// a seed can sit exactly on the road it forked from (seedsAlong places it
+// there by construction) — the source-resolution radius only needs to catch
+// that near-zero-distance case, not a general nearby-road search.
+const SEED_SOURCE_RADIUS = 1
+
 /** trace every seed in order, indexing successes as it goes; caps the queue at 4×(sizeM/separation)² */
 export function traceLayer(
   field: RoadField, axis: 'major' | 'minor', seeds: Seed[], terrain: Terrain, sizeM: number,
   index: RoadIndex, opts: TraceOpts, rng: Rng, irregularityAt: (p: Pt) => number,
   idPrefix: string, cls: RoadClass,
 ): Road[] {
-  // strictly own-class here (not "or higher"): a minor seed forked from an
-  // already-indexed major road sits exactly on top of it by construction
-  // (seedsAlong places it there) — that's the intended fork point, not a
-  // duplicate to reject. traceStreamline's own snap/parallel rules (which do
-  // use same-or-higher) still apply once the trace has moved away from it.
+  const ownRank = CLASS_RANK[cls]
+  const sameOrHigher = (c: RoadClass) => CLASS_RANK[c] >= ownRank
   const cap = 4 * (sizeM / opts.separation) ** 2
   const roads: Road[] = []
   let n = 0
   for (let i = 0; i < seeds.length && i < cap; i++) {
     const seed = seeds[i]
-    if (index.nearest(seed.at, 0.3 * opts.separation, (c) => c === cls)) continue
+    // R14: a seed forked from an already-indexed road (seedsAlong places it
+    // exactly on its parent) must not be rejected for sitting on that road —
+    // only for sitting near a DIFFERENT same-or-higher road. Resolve the
+    // parent (any class, ~1 m) the same way traceStreamline resolves its own
+    // sourceId, then only reject when the same-or-higher blocker isn't it.
+    const source = index.nearest(seed.at, SEED_SOURCE_RADIUS, () => true)
+    const blocker = index.nearest(seed.at, 0.3 * opts.separation, sameOrHigher)
+    if (blocker && blocker.id !== source?.id) continue
     const points = traceStreamline(field, axis, seed, terrain, sizeM, index, opts, rng, irregularityAt)
     if (!points) continue
     n += 1
