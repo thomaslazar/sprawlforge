@@ -13,13 +13,24 @@ const params = (over: Partial<SectorParams> = {}): SectorParams => ({
 })
 
 const MAX_TURN = MAJOR.step / 300
+const BRIDGE_MAX_TURN_FROM_HEADING = Math.PI / 4
 
-/** longest run of consecutive `true` flags */
-function longestRun(flags: boolean[]): number {
-  let best = 0
-  let run = 0
-  for (const f of flags) { run = f ? run + 1 : 0; best = Math.max(best, run) }
-  return best
+/** which of the 4 window edges pt sits on (within tol), or null */
+function edgeOf(pt: Pt, sizeM: number, tol = 1): 'top' | 'left' | 'bottom' | 'right' | null {
+  if (pt.y <= tol) return 'top'
+  if (pt.y >= sizeM - tol) return 'bottom'
+  if (pt.x <= tol) return 'left'
+  if (pt.x >= sizeM - tol) return 'right'
+  return null
+}
+
+/** index of the one anomalous (non-step-length) interior segment, i.e. the bridge chord — null if none */
+function findBridgeSegment(pts: Pt[]): number | null {
+  for (let i = 1; i < pts.length - 2; i++) {
+    const d = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y)
+    if (d > 1.5 * MAJOR.step) return i
+  }
+  return null
 }
 
 describe('streets/highway', () => {
@@ -49,14 +60,13 @@ describe('streets/highway', () => {
     const { road } = traceHighway(p, terrain, sizeM)
     const pts = road.points
     // only compare consecutive ~step-length segments (skips the final
-    // window-clamped stub and any straight river-bridge chord — a bridge
-    // splice is an engineered transition, not subject to the tracer's own
-    // curvature limit)
-    const isStepLen = (a: Pt, b: Pt) => {
-      const d = Math.hypot(b.x - a.x, b.y - a.y)
-      return Math.abs(d - MAJOR.step) < 0.1
-    }
+    // window-clamped stub) and skip the two pairs touching either end of
+    // the bridge chord (R12: the splice into a bridge is an engineered
+    // transition, not subject to the tracer's own curvature limit)
+    const isStepLen = (a: Pt, b: Pt) => Math.abs(Math.hypot(b.x - a.x, b.y - a.y) - MAJOR.step) < 0.1
+    const bridgeIdx = findBridgeSegment(pts)
     for (let i = 1; i < pts.length - 1; i++) {
+      if (bridgeIdx !== null && (i === bridgeIdx || i === bridgeIdx + 1)) continue
       const a = pts[i - 1]
       const b = pts[i]
       const c = pts[i + 1]
@@ -68,6 +78,33 @@ describe('streets/highway', () => {
     }
   })
 
+  it('bridge chord stays within 45 deg of the approach heading', () => {
+    for (const seed of [42, 7, 1443928265]) {
+      const p = params({ seed, landform: 'coastal', river: true })
+      const sizeM = p.size * 1000
+      const terrain = sampleTerrain(p, sizeM)
+      const { road } = traceHighway(p, terrain, sizeM)
+      const bridgeIdx = findBridgeSegment(road.points)
+      if (bridgeIdx === null) continue // this fixture's trace never crossed the river
+      const before = road.points[bridgeIdx]
+      // the ~50 m of highway leading up to the bridge
+      let backIdx = bridgeIdx
+      let acc = 0
+      while (backIdx > 0 && acc < 50) {
+        acc += Math.hypot(
+          road.points[backIdx].x - road.points[backIdx - 1].x, road.points[backIdx].y - road.points[backIdx - 1].y,
+        )
+        backIdx -= 1
+      }
+      const approach = road.points[backIdx]
+      const heading = Math.atan2(before.y - approach.y, before.x - approach.x)
+      const after = road.points[bridgeIdx + 1]
+      const chord = Math.atan2(after.y - before.y, after.x - before.x)
+      const diff = Math.abs(Math.atan2(Math.sin(chord - heading), Math.cos(chord - heading)))
+      expect(diff).toBeLessThanOrEqual(BRIDGE_MAX_TURN_FROM_HEADING + 1e-6)
+    }
+  })
+
   it('highway crosses river at most once', () => {
     for (const seed of [42, 7, 1443928265]) {
       const p = params({ seed, landform: 'coastal', river: true })
@@ -75,10 +112,15 @@ describe('streets/highway', () => {
       const terrain = sampleTerrain(p, sizeM)
       expect(terrain.riverSlice).not.toBeNull()
       const { road } = traceHighway(p, terrain, sizeM)
-      // a degenerate entry (e.g. the whole top edge is sea for this seed's
-      // window, so no dry entry point exists at all) legitimately produces
-      // a near-empty road — trivially zero wet runs, nothing to resample
-      if (road.points.length < 2) continue
+      // R11 (search all 4 entry edges): none of these coastal+river seeds
+      // is degenerate any more — every one must find a real, spanning entry
+      expect(road.points.length).toBeGreaterThanOrEqual(2)
+      const a = road.points[0]
+      const b = road.points[road.points.length - 1]
+      expect(edgeOf(a, sizeM)).not.toBeNull()
+      expect(edgeOf(b, sizeM)).not.toBeNull()
+      expect(edgeOf(a, sizeM)).not.toBe(edgeOf(b, sizeM))
+
       // resample every ~10 m along the raw polyline (a straight bridge
       // chord is otherwise invisible at the raw-point level) and count
       // contiguous wet runs
@@ -87,8 +129,7 @@ describe('streets/highway', () => {
       const wet: boolean[] = []
       for (let i = 0; i <= steps; i++) {
         const t = i / steps
-        const total = len
-        let target = t * total
+        let target = t * len
         let pt: Pt = road.points[0]
         for (let j = 1; j < road.points.length; j++) {
           const segLen = Math.hypot(road.points[j].x - road.points[j - 1].x, road.points[j].y - road.points[j - 1].y)
@@ -104,8 +145,6 @@ describe('streets/highway', () => {
         }
         wet.push(inWater(terrain, pt))
       }
-      expect(longestRun(wet)).toBeLessThanOrEqual(Math.ceil(wet.length)) // sanity: never all-wet
-      // count number of separate wet runs
       let runs = 0
       let inRun = false
       for (const w of wet) {
@@ -131,21 +170,23 @@ describe('streets/highway', () => {
     }
   })
 
-  it('exposes HIGHWAY_WIDTH and a well-formed Road', () => {
-    const p = params()
-    const sizeM = p.size * 1000
-    const terrain = sampleTerrain(p, sizeM)
-    const { road } = traceHighway(p, terrain, sizeM)
+  it('exposes HIGHWAY_WIDTH, a well-formed Road, and stays inside the window (incl. the bridge splice)', () => {
     expect(HIGHWAY_WIDTH).toBe(32)
-    expect(road.id).toBe('H1')
-    expect(road.class).toBe('highway')
-    expect(road.width).toBe(HIGHWAY_WIDTH)
-    expect(road.name).toBeNull()
-    for (const pt of road.points) {
-      expect(pt.x).toBeGreaterThanOrEqual(0)
-      expect(pt.x).toBeLessThanOrEqual(sizeM)
-      expect(pt.y).toBeGreaterThanOrEqual(0)
-      expect(pt.y).toBeLessThanOrEqual(sizeM)
+    for (const over of [{}, { seed: 327, landform: 'coastal' as const, river: true }]) {
+      const p = params(over)
+      const sizeM = p.size * 1000
+      const terrain = sampleTerrain(p, sizeM)
+      const { road } = traceHighway(p, terrain, sizeM)
+      expect(road.id).toBe('H1')
+      expect(road.class).toBe('highway')
+      expect(road.width).toBe(HIGHWAY_WIDTH)
+      expect(road.name).toBeNull()
+      for (const pt of road.points) {
+        expect(pt.x).toBeGreaterThanOrEqual(0)
+        expect(pt.x).toBeLessThanOrEqual(sizeM)
+        expect(pt.y).toBeGreaterThanOrEqual(0)
+        expect(pt.y).toBeLessThanOrEqual(sizeM)
+      }
     }
   })
 })
