@@ -323,7 +323,8 @@ export function buildRoadField(
   const vx = new Float32Array(cols * cols)
   const vy = new Float32Array(cols * cols)
 
-  const cellVector = (ix: number, iy: number): [number, number] => {
+  /** fills the cell's vector on first use and returns its index into vx/vy */
+  const cellVector = (ix: number, iy: number): number => {
     const idx = iy * cols + ix
     if (!filled[idx]) {
       const p = { x: ix * GRID_STEP, y: iy * GRID_STEP }
@@ -341,7 +342,7 @@ export function buildRoadField(
       vy[idx] = sy
       filled[idx] = 1
     }
-    return [vx[idx], vy[idx]]
+    return idx
   }
 
   const sample = (p: Pt): FieldSample => {
@@ -353,10 +354,10 @@ export function buildRoadField(
     const iy1 = Math.min(cols - 1, iy0 + 1)
     const fx = cx - ix0
     const fy = cy - iy0
-    const [x00, y00] = cellVector(ix0, iy0)
-    const [x10, y10] = cellVector(ix1, iy0)
-    const [x01, y01] = cellVector(ix0, iy1)
-    const [x11, y11] = cellVector(ix1, iy1)
+    const i00 = cellVector(ix0, iy0), i10 = cellVector(ix1, iy0)
+    const i01 = cellVector(ix0, iy1), i11 = cellVector(ix1, iy1)
+    const x00 = vx[i00], y00 = vy[i00], x10 = vx[i10], y10 = vy[i10]
+    const x01 = vx[i01], y01 = vy[i01], x11 = vx[i11], y11 = vy[i11]
     const sx = (x00 * (1 - fx) + x10 * fx) * (1 - fy) + (x01 * (1 - fx) + x11 * fx) * fy
     const sy = (y00 * (1 - fx) + y10 * fx) * (1 - fy) + (y01 * (1 - fx) + y11 * fx) * fy
     const theta = sx === 0 && sy === 0 ? 0 : Math.atan2(sy, sx) / 2
