@@ -68,6 +68,11 @@ describe('insetRing', () => {
 })
 
 describe('fillLots', () => {
+  it('density changes lot count', () => {
+    const count = (density: number) =>
+      fillLots([slumDistrict], [makeBlock('D02')], { ...base, density }, dryTerrain, []).length
+    expect(count(0.9)).toBeGreaterThan(count(0.1))
+  })
   it('lots stay inside the block footprint', () => {
     const block = makeBlock('D01')
     const buildings = fillLots([corpDistrict], [block], base, dryTerrain, [])

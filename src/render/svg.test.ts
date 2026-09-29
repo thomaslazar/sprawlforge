@@ -273,6 +273,7 @@ describe('renderSector', () => {
     const m = generateSector({ ...base, landform: 'inland', irregularity: 0.15 })
     const svg = renderSector(m, getTheme('neon'))
     expect(svg).toMatch(/data-class="ramp"/)
+    expect(svg).not.toMatch(/data-class="ramp"[^>]*filter=/)
     expect((svg.match(/data-junction="4"/g) ?? []).length).toBeGreaterThanOrEqual(20)
     expect(svg).toMatch(/data-level="(elevated|sunken|ground)"/)
   })

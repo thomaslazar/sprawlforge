@@ -188,17 +188,18 @@ export function fillLots(
     // may skip clipping
     const convex = isConvex(inset)
     const profile = ZONE_BUILD[district.zone]
+    const fill = Math.min(0.98, profile.fill * (0.75 + 0.5 * params.density))
     const theta = longestEdgeAngle(block.footprint)
     const c = ringCentroid(inset)
     const local = inset.map((p) => rotatePt(p, -theta, c))
     const bbox = bboxOf(local)
-    const cell = profile.minCell
+    const cell = profile.minCell * (1.25 - 0.5 * params.density)
     const cols = Math.max(1, Math.ceil(bbox.w / cell))
     const rows = Math.max(1, Math.ceil(bbox.h / cell))
 
     for (let row = 0; row < rows; row++) {
       for (let col = 0; col < cols; col++) {
-        if (!rng.chance(profile.fill)) continue
+        if (!rng.chance(fill)) continue
         const lx = bbox.x + col * cell
         const ly = bbox.y + row * cell
         const corners: Pt[] = [

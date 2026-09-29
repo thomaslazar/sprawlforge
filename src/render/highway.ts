@@ -1,5 +1,6 @@
 import type { Pt } from '../gen/geometry'
 import { pointAtT, polylineLength, slicePolyline } from '../gen/geometry'
+import { nearestOnPolyline } from '../gen/terrain/rivers'
 import { buildPlanarGraph, degree4Vertices } from '../gen/streets/graph'
 import { HIGHWAY_WIDTH } from '../gen/streets/highway'
 import type { Road, SectorModel } from '../gen/types'
@@ -22,15 +23,17 @@ const offset = (p: Pt[], d: number): Pt[] => {
   return p.map((q, i) => ({ x: q.x + nm[i].x * d, y: q.y + nm[i].y * d }))
 }
 
-/** stripes of `len` m perpendicular to the polyline at arc-length fractions ts */
-function ticks(line: Pt[], ts: number[], len: number): string[] {
-  return ts.map((t) => {
+/** perpendicular segments at fractions ts spanning offsets [from, to] from the centreline (both sides when mirror) */
+function ticks(line: Pt[], ts: number[], from: number, to: number, mirror = false): string[] {
+  return ts.flatMap((t) => {
     const c = pointAtT(line, t)
     const [a, b] = [pointAtT(line, t - 0.001), pointAtT(line, t + 0.001)]
     const l = Math.hypot(b.x - a.x, b.y - a.y) || 1
-    const nx = (-(b.y - a.y) / l) * (len / 2)
-    const ny = ((b.x - a.x) / l) * (len / 2)
-    return `M${n(c.x - nx)},${n(c.y - ny)}L${n(c.x + nx)},${n(c.y + ny)}`
+    const nx = -(b.y - a.y) / l
+    const ny = (b.x - a.x) / l
+    const seg = (k: number) =>
+      `M${n(c.x + nx * from * k)},${n(c.y + ny * from * k)}L${n(c.x + nx * to * k)},${n(c.y + ny * to * k)}`
+    return mirror ? [seg(1), seg(-1)] : [seg(1)]
   })
 }
 
@@ -82,31 +85,30 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
     if (s.level === 'elevated') {
       const ts: number[] = []
       for (let m = 0; m < (s.to - s.from) * total; m += 40) ts.push(s.from + m / total)
-      out.push(`<path d="${ticks(line, ts, 6).join('')}" fill="none" stroke="${theme.highway.column}" stroke-width="2"/>`)
+      out.push(`<path d="${ticks(line, ts, W / 2, W / 2 + 8, true).join('')}" fill="none" stroke="${theme.highway.column}" stroke-width="2"/>`)
     }
     out.push(poly(p, theme.road.highway, W, glowAttr), '</g>')
   }
 
   for (const c of hw.first.crossings ?? []) {
-    const road =
-      model.roads.find((r) => r.id === c.roadId) ?? model.roads.find((r) => r.id.startsWith(c.roadId + '-'))
-    if (!road) continue
-    // ponytail: nearest vertex-free projection — locate crossing on the road by nearest point to the highway point
     const hp = pointAtT(line, c.at)
-    const rl = polylineLength(road.points) || 1
-    let best = Infinity
-    let bt = 0
-    for (let i = 0; i <= 200; i++) {
-      const q = pointAtT(road.points, i / 200)
-      const d = Math.hypot(q.x - hp.x, q.y - hp.y)
-      if (d < best) { best = d; bt = i / 200 }
-    }
+    const road = model.roads
+      .filter((r) => r.id === c.roadId || r.id.startsWith(c.roadId + '-'))
+      .map((r) => ({ r, ...nearestOnPolyline(hp, r.points) }))
+      .sort((x, y) => x.dist - y.dist)[0]
+    if (!road) continue
+    const rp = road.r.points
+    const rl = polylineLength(rp) || 1
+    // t01 is vertex-index based; convert to the arc-length fraction slicePolyline expects
+    const k = Math.min(rp.length - 2, Math.floor(road.t01 * (rp.length - 1)))
+    const f = road.t01 * (rp.length - 1) - k
+    const at = (polylineLength(rp.slice(0, k + 1)) + f * Math.hypot(rp[k + 1].x - rp[k].x, rp[k + 1].y - rp[k].y)) / rl
     const half = (W / 2 + 6) / rl
-    const sl = slicePolyline(road.points, Math.max(0, bt - half), Math.min(1, bt + half))
+    const sl = slicePolyline(rp, Math.max(0, at - half), Math.min(1, at + half))
     out.push(
       c.kind === 'over'
-        ? poly(sl, theme.bridge.deck, road.width)
-        : poly(sl, theme.road[road.class], road.width, ' stroke-dasharray="4 4"'),
+        ? poly(sl, theme.bridge.deck, road.r.width)
+        : poly(sl, theme.road[road.r.class], road.r.width, ' stroke-dasharray="4 4"'),
     )
   }
 
@@ -115,7 +117,7 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
     const ts: number[] = []
     for (let m = 0; m < 150; m += 8) ts.push(s.from + m / total)
     out.push(
-      `<path d="${ticks(line, ts, W).join('')}" fill="none" stroke="${theme.highway.hatch}" stroke-width="4" opacity="0.6"/>`,
+      `<path d="${ticks(line, ts, -W / 2, W / 2).join('')}" fill="none" stroke="${theme.highway.hatch}" stroke-width="4" opacity="0.6"/>`,
     )
   }
 }
