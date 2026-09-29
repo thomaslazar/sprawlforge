@@ -5,7 +5,15 @@ import { distToPolyline } from '../terrain/rivers'
 import type { Road, RoadClass, Terrain } from '../types'
 import type { RoadField } from './field'
 
-export interface Seed { at: Pt; dir?: Pt; crossWater?: boolean }
+export interface Seed {
+  at: Pt
+  dir?: Pt
+  crossWater?: boolean
+  /** overrides the caller's axis for this seed only (river/highway crossings: 'minor') */
+  axis?: 'major' | 'minor'
+  /** overrides riverSlice.width for this seed's crossWater band (see riverCrossingSeeds) */
+  corridorWidth?: number
+}
 
 export interface TraceOpts {
   separation: number
@@ -135,10 +143,16 @@ function angleGapLines(a: number, b: number): number {
   return d
 }
 
-/** a crossWater seed may wet-cross the river corridor only; sea/lake still stop it */
-function inRiverBand(terrain: Terrain, p: Pt, margin: number): boolean {
+/**
+ * a crossWater seed may wet-cross the river corridor only; sea/lake still
+ * stop it. `corridorWidth` (from a Seed measured by riverCrossingSeeds)
+ * overrides the river's average `width` — the actual carved channel varies
+ * well past that single scalar at any given point (see riverCrossingSeeds).
+ */
+function inRiverBand(terrain: Terrain, p: Pt, margin: number, corridorWidth?: number): boolean {
   const river = terrain.riverSlice
-  return !!river && distToPolyline(p, river.course) <= river.width + margin
+  if (!river) return false
+  return distToPolyline(p, river.course) <= (corridorWidth ?? river.width) + margin
 }
 
 function clampToWindow(p: Pt, sizeM: number): Pt {
@@ -150,7 +164,8 @@ const PARALLEL_ANGLE = (25 * Math.PI) / 180
 function traceHalf(
   field: RoadField, axis: 'major' | 'minor', start: Pt, initDir: Pt,
   terrain: Terrain, sizeM: number, index: RoadIndex, opts: TraceOpts,
-  sep: number, rng: Rng, irregularityAt: (p: Pt) => number, crossWater: boolean, sourceId: string | null,
+  sep: number, rng: Rng, irregularityAt: (p: Pt) => number, crossWater: boolean,
+  sourceId: string | null, seedAt: Pt, corridorWidth: number | undefined,
 ): Pt[] {
   const ownRank = ownRankFor(axis)
   const sameOrHigher = (c: RoadClass) => CLASS_RANK[c] >= ownRank
@@ -166,17 +181,21 @@ function traceHalf(
       pts.push(clampToWindow(next, sizeM))
       break
     }
-    if (inWater(terrain, next) && !(crossWater && inRiverBand(terrain, next, opts.step))) break
+    if (inWater(terrain, next) && !(crossWater && inRiverBand(terrain, next, opts.step, corridorWidth))) break
 
     // a seed forked off an existing road (e.g. a street seeded ON an
     // arterial) sits at distance ~0 from it; excluding that one specific
-    // segment (not a blanket grace window) lets the child immediately
-    // leave its parent while every OTHER road is still checked from step 1.
+    // segment (not a blanket grace window, and not for the whole trace —
+    // R6) lets the child immediately leave its parent while every OTHER
+    // road, and the parent itself once far enough away, is still checked.
+    const nearSeed = Math.hypot(next.x - seedAt.x, next.y - seedAt.y) < opts.separation
+    const isSource = (id: string) => id === sourceId && nearSeed
+
     const hitSame = index.nearest(next, 0.3 * sep, sameOrHigher)
-    if (hitSame && hitSame.id !== sourceId) { pts.push(hitSame.at); break }
+    if (hitSame && !isSource(hitSame.id)) { pts.push(hitSame.at); break }
 
     const hitPar = index.nearest(next, 0.7 * sep)
-    if (hitPar && hitPar.id !== sourceId && angleGapLines(Math.atan2(newDir.y, newDir.x), hitPar.segAngle) < PARALLEL_ANGLE)
+    if (hitPar && !isSource(hitPar.id) && angleGapLines(Math.atan2(newDir.y, newDir.x), hitPar.segAngle) < PARALLEL_ANGLE)
       break
 
     pts.push(next)
@@ -197,19 +216,24 @@ export function traceStreamline(
   // out-of-window point straight into the result, breaking window
   // containment. No road for a seed that isn't even on the map.
   if (seed.at.x < 0 || seed.at.x > sizeM || seed.at.y < 0 || seed.at.y > sizeM) return null
+  const useAxis = seed.axis ?? axis
   const irr = irregularityAt(seed.at)
   const jitterScale = (Math.max(0, irr - 0.4) / 0.55) * (rng.next() - 0.5) * 2
   const sep = opts.separation * (1 + opts.jitter * jitterScale)
   const crossWater = !!seed.crossWater
-  const ownRank = ownRankFor(axis)
+  const ownRank = ownRankFor(useAxis)
   const source = index.nearest(seed.at, 0.3 * sep, (c) => CLASS_RANK[c] >= ownRank)
   const sourceId = source?.id ?? null
 
   const sample = field.sample(seed.at)
-  const initDir = seed.dir ? normalize(seed.dir) : (axis === 'major' ? sample.major : sample.minor)
-  const forward = traceHalf(field, axis, seed.at, initDir, terrain, sizeM, index, opts, sep, rng, irregularityAt, crossWater, sourceId)
+  const initDir = seed.dir ? normalize(seed.dir) : (useAxis === 'major' ? sample.major : sample.minor)
+  const forward = traceHalf(
+    field, useAxis, seed.at, initDir, terrain, sizeM, index, opts, sep, rng, irregularityAt,
+    crossWater, sourceId, seed.at, seed.corridorWidth,
+  )
   const backward = traceHalf(
-    field, axis, seed.at, { x: -initDir.x, y: -initDir.y }, terrain, sizeM, index, opts, sep, rng, irregularityAt, crossWater, sourceId,
+    field, useAxis, seed.at, { x: -initDir.x, y: -initDir.y }, terrain, sizeM, index, opts, sep, rng, irregularityAt,
+    crossWater, sourceId, seed.at, seed.corridorWidth,
   )
 
   const points = [...backward.slice().reverse(), seed.at, ...forward]
@@ -258,19 +282,60 @@ export function seedsAlong(points: Pt[], every: number, alternate: boolean): See
 
 const RIVER_CROSSING_SPACING = 1000
 const RIVER_CROSSING_JITTER = 200
-const RIVER_CROSSING_MAX_WIDTH = 450
+const CROSSING_MAX_REACH = 450
+const CROSSING_SAMPLE_STEP = 10
+const CROSSING_RETRY_OFFSETS = [0, 100, -100, 200, -200]
 
-/** seeds mid-river, perpendicular to flow, every ~1000±200m; skipped for a wide river */
+/**
+ * Wet extent from `at` along ±normal, sampled every 10 m up to 450 m each
+ * side (the carve profile tapers monotonically outward, rivers.ts, so the
+ * first dry sample on a side ends that side's wet zone); null if either
+ * side is still wet at the full 450 m reach (too wide to size confidently).
+ */
+function measureCorridorWidth(terrain: Terrain, at: Pt, normal: Pt): number | null {
+  let maxWet = 0
+  for (const sign of [1, -1] as const) {
+    for (let d = CROSSING_SAMPLE_STEP; d <= CROSSING_MAX_REACH; d += CROSSING_SAMPLE_STEP) {
+      if (!inWater(terrain, { x: at.x + sign * normal.x * d, y: at.y + sign * normal.y * d })) break
+      maxWet = Math.max(maxWet, d)
+      if (d === CROSSING_MAX_REACH) return null
+    }
+  }
+  return maxWet + CROSSING_SAMPLE_STEP
+}
+
+/**
+ * Seeds mid-river, perpendicular to flow, every ~1000±200m, tagged
+ * `axis: 'minor'` — near a river the field's `boundary` basis (field.ts)
+ * aligns `major` WITH the river's own tangent (full weight at distance 0),
+ * so a crossing must walk the `minor` axis (⟂ major) to actually cross
+ * rather than ride downstream. `riverSlice.width` is a single scalar
+ * average; the real carved width varies well past it at any given point
+ * (rivers.ts widthMultiplier + carve falloff), so each candidate's actual
+ * wet extent is measured and carried as `corridorWidth`. A candidate whose
+ * extent still runs the full 450 m reach is retried at ±100/±200 m along
+ * the course before that crossing slot is skipped.
+ */
 export function riverCrossingSeeds(terrain: Terrain, rng: Rng): Seed[] {
   const river = terrain.riverSlice
-  if (!river || river.width > RIVER_CROSSING_MAX_WIDTH) return []
+  if (!river) return []
   const len = polylineLength(river.course)
   const seeds: Seed[] = []
   let dist = RIVER_CROSSING_SPACING / 2
   while (dist < len) {
-    const t = dist / len
-    const tangent = tangentAt(river.course, t)
-    seeds.push({ at: pointAtT(river.course, t), dir: { x: -tangent.y, y: tangent.x }, crossWater: true })
+    for (const offset of CROSSING_RETRY_OFFSETS) {
+      const d = dist + offset
+      if (d <= 0 || d >= len) continue
+      const t = d / len
+      const at = pointAtT(river.course, t)
+      const tangent = tangentAt(river.course, t)
+      const normal = { x: -tangent.y, y: tangent.x }
+      const corridorWidth = measureCorridorWidth(terrain, at, normal)
+      if (corridorWidth !== null) {
+        seeds.push({ at, dir: normal, crossWater: true, axis: 'minor', corridorWidth })
+        break
+      }
+    }
     dist += RIVER_CROSSING_SPACING + (rng.next() * 2 - 1) * RIVER_CROSSING_JITTER
   }
   return seeds

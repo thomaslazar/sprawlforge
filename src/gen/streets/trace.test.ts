@@ -8,7 +8,8 @@ import { nearestOnPolyline } from '../terrain/rivers'
 import type { Road, SectorParams } from '../types'
 import { buildRoadField } from './field'
 import {
-  MAJOR, MINOR, RoadIndex, poissonSeeds, riverCrossingSeeds, seedsAlong, traceLayer, traceStreamline, type Seed,
+  MAJOR, MINOR, RoadIndex, poissonSeeds, riverCrossingSeeds, seedsAlong, traceLayer, traceStreamline,
+  type Seed, type TraceOpts,
 } from './trace'
 
 const params = (over: Partial<SectorParams> = {}): SectorParams => ({
@@ -48,32 +49,68 @@ function normalizeVec(v: Pt): Pt {
   return { x: v.x / len, y: v.y / len }
 }
 
-/** unit tangent of a polyline at arc-length fraction t, matching trace.ts's own tangentAt */
-function tangentDirAt(points: Pt[], t: number): Pt {
-  const len = polylineLength(points)
-  const a = pointAtT(points, t)
-  const b = pointAtT(points, Math.min(1, t + 1 / len))
-  return normalizeVec({ x: b.x - a.x, y: b.y - a.y })
+function lineAngleGap(a: number, b: number): number {
+  let d = Math.abs(a - b) % Math.PI
+  if (d > Math.PI / 2) d = Math.PI - d
+  return d
+}
+
+const PARALLEL_ANGLE = (25 * Math.PI) / 180
+
+/**
+ * True if ANY segment of ANY road but `selfId` passes within `radius` of
+ * `end` with a line-angle gap to `dirAngle` under 25°. Rule 4 fires against
+ * whichever nearby road is near-PARALLEL, not necessarily the one closest by
+ * raw distance — `RoadIndex.nearest` only returns the single closest point
+ * overall, which (one step of discretization back from the real trigger,
+ * plus curvature) is often a different segment, sometimes of a different
+ * road, than the one actually near-parallel at the trigger point. So this
+ * scans every candidate within radius directly rather than trusting the
+ * single nearest one.
+ */
+function anyNearParallel(all: Road[], selfId: string, end: Pt, radius: number, dirAngle: number): boolean {
+  for (const r of all) {
+    if (r.id === selfId) continue
+    for (let i = 1; i < r.points.length; i++) {
+      const a = r.points[i - 1]
+      const b = r.points[i]
+      const abx = b.x - a.x
+      const aby = b.y - a.y
+      const len2 = abx * abx + aby * aby || 1
+      const t = Math.max(0, Math.min(1, ((end.x - a.x) * abx + (end.y - a.y) * aby) / len2))
+      const d = Math.hypot(end.x - (a.x + t * abx), end.y - (a.y + t * aby))
+      if (d <= radius && lineAngleGap(dirAngle, Math.atan2(aby, abx)) < PARALLEL_ANGLE) return true
+    }
+  }
+  return false
 }
 
 // rule 3 (same-or-higher class, within 0.3×sep) snaps the endpoint exactly
 // onto the other road (appends its nearest point) — a tight 6 m tolerance
 // catches that. Rule 4 (any class, within 0.7×sep, angle < 25°) is a plain
 // stop with no snap (design doc §6: "stop", not "snap the endpoint"), so a
-// road it cuts short can dangle up to 0.7×separation from what stopped it.
-// Both are "explained" endings; only a stop matching neither rule (or
-// maxSteps/decay, decay=0 for MAJOR) would be a real bug.
-function endpointIsExplained(sizeM: number, terrain: ReturnType<typeof setup>['terrain'], all: Road[], road: Road): boolean {
+// road it cuts short can dangle up to 0.7×separation (+1 step of
+// discretization slack) from what stopped it — but ONLY if some nearby
+// road's local direction is actually near-parallel to the endpoint's last
+// direction, matching rule 4's own trigger condition; a road merely nearby
+// at a crossing angle doesn't explain the stop. The last fallback,
+// pts.length === 2×maxSteps+1, tags the (here unreachable for MAJOR:
+// decay=0) case where both halves ran out the clock instead of stopping on
+// any rule.
+function endpointIsExplained(
+  sizeM: number, terrain: ReturnType<typeof setup>['terrain'], all: Road[], road: Road, opts: TraceOpts,
+): boolean {
   const pts = road.points
+  if (pts.length === 2 * opts.maxSteps + 1) return true
   const onEdge = (pt: Pt) => pt.x <= 1 || pt.x >= sizeM - 1 || pt.y <= 1 || pt.y >= sizeM - 1
   const others = othersIndex(all, road.id)
   const check = (end: Pt, prev: Pt) => {
     if (onEdge(end)) return true
     const dir = normalizeVec({ x: end.x - prev.x, y: end.y - prev.y })
-    if (inWater(terrain, { x: end.x + dir.x * 10, y: end.y + dir.y * 10 })) return true
-    // +step: the recorded endpoint is the last point that PASSED the check,
-    // one 10 m step before the candidate that actually tripped rule 4.
-    return others.nearest(end, 0.7 * MAJOR.separation + MAJOR.step) !== null
+    if (inWater(terrain, { x: end.x + dir.x * opts.step, y: end.y + dir.y * opts.step })) return true
+    if (others.nearest(end, 6) !== null) return true
+    const radius = 0.7 * opts.separation + opts.step
+    return anyNearParallel(all, road.id, end, radius, Math.atan2(dir.y, dir.x))
   }
   return check(pts[0], pts[1] ?? pts[0]) && check(pts[pts.length - 1], pts[pts.length - 2] ?? pts[pts.length - 1])
 }
@@ -133,7 +170,7 @@ describe('streets/trace', () => {
   it('snaps endpoints', () => {
     const { roads, terrain, sizeM } = traceArterials()
     expect(roads.length).toBeGreaterThan(0)
-    for (const road of roads) expect(endpointIsExplained(sizeM, terrain, roads, road)).toBe(true)
+    for (const road of roads) expect(endpointIsExplained(sizeM, terrain, roads, road, MAJOR)).toBe(true)
   })
 
   it('crossing seed crosses the river', () => {
@@ -142,40 +179,22 @@ describe('streets/trace', () => {
     const rng = mulberry32(hashSeed(42, 'crossings'))
     const seeds = riverCrossingSeeds(terrain, rng)
     expect(seeds.length).toBeGreaterThanOrEqual(1)
+    // R7: every seed carries axis:'minor' (the actual crossing direction —
+    // near a river `major` aligns WITH the river's own tangent, field.ts's
+    // boundary basis) and a measured corridorWidth (riverSlice.width is a
+    // single scalar average; the real carve varies well past it at any one
+    // point), so traceStreamline should honor both straight from the seed —
+    // no per-test axis override or manual course re-scan needed here.
+    expect(seeds.every((s) => s.axis === 'minor' && typeof s.corridorWidth === 'number')).toBe(true)
 
-    // Near the river the field's `major` axis aligns WITH the river's own
-    // tangent (the boundary basis, field.ts, gives the shore/river tangent
-    // full weight at distance 0) — a "major"-axis trace from a crossing seed
-    // just follows the river downstream instead of crossing it. `minor` is
-    // perpendicular to major, i.e. the actual crossing direction; the
-    // resulting road is still classified `arterial` by whichever layer calls
-    // traceLayer, independent of the axis used to walk the field.
-    //
-    // riverCrossingSeeds spaces seeds every ~1000 m along the course with no
-    // knowledge of the river's local carve width (only a single scalar
-    // `riverSlice.width` is available, per Task 2's interface) — the actual
-    // carved channel varies 0.6-1.6x that average (rivers.ts widthMultiplier)
-    // with a smooth falloff out to ~2.5x the local width, so a seed placed
-    // exactly at a locally-wide stretch can legitimately fail to clear the
-    // `width + step` crossing band. Scan finer-grained points along the same
-    // course (same seed shape riverCrossingSeeds produces) for one that
-    // completes a full crossing, matching how a real pipeline caller would
-    // retry a failed crossing at a nearby point along the river.
-    const course = terrain.riverSlice!.course
-    const len = polylineLength(course)
     let crossed: Pt[] | null = null
-    for (let d = 50; d < len && !crossed; d += 50) {
-      const t = d / len
-      const at = pointAtT(course, t)
-      if (!(at.x > 0 && at.x < sizeM && at.y > 0 && at.y < sizeM)) continue
-      const tangent = tangentDirAt(course, t)
-      const seed: Seed = { at, dir: { x: -tangent.y, y: tangent.x }, crossWater: true }
-      const points = traceStreamline(field, 'minor', seed, terrain, sizeM, new RoadIndex(200), MAJOR, rng, irregularityAt)
+    for (const seed of seeds) {
+      const points = traceStreamline(field, 'major', seed, terrain, sizeM, new RoadIndex(200), MAJOR, rng, irregularityAt)
       if (!points) continue
       const wetFlags = points.map((pt) => inWater(terrain, pt))
       const firstWet = wetFlags.indexOf(true)
       const lastWet = wetFlags.lastIndexOf(true)
-      if (firstWet > 0 && lastWet < wetFlags.length - 1) crossed = points
+      if (firstWet > 0 && lastWet < wetFlags.length - 1) { crossed = points; break }
     }
     expect(crossed).not.toBeNull()
   })
@@ -219,5 +238,71 @@ describe('streets/trace', () => {
     }
     // controller ruling: report the measured fraction rather than raising decay if under 10%
     expect(unexplained / streets.length).toBeGreaterThanOrEqual(0.1)
+  })
+
+  // R6: sourceId exclusion only covers the fork zone (within opts.separation
+  // of the seed) — a street that curves back alongside its own parent
+  // arterial further out must still be snapped/stopped by rules 3/4 like any
+  // other road, not ride along it indefinitely. Mirrors traceLayer's own
+  // loop (same pre-check, same id/width scheme) so each street's seed and
+  // parent road id can be tracked — traceLayer's Road[] output alone doesn't
+  // expose which seed produced which road.
+  it('a street stays separated from its own parent arterial past the fork zone', () => {
+    const { terrain, field, irregularityAt, sizeM } = setup()
+    const rngA = mulberry32(hashSeed(42, 'arterials'))
+    const index = new RoadIndex(200)
+    const seedsA = poissonSeeds(sizeM, MAJOR.separation, rngA, (pt) => !inWater(terrain, pt))
+    const majors = traceLayer(field, 'major', seedsA, terrain, sizeM, index, MAJOR, rngA, irregularityAt, 'A', 'arterial')
+    expect(majors.length).toBeGreaterThan(1)
+
+    const minorSeeds: Seed[] = []
+    const seedParents: string[] = []
+    for (const road of majors) {
+      for (const seed of seedsAlong(road.points, MINOR.separation, true)) {
+        minorSeeds.push(seed)
+        seedParents.push(road.id)
+      }
+    }
+
+    const rngM = mulberry32(hashSeed(42, 'streets'))
+    const cap = 4 * (sizeM / MINOR.separation) ** 2
+    const streets: Road[] = []
+    const streetParents: string[] = []
+    const streetSeedAt: Pt[] = []
+    let n = 0
+    for (let i = 0; i < minorSeeds.length && i < cap; i++) {
+      const seed = minorSeeds[i]
+      if (index.nearest(seed.at, 0.3 * MINOR.separation, (c) => c === 'street')) continue
+      const points = traceStreamline(field, 'minor', seed, terrain, sizeM, index, MINOR, rngM, irregularityAt)
+      if (!points) continue
+      n += 1
+      const id = 'S' + String(n).padStart(3, '0')
+      index.add(id, points, 'street')
+      streets.push({ id, class: 'street', points, width: 9, name: null })
+      streetParents.push(seedParents[i])
+      streetSeedAt.push(seed.at)
+    }
+    expect(streets.length).toBeGreaterThan(0)
+
+    const byId = new Map(majors.map((m) => [m.id, m]))
+    const CLOSE = 0.5 * MINOR.separation
+    for (let k = 0; k < streets.length; k++) {
+      const parent = byId.get(streetParents[k])!
+      const seedAt = streetSeedAt[k]
+      const pts = streets[k].points
+      let run = 0
+      let maxRun = 0
+      for (let i = 0; i < pts.length; i++) {
+        const segLen = i > 0 ? Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y) : 0
+        // R6's own exclusion zone: within opts.separation of the seed, the
+        // parent isn't checked, so don't count proximity there either.
+        if (Math.hypot(pts[i].x - seedAt.x, pts[i].y - seedAt.y) < MINOR.separation) { run = 0; continue }
+        const { dist } = nearestOnPolyline(pts[i], parent.points)
+        if (dist < CLOSE) run += segLen
+        else { maxRun = Math.max(maxRun, run); run = 0 }
+      }
+      maxRun = Math.max(maxRun, run)
+      expect(maxRun).toBeLessThanOrEqual(100)
+    }
   })
 })
