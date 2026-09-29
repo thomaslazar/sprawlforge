@@ -6,7 +6,7 @@ import { sampleTerrain } from '../terrain'
 import { distToPolyline } from '../terrain/rivers'
 import type { District, HighwaySegment, Road, SectorParams, Terrain, ZoneType } from '../types'
 import {
-  HIGHWAY_WIDTH, assignHighwayLevels, buildInterchanges, cutStreetsAtGround, highwayCrossings, levelAt, traceHighway,
+  HIGHWAY_WIDTH, assignHighwayLevels, buildInterchanges, cutStreetsAtGround, highwayCrossings, levelAt, noBuildStrips, traceHighway,
 } from './highway'
 import { MAJOR } from './trace'
 
@@ -300,5 +300,32 @@ describe('highway levels', () => {
       expect(Math.abs(y - 2000)).toBeGreaterThanOrEqual(200)
       expect(pointAtT(hw.points, c.at).x).toBeCloseTo(2000)
     }
+  })
+
+  it('wet stretch after sunken passes through ground', () => {
+    const ds = [district('a', 'corp', 0, 1995), district('b', 'residential', 1995, 4000)]
+    const s = assignHighwayLevels(hw, ds, wet(1996, 2100), rng())
+    expect(s.map((x) => x.level)).toEqual(['sunken', 'ground', 'elevated'])
+    expect(levelAt(s, 2050 / 4000)).toBe('elevated')
+  })
+
+  it('an arterial ending exactly on a highway vertex yields one crossing', () => {
+    const h2: Road = { ...hw, points: [{ x: 2000, y: 0 }, { x: 2000, y: 2000 }, { x: 2000, y: 4000 }] }
+    const a = { ...line('A', 'arterial', { x: 1000, y: 1000 }, { x: 2000, y: 2000 }), points: [{ x: 1000, y: 1000 }, { x: 2000, y: 2000 }, { x: 3000, y: 3000 }] }
+    expect(highwayCrossings(h2, [a], [seg(0, 1, 'elevated')], rng())).toHaveLength(1)
+  })
+
+  it('interchanges keep 500 m apart', () => {
+    const arts = [1050, 1100].map((y, i) => line('A' + i, 'arterial', { x: 0, y }, { x: 4000, y }))
+    const segs = [seg(0, 1, 'elevated')]
+    const cr = highwayCrossings(hw, arts, segs, rng())
+    expect(buildInterchanges(hw, cr, arts, segs, dry, 4000).crossings.filter((c) => c.interchange)).toHaveLength(1)
+  })
+
+  it('no-build strips exist for elevated and ground, not sunken', () => {
+    const segs = [seg(0, 0.3, 'elevated'), seg(0.3, 0.6, 'sunken', true), seg(0.6, 1, 'ground', true)]
+    const strips = noBuildStrips(hw, segs)
+    expect(strips).toHaveLength(2)
+    for (const st of strips) expect(st.some((p) => Math.abs(p.x - 2000) > HIGHWAY_WIDTH / 2)).toBe(true)
   })
 })

@@ -259,16 +259,22 @@ function tryAssign(
     const pref = preference(z, z === 'industrial' || z === 'docks' || z === 'slum' ? rolls.b : rolls.a)
     const short = (st.to - st.from) * len < MIN_STRETCH_M
     const id = st.district.id
-    if (i === 0) level = st.wetT !== null && pref === 'sunken' ? 'elevated' : pref
-    else if (st.wetT !== null && level !== 'elevated') {
-      const steps = LEVELS.indexOf('elevated') - LEVELS.indexOf(level)
-      changes += steps
-      if (steps === 2 && st.wetT > st.from) { // sunken → ground (dry lead-in) → elevated
-        const mid = (st.from + st.wetT) / 2
-        push(st.from, mid, 'ground', id)
-        push(mid, st.to, 'elevated', id)
-        level = 'elevated'
-        return
+    const wetStretch = st.wetT !== null
+    if (i === 0) level = wetStretch ? 'elevated' : pref
+    else if (wetStretch) { // R19: any wet stretch ends elevated, whatever came before
+      changes += LEVELS.indexOf('elevated') - LEVELS.indexOf(level)
+      if (level === 'sunken') { // sunken → ground → elevated
+        const prev = out[out.length - 1]
+        if ((st.wetT! - st.from) * len >= 5 * SAMPLE_M) {
+          const mid = (st.from + st.wetT!) / 2
+          push(st.from, mid, 'ground', id)
+          push(mid, st.to, 'elevated', id)
+          level = 'elevated'
+          return
+        }
+        const cutAt = prev.to - Math.min(150 / len, (prev.to - prev.from) / 2)
+        out.push({ from: cutAt, to: prev.to, level: 'ground', districtId: prev.districtId, transition: true })
+        prev.to = cutAt
       }
       level = 'elevated'
     } else if (!short && pref !== level && changes < cap) {
@@ -315,7 +321,7 @@ function segHit(a: Pt, b: Pt, c: Pt, d: Pt): number | null {
   if (Math.abs(den) < 1e-12) return null
   const t = ((c.x - a.x) * q.y - (c.y - a.y) * q.x) / den
   const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / den
-  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? t : null
+  return t >= 0 && t < 1 && u >= 0 && u < 1 ? t : null
 }
 
 export function highwayCrossings(highway: Road, roads: Road[], segments: HighwaySegment[], rng: Rng): HighwayCrossing[] {
@@ -340,7 +346,11 @@ export function highwayCrossings(highway: Road, roads: Road[], segments: Highway
       }
     }
   }
-  return out.sort((a, b) => a.at - b.at)
+  const seen = new Set<string>()
+  return out.filter((c) => {
+    const k = c.roadId + ':' + Math.round(c.at * 1e6)
+    return seen.has(k) ? false : (seen.add(k), true)
+  }).sort((a, b) => a.at - b.at)
 }
 
 const CUT_DIST = HIGHWAY_WIDTH / 2 + 5
@@ -377,6 +387,7 @@ export function cutStreetsAtGround(streets: Road[], highway: Road, segments: Hig
 // ------------------------------------------------------------ interchanges
 
 const IC_SPACING_M = 1000
+const IC_REACH_M = 500
 const IC_TRANSITION_CLEAR_M = 200
 const RAMP_ART_M = 120
 const RAMP_HWY_M = 200
@@ -395,7 +406,7 @@ function ramp(id: string, a: Pt, c: Pt, h: Pt): Road {
 
 export function buildInterchanges(
   highway: Road, crossings: HighwayCrossing[], roads: Road[], segments: HighwaySegment[],
-  terrain?: Terrain, sizeM = Infinity,
+  terrain: Terrain, sizeM: number,
 ): { crossings: HighwayCrossing[]; ramps: Road[] } {
   const hp = highway.points
   const len = polylineLength(hp)
@@ -403,11 +414,15 @@ export function buildInterchanges(
   const chosen: HighwayCrossing[] = []
   const arterials = new Map(roads.filter((r) => r.class === 'arterial').map((r) => [r.id, r]))
   const starts = segments.filter((s) => s.transition).map((s) => s.from * len)
+  let target = 0
   const ok = (c: HighwayCrossing) =>
     arterials.has(c.roadId) && !chosen.includes(c)
-    && !(terrain && inWater(terrain, pointAtT(hp, c.at)))
+    && !inWater(terrain, pointAtT(hp, c.at))
+    && Math.abs(c.at * len - target) <= IC_REACH_M
+    && chosen.every((o) => Math.abs(o.at - c.at) * len >= IC_REACH_M)
     && !starts.some((s) => Math.abs(c.at * len - s) < IC_TRANSITION_CLEAR_M)
   for (let s = IC_SPACING_M; s < len; s += IC_SPACING_M) {
+    target = s
     let best: HighwayCrossing | null = null
     for (const c of out) if (ok(c) && (!best || Math.abs(c.at * len - s) < Math.abs(best.at * len - s))) best = c
     if (best) { best.interchange = true; chosen.push(best) }
