@@ -1,4 +1,4 @@
-import { pointAtT, pointInRings, polylineLength, slicePolyline, type Pt } from '../geometry'
+import { pointAtT, polylineLength, ringsContainsFn, slicePolyline, type Pt } from '../geometry'
 import { distToPolyline } from '../terrain/rivers'
 import type { Road, Terrain } from '../types'
 
@@ -10,8 +10,17 @@ const MIN_STREET_PIECE = 40
 // rather than crossing it, so it gets truncated instead of bridged.
 const MIN_SHORE_ANGLE = Math.PI / 4 // 45°
 
-export const inWater = (terrain: Terrain, p: Pt): boolean =>
-  terrain.water.some((poly) => pointInRings(p, poly.map((ring) => ring.map(([x, y]) => ({ x, y })))))
+// terrain is immutable during a generation; index its water polygons once
+const waterIndexCache = new WeakMap<Terrain, Array<(p: Pt) => boolean>>()
+
+export const inWater = (terrain: Terrain, p: Pt): boolean => {
+  let fns = waterIndexCache.get(terrain)
+  if (!fns) {
+    fns = terrain.water.map((poly) => ringsContainsFn(poly))
+    waterIndexCache.set(terrain, fns)
+  }
+  return fns.some((f) => f(p))
+}
 
 /**
  * Walk a polyline (arc-length parameterized), returning [t0,t1] water

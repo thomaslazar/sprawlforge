@@ -35,6 +35,43 @@ export function pointInRings(p: Pt, rings: Pt[][]): boolean {
   return inside
 }
 
+/**
+ * Exact, y-bucketed equivalent of `pointInRings(p, rings)` for many queries
+ * against the same rings: same edge order, same crossing formula, but only
+ * the edges whose y-range touches the query's row are tested.
+ */
+export function ringsContainsFn(rings: ReadonlyArray<ReadonlyArray<readonly [number, number]>>): (p: Pt) => boolean {
+  const ax: number[] = [], ay: number[] = [], bx: number[] = [], by: number[] = []
+  for (const ring of rings) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      ax.push(ring[i][0]); ay.push(ring[i][1]); bx.push(ring[j][0]); by.push(ring[j][1])
+    }
+  }
+  let lo = Infinity, hi = -Infinity
+  for (let k = 0; k < ay.length; k++) {
+    lo = Math.min(lo, ay[k], by[k])
+    hi = Math.max(hi, ay[k], by[k])
+  }
+  const ROW = 10
+  const nRows = Number.isFinite(lo) ? Math.floor((hi - lo) / ROW) + 1 : 0
+  const rows: number[][] = Array.from({ length: nRows }, () => [])
+  for (let k = 0; k < ay.length; k++) {
+    const r0 = Math.floor((Math.min(ay[k], by[k]) - lo) / ROW)
+    const r1 = Math.floor((Math.max(ay[k], by[k]) - lo) / ROW)
+    for (let r = r0; r <= r1; r++) rows[r].push(k)
+  }
+  return (p) => {
+    const r = Math.floor((p.y - lo) / ROW)
+    if (!(r >= 0 && r < nRows)) return false
+    let inside = false
+    for (const k of rows[r]) {
+      if (ay[k] > p.y !== by[k] > p.y && p.x < ((bx[k] - ax[k]) * (p.y - ay[k])) / (by[k] - ay[k]) + ax[k])
+        inside = !inside
+    }
+    return inside
+  }
+}
+
 export interface Cut { axis: 'x' | 'y'; strip: Rect }
 
 export interface BspOpts { minCell: number; gap: number; jitter: number; rng: Rng }
