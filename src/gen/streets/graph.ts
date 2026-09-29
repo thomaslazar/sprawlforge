@@ -1,5 +1,5 @@
 import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
-import { boxOf, pointInRings, ringArea, segTouchesBox, type Pt } from '../geometry'
+import { boxOf, makeNearTieCheck, pointInRings, ringArea, segTouchesBox, type Pt } from '../geometry'
 import type { Road, Terrain } from '../types'
 
 export interface PlanarGraph {
@@ -379,12 +379,14 @@ export function clipFacesToLand(faces: Pt[][], terrain: Terrain): Array<{ poly: 
       }
     }
   }
+  const nearTie = makeNearTieCheck(terrain.land.flat(2))
   const landRings = terrain.land.map((poly) => poly.map((ring) => ring.map(([x, y]) => ({ x, y }))))
   for (const poly of faces) {
     const ring = poly.map((p) => [p.x, p.y] as [number, number])
     const box = boxOf(poly)
     let result: MultiPolygon | undefined
-    if (!landEdges.some(([a, b]) => segTouchesBox(a, b, box))) {
+    // a near-tie would make polygon-clipping snap face coordinates to the coastline's: clip for real
+    if (!landEdges.some(([a, b]) => segTouchesBox(a, b, box)) && !nearTie(ring)) {
       const c = { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 }
       if (!landRings.some((rings) => pointInRings(c, rings))) continue
       try { result = polygonClipping.union([ring]) } catch { result = undefined }

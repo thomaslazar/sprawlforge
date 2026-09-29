@@ -1,5 +1,5 @@
 import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
-import { BOX_MARGIN, boxOf, bboxOf, pointInRings, segTouchesBox, type Box, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
+import { BOX_MARGIN, boxOf, bboxOf, makeNearTieCheck, pointInRings, segTouchesBox, type Box, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import { inWater } from '../sector/bridges'
 import type { Block, Building, District, SectorParams, Terrain, ZoneType } from '../types'
@@ -135,22 +135,26 @@ export function insetRing(ring: Pt[], d: number): Pt[] | null {
 /**
  * clipped minus the no-build strips. A strip none of whose edges touch the
  * clipped shape's bbox is either wholly away from it (no-op) or wholly
- * around it (result empty), so only strips with an edge near the shape need
- * the real polygon difference (the strips are km-long, so this is the
- * expensive call).
+ * around it (result empty), so the real polygon difference (km-long strips:
+ * the expensive call) is only needed when some strip edge is near the shape.
  */
-function subtractNoBuild(clipped: MultiPolygon, noBuild: Pt[][], noBuildPolys: MultiPolygon[number][], boxes: Box[]): MultiPolygon {
+function subtractNoBuild(
+  clipped: MultiPolygon, noBuild: Pt[][], noBuildPolys: MultiPolygon[number][], boxes: Box[],
+  nearTie: (pts: Array<readonly [number, number]>) => boolean,
+): MultiPolygon {
   if (clipped.length === 0) return clipped
-  const box = boxOf(clipped.flatMap((poly) => poly.flatMap((r) => r.map(([x, y]) => ({ x, y })))))
-  const touching: MultiPolygon[number][] = []
+  const coords = clipped.flatMap((poly) => poly.flat())
+  const box = boxOf(coords.map(([x, y]) => ({ x, y })))
+  let touching = false
   for (let k = 0; k < noBuild.length; k++) {
     const b = boxes[k]
     if (b.x0 > box.x1 + BOX_MARGIN || b.x1 < box.x0 - BOX_MARGIN || b.y0 > box.y1 + BOX_MARGIN || b.y1 < box.y0 - BOX_MARGIN) continue
     const ring = noBuild[k]
-    if (ring.some((p, i) => segTouchesBox(p, ring[(i + 1) % ring.length], box))) touching.push(noBuildPolys[k])
+    if (ring.some((p, i) => segTouchesBox(p, ring[(i + 1) % ring.length], box))) touching = true
     else if (pointInRings({ x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 }, [ring])) return []
   }
-  return touching.length > 0 ? polygonClipping.difference(clipped, ...touching) : clipped
+  // near-ties would make polygon-clipping snap our coordinates to a strip's: do the real thing
+  return touching || nearTie(coords) ? polygonClipping.difference(clipped, ...noBuildPolys) : clipped
 }
 
 /**
@@ -170,6 +174,7 @@ export function fillLots(
   const districtById = new Map(districts.map((d) => [d.id, d]))
   const noBuildPolys = noBuild.map((nb) => [toRing(nb)])
   const noBuildBoxes = noBuild.map(boxOf)
+  const nearTie = makeNearTieCheck(noBuild.flat().map((p) => [p.x, p.y] as const))
   const buildings: Building[] = []
   let n = 0
 
@@ -211,7 +216,7 @@ export function fillLots(
         } else {
           pts = largestRing(safeClip(lot, (ring) => {
             const clipped = polygonClipping.intersection([ring], [toRing(inset)])
-            return noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes) : clipped
+            return noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, nearTie) : clipped
           }))
         }
         if (!pts || Math.abs(ringArea(pts)) < MIN_BUILDING_AREA) continue
