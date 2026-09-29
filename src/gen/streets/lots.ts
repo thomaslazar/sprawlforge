@@ -35,7 +35,7 @@ function largestRing(result: MultiPolygon): Pt[] | null {
 
 // polygon-clipping can throw "Unable to complete output ring" on simple but
 // numerically hard input (near-tangential crossings). Same workaround as
-// sector/buildings.ts: nudge the lot by a tiny epsilon and retry; if every
+// the old sector building filler: nudge the lot by a tiny epsilon and retry; if every
 // attempt throws, drop the lot rather than crash the sector.
 // ponytail: a dropped lot is silent; finer epsilon ladder if it ever shows.
 const CLIP_NUDGES = [0, 1e-6, -1e-6, 3e-6]
@@ -129,6 +129,8 @@ export function insetRing(ring: Pt[], d: number): Pt[] | null {
   const outArea = ringArea(out)
   if (Math.abs(outArea) < 1e-6) return null
   if (Math.sign(outArea) !== sign) return null
+  // a ring thinner than 2d inverts through a point reflection, keeping its area sign
+  if (out.some((v) => !pointInRings(v, [ring]))) return null
   return out
 }
 
@@ -221,7 +223,8 @@ export function fillLots(
           }))
         }
         if (!pts || Math.abs(ringArea(pts)) < MIN_BUILDING_AREA) continue
-        if (inWater(terrain, ringCentroid(pts))) continue
+        const cen = ringCentroid(pts)
+    if (inWater(terrain, cen) || !pointInRings(cen, [block.footprint])) continue
 
         n += 1
         buildings.push({

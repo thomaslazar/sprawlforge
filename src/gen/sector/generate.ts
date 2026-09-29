@@ -101,11 +101,14 @@ export function generateSector(params: SectorParams): SectorModel {
     ...d,
     name: generateName(nameRng.pick(pack.districtPatterns), pack.tables, nameRng),
   }))
-  const namedRoads = roads.map((r) =>
-    r.class === 'street' || r.class === 'ramp'
-      ? r
-      : { ...r, name: generateName(nameRng.pick(pack.streetPatterns), pack.tables, nameRng) },
-  )
+  // one name per arterial/highway, shared by every piece markWetSpans split it into
+  const roadNames = new Map<string, string>()
+  const namedRoads = roads.map((r) => {
+    if (r.class === 'street' || r.class === 'ramp') return r
+    const base = r.id.split('-')[0]
+    if (!roadNames.has(base)) roadNames.set(base, generateName(nameRng.pick(pack.streetPatterns), pack.tables, nameRng))
+    return { ...r, name: roadNames.get(base)! }
+  })
 
   const buildings = fillLots(namedDistricts, blocks, params, terrain, highway ? noBuildStrips(highway, segments) : [])
   const finalDistricts = deriveDistricts(namedDistricts, blocks)

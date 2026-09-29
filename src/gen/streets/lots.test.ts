@@ -1,6 +1,6 @@
 import polygonClipping from 'polygon-clipping'
 import { describe, expect, it, vi } from 'vitest'
-import { pointInRings, type Pt } from '../geometry'
+import { pointInRings, ringArea, type Pt } from '../geometry'
 import type { Block, District, SectorParams, Terrain } from '../types'
 import { fillLots, insetRing } from './lots'
 
@@ -65,9 +65,25 @@ describe('insetRing', () => {
     expect(Math.min(...ys)).toBeCloseTo(6)
     expect(Math.max(...ys)).toBeCloseTo(94)
   })
+
+  it('insetRing rejects a ring thinner than the inset', () => {
+    expect(insetRing([{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 4 }], 6)).toBeNull()
+  })
+
+  it('insetRing handles a clockwise ring', () => {
+    const ccw = insetRing(rectPoly(0, 0, 100, 100), 6)!
+    const cw = insetRing(rectPoly(0, 0, 100, 100).reverse(), 6)!
+    expect(cw).not.toBeNull()
+    expect(Math.abs(ringArea(cw))).toBeCloseTo(Math.abs(ringArea(ccw)))
+  })
 })
 
 describe('fillLots', () => {
+  it('fillLots yields nothing outside a thin block', () => {
+    const thin: Block = { ...makeBlock('D01'), footprint: [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 4 }] }
+    expect(fillLots([corpDistrict], [thin], base, dryTerrain, [])).toEqual([])
+  })
+
   it('density changes lot count', () => {
     const count = (density: number) =>
       fillLots([slumDistrict], [makeBlock('D02')], { ...base, density }, dryTerrain, []).length

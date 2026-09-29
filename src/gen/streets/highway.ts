@@ -467,38 +467,47 @@ export function buildInterchanges(
   const arterials = new Map(roads.filter((r) => r.class === 'arterial').map((r) => [r.id, r]))
   const starts = segments.filter((s) => s.transition).map((s) => s.from * len)
   let target = 0
+  const inWindow = (p: Pt) => p.x >= 0 && p.x <= sizeM && p.y >= 0 && p.y <= sizeM
+  /** the four ramps' [arterial end, control, highway end], or null unless all four fit */
+  const rampTriples = (c: HighwayCrossing): Array<[Pt, Pt, Pt]> | null => {
+    const art = arterials.get(c.roadId)!
+    const at = pointAtT(hp, c.at)
+    const artLen = polylineLength(art.points)
+    const artT = nearestT(at, art.points).t
+    const res: Array<[Pt, Pt, Pt]> = []
+    for (const side of [-1, 1]) {
+      const ta = artT + (side * RAMP_ART_M) / artLen
+      if (ta < 0 || ta > 1) return null
+      const a = pointAtT(art.points, ta)
+      const d = Math.hypot(a.x - at.x, a.y - at.y) || 1
+      const ctrl = { x: at.x + ((a.x - at.x) / d) * RAMP_BULGE_M, y: at.y + ((a.y - at.y) / d) * RAMP_BULGE_M }
+      for (const dir of [-1, 1]) {
+        const th = c.at + (dir * RAMP_HWY_M) / len
+        if (th < 0 || th > 1) return null
+        const h = pointAtT(hp, th)
+        if (![a, ctrl, h].every(inWindow)) return null
+        res.push([a, ctrl, h])
+      }
+    }
+    return res
+  }
   const ok = (c: HighwayCrossing) =>
     arterials.has(c.roadId) && !chosen.includes(c)
     && !inWater(terrain, pointAtT(hp, c.at))
     && Math.abs(c.at * len - target) <= IC_REACH_M
     && chosen.every((o) => Math.abs(o.at - c.at) * len >= IC_REACH_M)
     && !starts.some((s) => Math.abs(c.at * len - s) < IC_TRANSITION_CLEAR_M)
+    && rampTriples(c) !== null
   for (let s = IC_SPACING_M; s < len; s += IC_SPACING_M) {
     target = s
     let best: HighwayCrossing | null = null
     for (const c of out) if (ok(c) && (!best || Math.abs(c.at * len - s) < Math.abs(best.at * len - s))) best = c
     if (best) { best.interchange = true; chosen.push(best) }
   }
-  const inWindow = (p: Pt) => p.x >= 0 && p.x <= sizeM && p.y >= 0 && p.y <= sizeM
   const ramps: Road[] = []
   for (const c of chosen) {
-    const art = arterials.get(c.roadId)!
-    const at = pointAtT(hp, c.at)
-    const artLen = polylineLength(art.points)
-    const artT = nearestT(at, art.points).t
-    for (const side of [-1, 1]) {
-      const ta = artT + (side * RAMP_ART_M) / artLen
-      if (ta < 0 || ta > 1) continue
-      const a = pointAtT(art.points, ta)
-      const d = Math.hypot(a.x - at.x, a.y - at.y) || 1
-      const ctrl = { x: at.x + ((a.x - at.x) / d) * RAMP_BULGE_M, y: at.y + ((a.y - at.y) / d) * RAMP_BULGE_M }
-      for (const dir of [-1, 1]) {
-        const th = c.at + (dir * RAMP_HWY_M) / len
-        if (th < 0 || th > 1) continue
-        const h = pointAtT(hp, th)
-        if (![a, ctrl, h].every(inWindow)) continue
-        ramps.push(ramp('R' + String(ramps.length + 1).padStart(3, '0'), a, ctrl, h))
-      }
+    for (const [a, ctrl, h] of rampTriples(c)!) {
+      ramps.push(ramp('R' + String(ramps.length + 1).padStart(3, '0'), a, ctrl, h))
     }
   }
   return { crossings: out, ramps }

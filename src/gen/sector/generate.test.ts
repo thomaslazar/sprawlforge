@@ -233,3 +233,41 @@ describe('deriveDistricts', () => {
     expect(d.labelAt.y).toBeCloseTo(300)
   })
 })
+
+describe('generateSector invariants', () => {
+  const sweep = [42, 7, 158383].flatMap((seed) =>
+    (['inland', 'coastal', 'bay'] as const).map((landform) => ({ ...base, seed, size: 2, landform, river: landform !== 'inland' })))
+
+  it('every road, building, block and district point lies inside the window', () => {
+    for (const p of sweep) {
+      const m = generateSector(p)
+      const lim = m.meta.sizeM
+      const pts = [
+        ...m.roads.flatMap((r) => r.points), ...m.buildings.flatMap((b) => b.footprint),
+        ...m.blocks.flatMap((b) => [...b.poly, ...b.footprint]), ...m.districts.flatMap((d) => d.poly),
+      ]
+      const bad = pts.filter((q) => q.x < -1e-6 || q.x > lim + 1e-6 || q.y < -1e-6 || q.y > lim + 1e-6)
+      expect(bad, `${p.seed}/${p.landform}`).toHaveLength(0)
+    }
+  })
+
+  it('ramp count is four times the interchange count', () => {
+    for (const p of sweep) {
+      const m = generateSector(p)
+      const hw = m.roads.find((r) => r.class === 'highway')
+      if (!hw) continue
+      const ics = (hw.crossings ?? []).filter((c) => c.interchange).length
+      expect(m.roads.filter((r) => r.class === 'ramp'), `${p.seed}/${p.landform}`).toHaveLength(4 * ics)
+    }
+  })
+
+  it('pieces of one arterial share a name', () => {
+    const m = generateSector({ ...base, landform: 'coastal', river: true })
+    const bridges = m.roads.filter((r) => r.id.includes('-b'))
+    expect(bridges.length).toBeGreaterThan(0)
+    for (const b of bridges) {
+      const sibs = m.roads.filter((r) => r.id.split('-')[0] === b.id.split('-')[0])
+      expect(new Set(sibs.map((r) => r.name)).size).toBe(1)
+    }
+  })
+})

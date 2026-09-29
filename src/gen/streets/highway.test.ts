@@ -167,15 +167,15 @@ describe('streets/highway', () => {
     const river = terrain.riverSlice!
     for (const pt of road.points) {
       // riverSlice.width is a metro-wide scalar average; the actual carved
-      // channel can run much wider at any one point (sector/roads.test.ts
-      // uses the same 6× precedent) — this only needs to rule out sea/lake
+      // channel can run much wider at any one point (6× is the precedent
+      // from the earlier road tests) — this only needs to rule out sea/lake
       if (inWater(terrain, pt)) expect(distToPolyline(pt, river.course)).toBeLessThanOrEqual(river.width * 6)
     }
   })
 
   it('exposes HIGHWAY_WIDTH, a well-formed Road, and stays inside the window (incl. the bridge splice)', () => {
     expect(HIGHWAY_WIDTH).toBe(32)
-    for (const over of [{}, { seed: 327, landform: 'coastal' as const, river: true }]) {
+    for (const over of [{}, { seed: 385, landform: 'coastal' as const, river: true }]) {
       const p = params(over)
       const sizeM = p.size * 1000
       const terrain = sampleTerrain(p, sizeM)
@@ -313,6 +313,16 @@ describe('highway levels', () => {
     const h2: Road = { ...hw, points: [{ x: 2000, y: 0 }, { x: 2000, y: 2000 }, { x: 2000, y: 4000 }] }
     const a = { ...line('A', 'arterial', { x: 1000, y: 1000 }, { x: 2000, y: 2000 }), points: [{ x: 1000, y: 1000 }, { x: 2000, y: 2000 }, { x: 3000, y: 3000 }] }
     expect(highwayCrossings(h2, [a], [seg(0, 1, 'elevated')], rng())).toHaveLength(1)
+  })
+
+  it('a crossing too close to the highway end is not an interchange', () => {
+    const h2: Road = { ...hw, points: [{ x: 2000, y: 0 }, { x: 2000, y: 1150 }] }
+    const arts = [line('A0', 'arterial', { x: 0, y: 1100 }, { x: 4000, y: 1100 })]
+    const segs = [seg(0, 1, 'elevated')]
+    const cr = highwayCrossings(h2, arts, segs, rng())
+    const { crossings, ramps } = buildInterchanges(h2, cr, arts, segs, dry, 4000)
+    expect(crossings.some((c) => c.interchange)).toBe(false)
+    expect(ramps).toHaveLength(0)
   })
 
   it('interchanges keep 500 m apart', () => {
