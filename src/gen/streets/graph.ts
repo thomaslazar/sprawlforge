@@ -405,14 +405,25 @@ function isSliver(ring: Pt[], minArea: number, minWidth: number): boolean {
 
 const samePt = (a: Pt, b: Pt): boolean => Math.abs(a.x - b.x) < 1e-6 && Math.abs(a.y - b.y) < 1e-6
 
+const ringBoxCache = new WeakMap<Pt[], ReturnType<typeof boxOf>>()
+const ringBox = (ring: Pt[]) => {
+  let b = ringBoxCache.get(ring)
+  if (!b) { b = boxOf(ring); ringBoxCache.set(ring, b) }
+  return b
+}
+
 /** index of the face sharing the longest edge with faces[idx], or null */
 function sharedEdgeNeighbor(faces: Pt[][], idx: number): number | null {
   const ringA = faces[idx]
+  const boxA = ringBox(ringA)
   let best = -1
   let bestLen = 0
   for (let j = 0; j < faces.length; j++) {
     if (j === idx) continue
     const ringB = faces[j]
+    // shared vertices coincide within samePt's 1e-6, so disjoint bboxes share nothing
+    const bb = ringBox(ringB)
+    if (bb.x0 > boxA.x1 + 1e-5 || bb.x1 < boxA.x0 - 1e-5 || bb.y0 > boxA.y1 + 1e-5 || bb.y1 < boxA.y0 - 1e-5) continue
     for (let i = 0; i < ringA.length; i++) {
       const a1 = ringA[i]
       const b1 = ringA[(i + 1) % ringA.length]
@@ -437,9 +448,15 @@ function sharedEdgeNeighbor(faces: Pt[][], idx: number): number | null {
 export function mergeSlivers(faces: Pt[][], minArea = 2000, minWidth = 20): Pt[][] {
   let list = faces.slice()
   const giveUp = new Set<Pt[]>()
+  const sliver = new Map<Pt[], boolean>()
+  const isSliverMemo = (f: Pt[]) => {
+    let v = sliver.get(f)
+    if (v === undefined) { v = isSliver(f, minArea, minWidth); sliver.set(f, v) }
+    return v
+  }
   let guard = list.length * 2 + 10
   while (guard-- > 0) {
-    const idx = list.findIndex((f) => !giveUp.has(f) && isSliver(f, minArea, minWidth))
+    const idx = list.findIndex((f) => !giveUp.has(f) && isSliverMemo(f))
     if (idx < 0) break
     const nbIdx = sharedEdgeNeighbor(list, idx)
     if (nbIdx === null) { giveUp.add(list[idx]); continue }
