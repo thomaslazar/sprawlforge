@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { polylineLength, type Pt } from '../geometry'
+import { pointAtT, polylineLength, type Pt } from '../geometry'
+import { hashSeed, mulberry32 } from '../rng'
 import { inWater } from '../sector/bridges'
 import { sampleTerrain } from '../terrain'
 import { distToPolyline } from '../terrain/rivers'
-import type { SectorParams } from '../types'
-import { HIGHWAY_WIDTH, traceHighway } from './highway'
+import type { District, HighwaySegment, Road, SectorParams, Terrain, ZoneType } from '../types'
+import {
+  HIGHWAY_WIDTH, assignHighwayLevels, buildInterchanges, cutStreetsAtGround, highwayCrossings, levelAt, traceHighway,
+} from './highway'
 import { MAJOR } from './trace'
 
 const params = (over: Partial<SectorParams> = {}): SectorParams => ({
@@ -187,6 +190,115 @@ describe('streets/highway', () => {
         expect(pt.y).toBeGreaterThanOrEqual(0)
         expect(pt.y).toBeLessThanOrEqual(sizeM)
       }
+    }
+  })
+})
+
+const ring = (x0: number, y0: number, x1: number, y1: number): Pt[] => [
+  { x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 },
+]
+const district = (id: string, zone: ZoneType, y0: number, y1: number): District => ({
+  id, zone, name: id, bounds: { x: 0, y: y0, w: 4000, h: y1 - y0 }, poly: ring(0, y0, 4000, y1), shore: false, irregularity: 0.5,
+} as District)
+const hw: Road = { id: 'H1', class: 'highway', width: 32, name: null, points: [{ x: 2000, y: 0 }, { x: 2000, y: 4000 }] }
+const line = (id: string, cls: 'arterial' | 'street', a: Pt, b: Pt): Road => ({ id, class: cls, width: 10, name: null, points: [a, b] })
+const dry: Terrain = {
+  landform: 'inland', river: false, lakes: false, islands: false, metroSeed: 0, water: [],
+  land: [[[[0, 0], [4000, 0], [4000, 4000], [0, 4000]]]], riverSlice: null,
+}
+const wet = (y0: number, y1: number): Terrain => ({
+  ...dry, water: [[[[0, y0], [4000, y0], [4000, y1], [0, y1]]]],
+})
+const seg = (from: number, to: number, level: HighwaySegment['level'], transition = false): HighwaySegment => ({
+  from, to, level, districtId: 'd', transition,
+})
+const rng = () => mulberry32(hashSeed(42, 'highway-levels'))
+const mixed = [
+  district('a', 'corp', 0, 800), district('b', 'industrial', 800, 1600), district('c', 'residential', 1600, 2400),
+  district('d', 'corp', 2400, 3200), district('e', 'industrial', 3200, 4000),
+]
+const rank = { sunken: 0, ground: 1, elevated: 2 }
+
+describe('highway levels', () => {
+  it('single district → one segment, no transition', () => {
+    const s = assignHighwayLevels(hw, [district('a', 'industrial', 0, 4000)], dry, rng())
+    expect(s).toHaveLength(1)
+    expect(s[0]).toMatchObject({ from: 0, to: 1, transition: false })
+  })
+
+  it('levels change one step at a time', () => {
+    for (let i = 0; i < 20; i++) {
+      const s = assignHighwayLevels(hw, mixed, dry, mulberry32(i))
+      for (let k = 1; k < s.length; k++) {
+        expect(Math.abs(rank[s[k].level] - rank[s[k - 1].level])).toBeLessThanOrEqual(1)
+        expect(s[k].transition).toBe(s[k].level !== s[k - 1].level)
+      }
+    }
+  })
+
+  it('at most two level changes', () => {
+    for (let i = 0; i < 20; i++) {
+      const s = assignHighwayLevels(hw, mixed, dry, mulberry32(i))
+      expect(s.filter((x) => x.transition).length).toBeLessThanOrEqual(2)
+    }
+  })
+
+  it('short district inherits the previous level', () => {
+    const ds = [district('a', 'corp', 0, 1800), district('b', 'industrial', 1800, 2200), district('c', 'corp', 2200, 4000)]
+    const s = assignHighwayLevels(hw, ds, dry, rng())
+    expect(s.every((x) => x.level === 'sunken')).toBe(true)
+  })
+
+  it('sunken never crosses the river', () => {
+    const ds = [district('a', 'corp', 0, 1500), district('b', 'residential', 1500, 4000)]
+    for (let i = 0; i < 10; i++) {
+      const s = assignHighwayLevels(hw, ds, wet(1800, 2000), mulberry32(i))
+      for (let y = 1800; y <= 2000; y += 10) expect(levelAt(s, y / 4000)).not.toBe('sunken')
+    }
+  })
+
+  it('corp prefers sunken', () => {
+    const s = assignHighwayLevels(hw, [district('a', 'corp', 0, 2000), district('b', 'corp', 2000, 4000)], dry, rng())
+    expect(s.length).toBeGreaterThan(0)
+    expect(s.every((x) => x.level === 'sunken')).toBe(true)
+  })
+
+  it('ground stretch cuts streets at the corridor edge', () => {
+    const street = line('S1', 'street', { x: 1000, y: 2000 }, { x: 3000, y: 2000 })
+    const out = cutStreetsAtGround([street], hw, [seg(0, 1, 'ground')])
+    expect(out).toHaveLength(2)
+    for (const r of out) for (const p of r.points) expect(Math.abs(p.x - 2000)).toBeGreaterThan(HIGHWAY_WIDTH / 2 + 1)
+    const keep = cutStreetsAtGround([street], hw, [seg(0, 1, 'elevated')])
+    expect(keep[0]).toBe(street)
+  })
+
+  it('interchanges every ~1 km with four ramps', () => {
+    const arts = [400, 1050, 2100, 2950, 3500].map((y, i) => line('A' + i, 'arterial', { x: 0, y }, { x: 4000, y }))
+    const segs = [seg(0, 1, 'elevated')]
+    const cr = highwayCrossings(hw, arts, segs, rng())
+    const { crossings, ramps } = buildInterchanges(hw, cr, arts, segs, dry, 4000)
+    const n = crossings.filter((c) => c.interchange).length
+    expect(n).toBeGreaterThanOrEqual(3)
+    expect(n).toBeLessThanOrEqual(4)
+    expect(ramps).toHaveLength(4 * n)
+    for (const r of ramps) {
+      expect(r).toMatchObject({ class: 'ramp', width: 8, name: null })
+      expect(r.points).toHaveLength(10)
+    }
+  })
+
+  it('no interchange on a bridge or transition', () => {
+    const arts = [1300, 1050, 2050, 2500, 3000].map((y, i) => line('A' + i, 'arterial', { x: 0, y }, { x: 4000, y }))
+    const segs = [seg(0, 0.5, 'elevated'), seg(0.5, 1, 'sunken', true)]
+    const cr = highwayCrossings(hw, arts, segs, rng())
+    const { crossings } = buildInterchanges(hw, cr, arts, segs, wet(1000, 1100), 4000)
+    const chosen = crossings.filter((c) => c.interchange)
+    expect(chosen.length).toBeGreaterThan(0)
+    for (const c of chosen) {
+      const y = c.at * 4000
+      expect(y < 1000 || y > 1100).toBe(true)
+      expect(Math.abs(y - 2000)).toBeGreaterThanOrEqual(200)
+      expect(pointAtT(hw.points, c.at).x).toBeCloseTo(2000)
     }
   })
 })

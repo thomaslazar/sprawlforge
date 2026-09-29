@@ -1,9 +1,11 @@
-import { polylineLength, type Pt } from '../geometry'
+import { pointAtT, pointInRings, polylineLength, slicePolyline, type Pt } from '../geometry'
 import { hashSeed, mulberry32, type Rng } from '../rng'
 import { effectiveIrregularity } from '../sector/zoning'
 import { inWater } from '../sector/bridges'
 import { distToPolyline } from '../terrain/rivers'
-import type { Road, SectorParams, Terrain } from '../types'
+import type {
+  District, HighwayCrossing, HighwayLevel, HighwaySegment, Road, SectorParams, Terrain, ZoneType,
+} from '../types'
 import { buildRoadField, type BasisField, type RoadField } from './field'
 import { MAJOR, RoadIndex, measureCorridorWidth, traceStreamline, type TraceOpts } from './trace'
 
@@ -189,4 +191,265 @@ export function traceHighway(
 
   const road: Road = { id: 'H1', class: 'highway', width: HIGHWAY_WIDTH, name: null, points: best ?? [] }
   return { road, field: bestField ?? buildRoadField(params, terrain, sizeM, [spineBasis(Math.PI / 2)]) }
+}
+
+// ---------------------------------------------------------------- levels
+
+const SAMPLE_M = 10
+const MIN_STRETCH_M = 500
+const LEVELS: HighwayLevel[] = ['sunken', 'ground', 'elevated']
+const MAX_CAP = 4
+
+interface Stretch { district: District; from: number; to: number; wetT: number | null }
+
+function stretchesOf(pts: Pt[], districts: District[], terrain: Terrain): Stretch[] {
+  const len = polylineLength(pts)
+  const n = Math.max(1, Math.ceil(len / SAMPLE_M))
+  const found: Array<District | null> = []
+  const wetAt: boolean[] = []
+  for (let i = 0; i <= n; i++) {
+    const p = pointAtT(pts, i / n)
+    found.push(districts.find((d) => pointInRings(p, [d.poly])) ?? null)
+    wetAt.push(inWater(terrain, p))
+  }
+  const fallback = found.find((d) => d) ?? districts[0]
+  let cur = fallback
+  const ds = found.map((d) => (cur = d ?? cur))
+  const out: Stretch[] = []
+  for (let i = 0; i <= n; i++) {
+    const last = out[out.length - 1]
+    if (last && last.district === ds[i]) last.to = i / n
+    else out.push({ district: ds[i], from: out.length ? out[out.length - 1].to : 0, to: i / n, wetT: null })
+    if (wetAt[i] && out[out.length - 1].wetT === null) out[out.length - 1].wetT = i / n
+  }
+  return out
+}
+
+const preference = (zone: ZoneType, alt: boolean): HighwayLevel => {
+  if (zone === 'corp') return 'sunken'
+  if (zone === 'residential' || zone === 'entertainment') return alt ? 'sunken' : 'elevated'
+  return alt ? 'elevated' : 'ground'
+}
+
+export function assignHighwayLevels(highway: Road, districts: District[], terrain: Terrain, rng: Rng): HighwaySegment[] {
+  const pts = highway.points
+  if (districts.length === 0 || pts.length < 2) return []
+  const len = polylineLength(pts)
+  const stretches = stretchesOf(pts, districts, terrain)
+  const rolls = { a: rng.chance(0.5), b: rng.chance(0.5) } // once per sector
+  for (let cap = 2; cap < MAX_CAP; cap++) {
+    const out = tryAssign(stretches, len, cap, rolls)
+    if (out) return out
+  }
+  return tryAssign(stretches, len, MAX_CAP, rolls) ?? tryAssign(stretches, len, Infinity, rolls)!
+}
+
+function tryAssign(
+  stretches: Stretch[], len: number, cap: number, rolls: { a: boolean; b: boolean },
+): HighwaySegment[] | null {
+  const out: HighwaySegment[] = []
+  let level: HighwayLevel = 'ground'
+  let changes = 0
+  const push = (from: number, to: number, lv: HighwayLevel, id: string) => {
+    const prev = out[out.length - 1]
+    out.push({ from, to, level: lv, districtId: id, transition: !!prev && prev.level !== lv })
+  }
+  stretches.forEach((st, i) => {
+    const z = st.district.zone
+    const pref = preference(z, z === 'industrial' || z === 'docks' || z === 'slum' ? rolls.b : rolls.a)
+    const short = (st.to - st.from) * len < MIN_STRETCH_M
+    const id = st.district.id
+    if (i === 0) level = st.wetT !== null && pref === 'sunken' ? 'elevated' : pref
+    else if (st.wetT !== null && level !== 'elevated') {
+      const steps = LEVELS.indexOf('elevated') - LEVELS.indexOf(level)
+      changes += steps
+      if (steps === 2 && st.wetT > st.from) { // sunken → ground (dry lead-in) → elevated
+        const mid = (st.from + st.wetT) / 2
+        push(st.from, mid, 'ground', id)
+        push(mid, st.to, 'elevated', id)
+        level = 'elevated'
+        return
+      }
+      level = 'elevated'
+    } else if (!short && pref !== level && changes < cap) {
+      const d = LEVELS.indexOf(pref) - LEVELS.indexOf(level)
+      level = LEVELS[LEVELS.indexOf(level) + Math.sign(d)]
+      changes++
+    }
+    push(st.from, st.to, level, id)
+  })
+  return changes > cap ? null : out
+}
+
+export function levelAt(segments: HighwaySegment[], t: number): HighwayLevel {
+  return (segments.find((s) => t >= s.from && t < s.to) ?? segments[segments.length - 1]).level
+}
+
+// ------------------------------------------------------ crossings & cuts
+
+/** distance from p to the polyline plus the arc-length fraction of the nearest point */
+function nearestT(p: Pt, line: Pt[]): { dist: number; t: number } {
+  const total = polylineLength(line) || 1
+  let best = Infinity
+  let bestT = 0
+  let acc = 0
+  for (let i = 0; i < line.length - 1; i++) {
+    const a = line[i]
+    const b = line[i + 1]
+    const abx = b.x - a.x
+    const aby = b.y - a.y
+    const l = Math.hypot(abx, aby)
+    const f = clamp(0, 1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / (l * l || 1))
+    const d = Math.hypot(p.x - (a.x + f * abx), p.y - (a.y + f * aby))
+    if (d < best) { best = d; bestT = (acc + f * l) / total }
+    acc += l
+  }
+  return { dist: best, t: bestT }
+}
+
+/** intersection of segments ab and cd: fraction along ab, or null */
+function segHit(a: Pt, b: Pt, c: Pt, d: Pt): number | null {
+  const r = { x: b.x - a.x, y: b.y - a.y }
+  const q = { x: d.x - c.x, y: d.y - c.y }
+  const den = r.x * q.y - r.y * q.x
+  if (Math.abs(den) < 1e-12) return null
+  const t = ((c.x - a.x) * q.y - (c.y - a.y) * q.x) / den
+  const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / den
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? t : null
+}
+
+export function highwayCrossings(highway: Road, roads: Road[], segments: HighwaySegment[], rng: Rng): HighwayCrossing[] {
+  const hp = highway.points
+  const total = polylineLength(hp) || 1
+  const out: HighwayCrossing[] = []
+  for (const road of roads) {
+    if (road.class !== 'arterial' && road.class !== 'street') continue
+    for (let i = 0; i < road.points.length - 1; i++) {
+      let acc = 0
+      for (let j = 0; j < hp.length - 1; j++) {
+        const l = Math.hypot(hp[j + 1].x - hp[j].x, hp[j + 1].y - hp[j].y)
+        const f = segHit(hp[j], hp[j + 1], road.points[i], road.points[i + 1])
+        if (f !== null) {
+          const at = (acc + f * l) / total
+          const level = levelAt(segments, at)
+          const kind = level === 'elevated' ? 'under' : level === 'sunken' ? 'over'
+            : road.class === 'arterial' ? (rng.chance(0.5) ? 'over' : 'under') : null
+          if (kind) out.push({ roadId: road.id, at, kind, interchange: false })
+        }
+        acc += l
+      }
+    }
+  }
+  return out.sort((a, b) => a.at - b.at)
+}
+
+const CUT_DIST = HIGHWAY_WIDTH / 2 + 5
+const MIN_REMNANT_M = 40
+const DENSE_M = 2
+
+export function cutStreetsAtGround(streets: Road[], highway: Road, segments: HighwaySegment[]): Road[] {
+  const inCut = (p: Pt) => {
+    const n = nearestT(p, highway.points)
+    return n.dist < CUT_DIST && levelAt(segments, n.t) === 'ground'
+  }
+  return streets.flatMap((street) => {
+    const dense: Pt[] = [street.points[0]]
+    for (let i = 1; i < street.points.length; i++) {
+      const a = street.points[i - 1]
+      const b = street.points[i]
+      const k = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / DENSE_M)
+      for (let s = 1; s <= k; s++) dense.push({ x: a.x + ((b.x - a.x) * s) / k, y: a.y + ((b.y - a.y) * s) / k })
+    }
+    const cut = dense.map(inCut)
+    if (!cut.some(Boolean)) return [street]
+    const parts: Pt[][] = []
+    let run: Pt[] = []
+    dense.forEach((p, i) => {
+      if (cut[i]) { if (run.length) parts.push(run); run = [] } else run.push(p)
+    })
+    if (run.length) parts.push(run)
+    return parts
+      .filter((pts) => polylineLength(pts) >= MIN_REMNANT_M)
+      .map((points, i) => ({ ...street, id: street.id + String.fromCharCode(97 + i), points }))
+  })
+}
+
+// ------------------------------------------------------------ interchanges
+
+const IC_SPACING_M = 1000
+const IC_TRANSITION_CLEAR_M = 200
+const RAMP_ART_M = 120
+const RAMP_HWY_M = 200
+const RAMP_BULGE_M = 30
+const RAMP_POINTS = 10
+
+function ramp(id: string, a: Pt, c: Pt, h: Pt): Road {
+  const points: Pt[] = []
+  for (let i = 0; i < RAMP_POINTS; i++) {
+    const t = i / (RAMP_POINTS - 1)
+    const u = 1 - t
+    points.push({ x: u * u * a.x + 2 * u * t * c.x + t * t * h.x, y: u * u * a.y + 2 * u * t * c.y + t * t * h.y })
+  }
+  return { id, class: 'ramp', width: 8, name: null, points }
+}
+
+export function buildInterchanges(
+  highway: Road, crossings: HighwayCrossing[], roads: Road[], segments: HighwaySegment[],
+  terrain?: Terrain, sizeM = Infinity,
+): { crossings: HighwayCrossing[]; ramps: Road[] } {
+  const hp = highway.points
+  const len = polylineLength(hp)
+  const out = crossings.map((c) => ({ ...c }))
+  const chosen: HighwayCrossing[] = []
+  const arterials = new Map(roads.filter((r) => r.class === 'arterial').map((r) => [r.id, r]))
+  const starts = segments.filter((s) => s.transition).map((s) => s.from * len)
+  const ok = (c: HighwayCrossing) =>
+    arterials.has(c.roadId) && !chosen.includes(c)
+    && !(terrain && inWater(terrain, pointAtT(hp, c.at)))
+    && !starts.some((s) => Math.abs(c.at * len - s) < IC_TRANSITION_CLEAR_M)
+  for (let s = IC_SPACING_M; s < len; s += IC_SPACING_M) {
+    let best: HighwayCrossing | null = null
+    for (const c of out) if (ok(c) && (!best || Math.abs(c.at * len - s) < Math.abs(best.at * len - s))) best = c
+    if (best) { best.interchange = true; chosen.push(best) }
+  }
+  const inWindow = (p: Pt) => p.x >= 0 && p.x <= sizeM && p.y >= 0 && p.y <= sizeM
+  const ramps: Road[] = []
+  for (const c of chosen) {
+    const art = arterials.get(c.roadId)!
+    const at = pointAtT(hp, c.at)
+    const artLen = polylineLength(art.points)
+    const artT = nearestT(at, art.points).t
+    for (const side of [-1, 1]) {
+      const ta = artT + (side * RAMP_ART_M) / artLen
+      if (ta < 0 || ta > 1) continue
+      const a = pointAtT(art.points, ta)
+      const d = Math.hypot(a.x - at.x, a.y - at.y) || 1
+      const ctrl = { x: at.x + ((a.x - at.x) / d) * RAMP_BULGE_M, y: at.y + ((a.y - at.y) / d) * RAMP_BULGE_M }
+      for (const dir of [-1, 1]) {
+        const th = c.at + (dir * RAMP_HWY_M) / len
+        if (th < 0 || th > 1) continue
+        const h = pointAtT(hp, th)
+        if (![a, ctrl, h].every(inWindow)) continue
+        ramps.push(ramp('R' + String(ramps.length + 1).padStart(3, '0'), a, ctrl, h))
+      }
+    }
+  }
+  return { crossings: out, ramps }
+}
+
+// -------------------------------------------------------------- no-build
+
+const STRIP_HALF = HIGHWAY_WIDTH / 2 + 10
+
+export function noBuildStrips(highway: Road, segments: HighwaySegment[]): Pt[][] {
+  return segments.filter((s) => s.level !== 'sunken').map((s) => {
+    const line = slicePolyline(highway.points, s.from, s.to)
+    const off = (sign: number) => line.map((p, i) => {
+      const a = line[Math.max(0, i - 1)]
+      const b = line[Math.min(line.length - 1, i + 1)]
+      const n = normalize({ x: b.x - a.x, y: b.y - a.y })
+      return { x: p.x - n.y * STRIP_HALF * sign, y: p.y + n.x * STRIP_HALF * sign }
+    })
+    return [...off(1), ...off(-1).reverse()]
+  })
 }
