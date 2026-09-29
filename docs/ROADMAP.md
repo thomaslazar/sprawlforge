@@ -36,8 +36,10 @@ core (clipping, insetting, filling non-rectangular shapes).
    (waterfront buildings reach the river's edge), dock zones biased to
    the shore, roads crossing water become bridges (rendered as such,
    network stays connected).
-3. **Organic street patterns** ✅ — see
-   `docs/specs/2026-08-06-organic-streets-design.md`.
+3. **Organic street patterns** ✅ — superseded by the tensor-field street
+   rewrite, `docs/specs/2026-09-29-tensor-streets-design.md` (twisted
+   bisection replaced by field streamlines + planar-graph faces; original
+   spec `docs/specs/2026-08-06-organic-streets-design.md`).
 
 ## Deferred (explicit v1 excludes — do not forget)
 
@@ -108,18 +110,25 @@ core (clipping, insetting, filling non-rectangular shapes).
   toggles. Display-layer only, no generation change.
 - **Curved highways** — the highway strip stays straight; a gently bent
   highway corridor is a cheap follow-up on the corridor mechanism.
-- **Street-fabric performance** — per-building polygon clipping; profile
-  before optimizing.
-- **Improved building placement** — building lots are a rotated rect grid
-  clipped to the block polygon, which works for grid-like blocks (many
-  small buildings — fine, reads urban) but fails in organic blocks:
-  winding streets leave big weird-shaped clipped leftovers that get kept
-  as huge irregular buildings. Revisit placement so building size/shape
-  responds to block character (organic blocks → small buildings tracing
-  the street edges, courtyards, gap-toothed rows), and let placement
-  inform building KIND — POI assignment currently ignores footprint size,
-  so e.g. bars land in enormous buildings. Size/shape-aware building
-  semantics (what fits where) is the follow-up spec's core question.
+- **Street-fabric performance** — the remaining floor is `polygon-clipping`
+  in lot generation and coastal face clipping. Measured in the dev container
+  (~2x slower than a laptop, seed 42 coastal+river): 4 km ≈ 3.6 s,
+  6 km ≈ 5.7 s vs the laptop budget of 1.5 s / 4 s
+  (`src/gen/sector/perf.test.ts`, `PERF_SLACK` scales it). Profile before
+  optimizing.
+- **Improved building placement** — lots now follow graph faces (blocks are
+  street-bounded faces, lots a rotated grid clipped to them), so organic
+  blocks no longer produce huge leftovers from a district-wide partition.
+  What remains: building size/shape does not yet respond to block character
+  (courtyards, gap-toothed rows tracing the street edge), and POI assignment
+  ignores footprint size, so e.g. bars can land in enormous buildings.
+  Size/shape-aware building semantics is the follow-up spec's core question.
+- **Cyberpunk street layer** — megablocks, arcology hubs, radial fields and
+  an elevated-highway-as-attractor field (hooks: the basis-field list in
+  `streets/field.ts`, face `flags`).
+- **Highway v2** — a second highway, highway-to-highway junctions and
+  cloverleafs; a tag to force one highway level; ground-level highway noise
+  walls as geometry (render-only today).
 - **Reroll loading feedback** ✅ — generation moved to a Web Worker; a
   dimmed "Generating…" overlay covers the map while busy and pan/zoom stay
   interactive throughout (see `src/app/genWorker.ts`, `MapView.tsx`).

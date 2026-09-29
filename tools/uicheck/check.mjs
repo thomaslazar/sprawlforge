@@ -314,6 +314,8 @@ if ((await page.locator('svg polygon[data-id^="BLD"]').count()) < 50)
   fail('planned: too few buildings')
 if (!(await page.getByRole('button', { name: 'Planned', pressed: true }).isVisible()))
   fail('planned chip not pressed from URL tags')
+if ((await page.locator('svg polyline[data-class="ramp"]').count()) < 1) fail('planned: no ramps')
+if ((await page.locator('svg circle[data-junction="4"]').count()) < 20) fail('planned: too few crossroads')
 
 await page.goto(`${BASE}/?seed=42&tags=coastal,sprawl`)
 await page.waitForSelector('svg')
