@@ -268,4 +268,12 @@ describe('renderSector', () => {
     // but the real shoreline (x=600) is present
     expect(band![1]).toContain('600,')
   })
+
+  it('emits ramp polylines, junction markers and highway level groups', { timeout: 90000 }, () => {
+    const m = generateSector({ ...base, landform: 'inland', irregularity: 0.15 })
+    const svg = renderSector(m, getTheme('neon'))
+    expect(svg).toMatch(/data-class="ramp"/)
+    expect((svg.match(/data-junction="4"/g) ?? []).length).toBeGreaterThanOrEqual(20)
+    expect(svg).toMatch(/data-level="(elevated|sunken|ground)"/)
+  })
 })

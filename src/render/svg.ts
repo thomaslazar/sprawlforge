@@ -1,5 +1,6 @@
 import type { SectorModel } from '../gen/types'
 import type { Theme } from './theme'
+import { renderHighway, renderJunctionMarkers } from './highway'
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -178,16 +179,24 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     )
   }
 
-  for (const road of model.roads) {
+  // streets → arterials → ramps; the highway itself is drawn per level by
+  // renderHighway once it has segments
+  const hasLevels = model.roads.some((r) => r.class === 'highway' && r.segments?.length)
+  const rank = (c: string) => (c === 'ramp' ? 2 : c === 'street' ? 0 : 1)
+  const ordered = model.roads.map((r, i) => [r, i] as const).sort((a, b) => (rank(a[0].class) - rank(b[0].class)) || a[1] - b[1])
+  for (const [road] of ordered) {
     // bridge decks are drawn in their own pass below (deck + shadow) — the
     // road-class color never renders for a bridge span, or it'd double-draw
     if (road.bridge) continue
+    if (hasLevels && road.class === 'highway') continue
     const pts = road.points.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
-    const glow = road.class === 'street' ? '' : glowAttr
+    const glow = road.class === 'street' || road.class === 'ramp' ? '' : glowAttr
+    const cls = road.class === 'ramp' ? ' data-class="ramp"' : ''
     out.push(
-      `<polyline points="${pts}" fill="none" stroke="${theme.road[road.class]}" stroke-width="${road.width}"${glow}/>`,
+      `<polyline${cls} points="${pts}" fill="none" stroke="${theme.road[road.class]}" stroke-width="${road.width}"${glow}/>`,
     )
   }
+  renderHighway(model, theme, out, glowAttr)
 
   // Bridge decks above roads
   for (const road of model.roads) {
@@ -211,6 +220,8 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
       `<line data-id="${pier.id}" x1="${n(a.x)}" y1="${n(a.y)}" x2="${n(b.x)}" y2="${n(b.y)}" stroke="${theme.bridge.deck}" stroke-width="${n(pier.width)}"/>`,
     )
   }
+
+  renderJunctionMarkers(model, out)
 
   const placedLabels: Box[] = []
 

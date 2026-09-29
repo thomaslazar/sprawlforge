@@ -108,9 +108,9 @@ if (!(await page.getByRole('button', { name: 'Large', pressed: true }).isVisible
 // regenerate: no url change, no map change, until Update
 const urlBeforeStage = page.url()
 const svgBeforeStage = await page.locator('svg').innerHTML()
-await page.getByRole('button', { name: 'Packed' }).click()
-if (!(await page.getByRole('button', { name: 'Packed', pressed: true }).isVisible()))
-  fail('packed chip not pressed after click')
+await page.getByRole('button', { name: 'Sprawl' }).click()
+if (!(await page.getByRole('button', { name: 'Sprawl', pressed: true }).isVisible()))
+  fail('sprawl chip not pressed after click')
 if (page.url() !== urlBeforeStage) fail('clicking a chip changed the url before update')
 if ((await page.locator('svg').innerHTML()) !== svgBeforeStage)
   fail('clicking a chip regenerated the map before update')
@@ -119,7 +119,7 @@ if ((await page.locator('svg').innerHTML()) !== svgBeforeStage)
 // unchanged, map changes
 const seedBeforeUpdate = new URL(page.url()).searchParams.get('seed')
 await page.getByRole('button', { name: 'Update' }).click()
-if (!page.url().includes('packed')) fail('update did not apply staged packed tag to url')
+if (!page.url().includes('sprawl')) fail('update did not apply staged sprawl tag to url')
 if (new URL(page.url()).searchParams.get('seed') !== seedBeforeUpdate)
   fail('update changed the seed in the url')
 await waitForSvgChange(svgBeforeStage).catch(() => fail('update did not change map (timed out)'))
@@ -127,16 +127,16 @@ const svgAfterUpdate = await page.locator('svg').innerHTML()
 
 // click the now-active chip again → stages removal (unpressed), again no
 // regen/url change until the next Update
-await page.getByRole('button', { name: 'Packed' }).click()
-if (!(await page.getByRole('button', { name: 'Packed', pressed: false }).isVisible()))
-  fail('packed chip still pressed after deselect')
-if (!page.url().includes('packed')) fail('deselecting a chip changed the url before update')
+await page.getByRole('button', { name: 'Sprawl' }).click()
+if (!(await page.getByRole('button', { name: 'Sprawl', pressed: false }).isVisible()))
+  fail('sprawl chip still pressed after deselect')
+if (!page.url().includes('sprawl')) fail('deselecting a chip changed the url before update')
 if ((await page.locator('svg').innerHTML()) !== svgAfterUpdate)
   fail('deselecting a chip regenerated the map before update')
 
 // Update applies the staged removal: url loses it, map changes again
 await page.getByRole('button', { name: 'Update' }).click()
-if (page.url().includes('packed')) fail('update did not apply staged tag removal to url')
+if (page.url().includes('sprawl')) fail('update did not apply staged tag removal to url')
 await waitForSvgChange(svgAfterUpdate).catch(() => fail('update did not change map (timed out)'))
 
 // Reroll: new random seed AND every tag group freshly re-rolled from it
