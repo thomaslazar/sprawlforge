@@ -292,7 +292,7 @@ const CROSSING_RETRY_OFFSETS = [0, 100, -100, 200, -200]
  * first dry sample on a side ends that side's wet zone); null if either
  * side is still wet at the full 450 m reach (too wide to size confidently).
  */
-function measureCorridorWidth(terrain: Terrain, at: Pt, normal: Pt): number | null {
+export function measureCorridorWidth(terrain: Terrain, at: Pt, normal: Pt): number | null {
   let maxWet = 0
   for (const sign of [1, -1] as const) {
     for (let d = CROSSING_SAMPLE_STEP; d <= CROSSING_MAX_REACH; d += CROSSING_SAMPLE_STEP) {
