@@ -357,10 +357,62 @@ const CUT_DIST = HIGHWAY_WIDTH / 2 + 5
 const MIN_REMNANT_M = 40
 const DENSE_M = 2
 
+/**
+ * nearestT restricted to the segments within `reach` of p (50 m grid over the
+ * segments' reach-inflated bboxes), or null when none is. Same arithmetic in
+ * the same order as nearestT — cumulative lengths precomputed with the same
+ * running sum, candidates visited in index order with the same strict `<` —
+ * so a hit within `reach` matches nearestT exactly.
+ */
+function nearestTWithin(line: Pt[], reach: number): (p: Pt) => { dist: number; t: number } | null {
+  const CELL = 50
+  const total = polylineLength(line) || 1
+  const accAt: number[] = []
+  const lens: number[] = []
+  const grid = new Map<number, number[]>()
+  let acc = 0
+  for (let i = 0; i < line.length - 1; i++) {
+    const a = line[i]
+    const b = line[i + 1]
+    const l = Math.hypot(b.x - a.x, b.y - a.y)
+    accAt.push(acc)
+    lens.push(l)
+    acc += l
+    const x0 = Math.floor((Math.min(a.x, b.x) - reach - 1) / CELL), x1 = Math.floor((Math.max(a.x, b.x) + reach + 1) / CELL)
+    const y0 = Math.floor((Math.min(a.y, b.y) - reach - 1) / CELL), y1 = Math.floor((Math.max(a.y, b.y) + reach + 1) / CELL)
+    for (let cx = x0; cx <= x1; cx++) {
+      for (let cy = y0; cy <= y1; cy++) {
+        const k = cx * 100003 + cy
+        const cell = grid.get(k)
+        if (cell) cell.push(i)
+        else grid.set(k, [i])
+      }
+    }
+  }
+  return (p) => {
+    const cell = grid.get(Math.floor(p.x / CELL) * 100003 + Math.floor(p.y / CELL))
+    if (!cell) return null
+    let best = Infinity
+    let bestT = 0
+    for (const i of cell) {
+      const a = line[i]
+      const b = line[i + 1]
+      const abx = b.x - a.x
+      const aby = b.y - a.y
+      const l = lens[i]
+      const f = clamp(0, 1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / (l * l || 1))
+      const d = Math.hypot(p.x - (a.x + f * abx), p.y - (a.y + f * aby))
+      if (d < best) { best = d; bestT = (accAt[i] + f * l) / total }
+    }
+    return best < reach ? { dist: best, t: bestT } : null
+  }
+}
+
 export function cutStreetsAtGround(streets: Road[], highway: Road, segments: HighwaySegment[]): Road[] {
+  const near = nearestTWithin(highway.points, CUT_DIST)
   const inCut = (p: Pt) => {
-    const n = nearestT(p, highway.points)
-    return n.dist < CUT_DIST && levelAt(segments, n.t) === 'ground'
+    const n = near(p)
+    return n !== null && levelAt(segments, n.t) === 'ground'
   }
   return streets.flatMap((street) => {
     const dense: Pt[] = [street.points[0]]
