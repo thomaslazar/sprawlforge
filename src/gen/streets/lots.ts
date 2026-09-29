@@ -1,5 +1,5 @@
 import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
-import { bboxOf, pointInRings, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
+import { BOX_MARGIN, boxOf, bboxOf, pointInRings, segTouchesBox, type Box, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import { inWater } from '../sector/bridges'
 import type { Block, Building, District, SectorParams, Terrain, ZoneType } from '../types'
@@ -130,30 +130,6 @@ export function insetRing(ring: Pt[], d: number): Pt[] | null {
   if (Math.abs(outArea) < 1e-6) return null
   if (Math.sign(outArea) !== sign) return null
   return out
-}
-
-type Box = { x0: number; y0: number; x1: number; y1: number }
-const boxOf = (pts: Pt[]): Box => {
-  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
-  for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y) }
-  return { x0, y0, x1, y1 }
-}
-const BOX_MARGIN = 0.01 // m — anything closer than this to a strip edge goes through the real clipper
-
-/** does segment a-b touch the margin-inflated box? slab test */
-function segTouchesBox(a: Pt, b: Pt, bx: Box): boolean {
-  let t0 = 0, t1 = 1
-  for (const [p, d, lo, hi] of [
-    [a.x, b.x - a.x, bx.x0 - BOX_MARGIN, bx.x1 + BOX_MARGIN],
-    [a.y, b.y - a.y, bx.y0 - BOX_MARGIN, bx.y1 + BOX_MARGIN],
-  ]) {
-    if (d === 0) { if (p < lo || p > hi) return false; continue }
-    let u = (lo - p) / d, v = (hi - p) / d
-    if (u > v) [u, v] = [v, u]
-    t0 = Math.max(t0, u); t1 = Math.min(t1, v)
-    if (t0 > t1) return false
-  }
-  return true
 }
 
 /**

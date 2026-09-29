@@ -72,6 +72,31 @@ export function ringsContainsFn(rings: ReadonlyArray<ReadonlyArray<readonly [num
   }
 }
 
+export type Box = { x0: number; y0: number; x1: number; y1: number }
+export const boxOf = (pts: Pt[]): Box => {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y) }
+  return { x0, y0, x1, y1 }
+}
+/** m — anything closer than this to a box goes through the real clipper */
+export const BOX_MARGIN = 0.01
+
+/** does segment a-b touch the margin-inflated box? slab test */
+export function segTouchesBox(a: Pt, b: Pt, bx: Box): boolean {
+  let t0 = 0, t1 = 1
+  for (const [p, d, lo, hi] of [
+    [a.x, b.x - a.x, bx.x0 - BOX_MARGIN, bx.x1 + BOX_MARGIN],
+    [a.y, b.y - a.y, bx.y0 - BOX_MARGIN, bx.y1 + BOX_MARGIN],
+  ]) {
+    if (d === 0) { if (p < lo || p > hi) return false; continue }
+    let u = (lo - p) / d, v = (hi - p) / d
+    if (u > v) [u, v] = [v, u]
+    t0 = Math.max(t0, u); t1 = Math.min(t1, v)
+    if (t0 > t1) return false
+  }
+  return true
+}
+
 export interface Cut { axis: 'x' | 'y'; strip: Rect }
 
 export interface BspOpts { minCell: number; gap: number; jitter: number; rng: Rng }

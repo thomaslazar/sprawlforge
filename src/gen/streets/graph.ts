@@ -1,5 +1,5 @@
 import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
-import { ringArea, type Pt } from '../geometry'
+import { boxOf, pointInRings, ringArea, segTouchesBox, type Pt } from '../geometry'
 import type { Road, Terrain } from '../types'
 
 export interface PlanarGraph {
@@ -349,16 +349,40 @@ function largestRing(result: MultiPolygon): Pt[] | null {
   return best
 }
 
-/** face ∩ land; faces with no land dropped, a face split by water keeps only its largest piece */
+/**
+ * face ∩ land; faces with no land dropped, a face split by water keeps only its largest piece.
+ * A face no land edge comes near is wholly on land or wholly at sea: sea drops it, land only
+ * needs polygon-clipping's own normalisation of the ring (a lone-ring union), not the
+ * intersection against the whole coastline.
+ */
 export function clipFacesToLand(faces: Pt[][], terrain: Terrain): Array<{ poly: Pt[]; footprint: Pt[] }> {
   const out: Array<{ poly: Pt[]; footprint: Pt[] }> = []
+  const landEdges: Array<[Pt, Pt]> = []
+  for (const poly of terrain.land) {
+    for (const ring of poly) {
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i]
+        const b = ring[(i + 1) % ring.length]
+        landEdges.push([{ x: a[0], y: a[1] }, { x: b[0], y: b[1] }])
+      }
+    }
+  }
+  const landRings = terrain.land.map((poly) => poly.map((ring) => ring.map(([x, y]) => ({ x, y }))))
   for (const poly of faces) {
     const ring = poly.map((p) => [p.x, p.y] as [number, number])
-    let result: MultiPolygon
-    try {
-      result = polygonClipping.intersection([ring], terrain.land)
-    } catch {
-      continue
+    const box = boxOf(poly)
+    let result: MultiPolygon | undefined
+    if (!landEdges.some(([a, b]) => segTouchesBox(a, b, box))) {
+      const c = { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 }
+      if (!landRings.some((rings) => pointInRings(c, rings))) continue
+      try { result = polygonClipping.union([ring]) } catch { result = undefined }
+    }
+    if (!result) {
+      try {
+        result = polygonClipping.intersection([ring], terrain.land)
+      } catch {
+        continue
+      }
     }
     const footprint = largestRing(result)
     if (footprint) out.push({ poly: openRing(poly), footprint })
