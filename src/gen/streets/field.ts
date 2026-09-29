@@ -48,8 +48,47 @@ function shoreLines(terrain: Terrain): Pt[][] {
   return lines
 }
 
-/** nearest edge across all water rings/river course: its direction and distance */
-export function shoreTangent(terrain: Terrain, p: Pt): { angle: number; dist: number } | null {
+const SHORE_CELL = 100
+
+interface ShoreGrid { ax: number[]; ay: number[]; bx: number[]; by: number[]; cells: Map<number, number[]> }
+const shoreGridCache = new WeakMap<Terrain, ShoreGrid>()
+const cellKey = (ix: number, iy: number) => ix * 100003 + iy
+
+/** every shore segment, in shoreLines order, bucketed into SHORE_CELL squares by bbox */
+function shoreGrid(terrain: Terrain): ShoreGrid {
+  const cached = shoreGridCache.get(terrain)
+  if (cached) return cached
+  const g: ShoreGrid = { ax: [], ay: [], bx: [], by: [], cells: new Map() }
+  for (const line of shoreLines(terrain)) {
+    for (let i = 0; i < line.length - 1; i++) {
+      const a = line[i]
+      const b = line[i + 1]
+      const k = g.ax.length
+      g.ax.push(a.x); g.ay.push(a.y); g.bx.push(b.x); g.by.push(b.y)
+      const x0 = Math.floor(Math.min(a.x, b.x) / SHORE_CELL), x1 = Math.floor(Math.max(a.x, b.x) / SHORE_CELL)
+      const y0 = Math.floor(Math.min(a.y, b.y) / SHORE_CELL), y1 = Math.floor(Math.max(a.y, b.y) / SHORE_CELL)
+      for (let ix = x0; ix <= x1; ix++) {
+        for (let iy = y0; iy <= y1; iy++) {
+          const key = cellKey(ix, iy)
+          const cell = g.cells.get(key)
+          if (cell) cell.push(k)
+          else g.cells.set(key, [k])
+        }
+      }
+    }
+  }
+  shoreGridCache.set(terrain, g)
+  return g
+}
+
+/**
+ * nearest edge across all water rings/river course: its direction and distance.
+ * With `maxDist`, returns null when nothing lies within it (callers that only
+ * care about near shore) and searches only the surrounding grid cells; ties
+ * resolve to the earliest segment, same as the unbounded linear scan.
+ */
+export function shoreTangent(terrain: Terrain, p: Pt, maxDist?: number): { angle: number; dist: number } | null {
+  if (maxDist !== undefined) return shoreTangentNear(terrain, p, maxDist)
   const lines = shoreLines(terrain)
   let best: { dist: number; line: Pt[] } | null = null
   for (const line of lines) {
@@ -72,6 +111,38 @@ export function shoreTangent(terrain: Terrain, p: Pt): { angle: number; dist: nu
     if (d < segDist) { segDist = d; angle = Math.atan2(aby, abx) }
   }
   return { angle, dist: best.dist }
+}
+
+function shoreTangentNear(terrain: Terrain, p: Pt, maxDist: number): { angle: number; dist: number } | null {
+  const g = shoreGrid(terrain)
+  const cx = Math.floor(p.x / SHORE_CELL)
+  const cy = Math.floor(p.y / SHORE_CELL)
+  const maxR = Math.ceil(maxDist / SHORE_CELL)
+  let bestD = Infinity
+  let bestK = -1
+  const visit = (ix: number, iy: number) => {
+    const cell = g.cells.get(cellKey(ix, iy))
+    if (!cell) return
+    for (const k of cell) {
+      const abx = g.bx[k] - g.ax[k]
+      const aby = g.by[k] - g.ay[k]
+      const len2 = abx * abx + aby * aby || 1
+      const t = clamp(0, 1, ((p.x - g.ax[k]) * abx + (p.y - g.ay[k]) * aby) / len2)
+      const d = Math.hypot(p.x - (g.ax[k] + t * abx), p.y - (g.ay[k] + t * aby))
+      if (d < bestD || (d === bestD && k < bestK)) { bestD = d; bestK = k }
+    }
+  }
+  // after ring r, every segment within r * SHORE_CELL of p has been seen
+  for (let r = 0; r <= maxR; r++) {
+    if (r === 0) visit(cx, cy)
+    else {
+      for (let i = -r; i <= r; i++) { visit(cx + i, cy - r); visit(cx + i, cy + r) }
+      for (let i = -r + 1; i < r; i++) { visit(cx - r, cy + i); visit(cx + r, cy + i) }
+    }
+    if (bestD <= r * SHORE_CELL) break
+  }
+  if (bestK < 0 || bestD > maxDist) return null
+  return { angle: Math.atan2(g.by[bestK] - g.ay[bestK], g.bx[bestK] - g.ax[bestK]), dist: bestD }
 }
 
 function nearestOf(from: Pt, pool: Patch[]): Patch | null {
@@ -99,7 +170,7 @@ export function buildPatches(params: SectorParams, terrain: Terrain, sizeM: numb
         x: x + (rng.next() * 2 - 1) * 0.3 * spacing,
         y: y + (rng.next() * 2 - 1) * 0.3 * spacing,
       }
-      const tangent = shoreTangent(terrain, center)
+      const tangent = shoreTangent(terrain, center, SHORE_DIST)
       const shore = tangent !== null && tangent.dist < SHORE_DIST
       patches.push({ center, angle: shore ? tangent!.angle : 0, size: spacing, shore })
     }
@@ -153,7 +224,7 @@ function boundaryBasis(terrain: Terrain): BasisField {
   const tangentAt = (p: Pt) => {
     if (!lastP || lastP.x !== p.x || lastP.y !== p.y) {
       lastP = p
-      lastTangent = shoreTangent(terrain, p)
+      lastTangent = shoreTangent(terrain, p, BOUNDARY_REACH)
     }
     return lastTangent
   }
