@@ -24,8 +24,16 @@ export interface BasisField {
 }
 export interface RoadField { sizeM: number; patches: Patch[]; sample(p: Pt): FieldSample }
 
+// terrain is immutable and reused across every shoreTangent call within a
+// build (once per patch, twice per 20 m cache cell) — memoize the derived
+// polylines per terrain instance instead of re-mapping every ring vertex
+// on every call.
+const shoreLinesCache = new WeakMap<Terrain, Pt[][]>()
+
 /** every ring in terrain.water plus the river course, as closed polylines */
 function shoreLines(terrain: Terrain): Pt[][] {
+  const cached = shoreLinesCache.get(terrain)
+  if (cached) return cached
   const lines: Pt[][] = []
   for (const poly of terrain.water) {
     for (const ring of poly) {
@@ -36,6 +44,7 @@ function shoreLines(terrain: Terrain): Pt[][] {
     }
   }
   if (terrain.riverSlice && terrain.riverSlice.course.length >= 2) lines.push(terrain.riverSlice.course)
+  shoreLinesCache.set(terrain, lines)
   return lines
 }
 
