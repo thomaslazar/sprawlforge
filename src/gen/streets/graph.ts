@@ -58,17 +58,23 @@ function bboxCells(a: Pt, b: Pt): Array<[number, number]> {
  */
 export function buildPlanarGraph(roads: Road[], boundaries: Pt[][], snapTol = 5): PlanarGraph {
   const vertices: Pt[] = []
-  const vGrid = new Map<string, number[]>()
+  const vGrid = new Map<number, number[]>()
   const edges = new Map<number, Edge>()
   const eGrid = new Map<string, Set<number>>()
   const dedup = new Map<string, number>()
   let nextId = 0
 
+  // vertices live in a snapTol-sized grid, so a snap query only touches 3x3
+  // small cells; ties on distance resolve as the old 200 m 3x3 scan did
+  // (last visited wins: cell order dx-major, then insertion order).
+  const VCELL = Math.max(snapTol, 1)
+  const vCellOf = (p: Pt): [number, number] => [Math.floor(p.x / VCELL), Math.floor(p.y / VCELL)]
+
   const vAdd = (p: Pt): number => {
     const idx = vertices.length
     vertices.push(p)
-    const [cx, cy] = cellOf(p)
-    const k = cellKey(cx, cy)
+    const [cx, cy] = vCellOf(p)
+    const k = cx * 100003 + cy
     let arr = vGrid.get(k)
     if (!arr) { arr = []; vGrid.set(k, arr) }
     arr.push(idx)
@@ -76,16 +82,22 @@ export function buildPlanarGraph(roads: Road[], boundaries: Pt[][], snapTol = 5)
   }
 
   const vNear = (p: Pt): number => {
-    const [cx, cy] = cellOf(p)
+    const [cx, cy] = vCellOf(p)
+    const [bx, by] = cellOf(p)
     let best = -1
     let bestD = snapTol
-    for (let dx = -1; dx <= 1; dx++) {
-      for (let dy = -1; dy <= 1; dy++) {
-        const arr = vGrid.get(cellKey(cx + dx, cy + dy))
+    let bestRank = -1
+    const r = Math.ceil(snapTol / VCELL)
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dy = -r; dy <= r; dy++) {
+        const arr = vGrid.get((cx + dx) * 100003 + cy + dy)
         if (!arr) continue
         for (const i of arr) {
-          const d = dist(vertices[i], p)
-          if (d <= bestD) { bestD = d; best = i }
+          const v = vertices[i]
+          const d = Math.hypot(v.x - p.x, v.y - p.y)
+          if (d > bestD) continue
+          const rank = (Math.floor(v.x / CELL) - bx + 1) * 3 + (Math.floor(v.y / CELL) - by + 1)
+          if (d < bestD || rank > bestRank || (rank === bestRank && i > best)) { bestD = d; best = i; bestRank = rank }
         }
       }
     }
@@ -183,14 +195,14 @@ export function buildPlanarGraph(roads: Road[], boundaries: Pt[][], snapTol = 5)
   })
 
   const cuts: Array<Array<{ t: number; pt: Pt }>> = snapshot.map(() => [])
-  const tested = new Set<string>()
+  const tested = new Set<number>()
   for (const key of [...grid.keys()].sort()) {
     const ids = grid.get(key)!
     for (let x = 0; x < ids.length; x++) {
       for (let y = x + 1; y < ids.length; y++) {
         const i = ids[x]
         const j = ids[y]
-        const pk = i < j ? `${i},${j}` : `${j},${i}`
+        const pk = i < j ? i * snapshot.length + j : j * snapshot.length + i
         if (tested.has(pk)) continue
         tested.add(pk)
         const ei = snapshot[i][1]
