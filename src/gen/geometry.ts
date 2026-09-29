@@ -151,3 +151,24 @@ export function ringCentroid(pts: Pt[]): Pt {
   }
   return { x: cx / (3 * area), y: cy / (3 * area) }
 }
+
+/** Douglas-Peucker: drop points within `tolerance` metres of the chord; endpoints always kept */
+export function simplifyPolyline(points: Pt[], tolerance: number): Pt[] {
+  if (points.length < 3) return points
+  const a = points[0]
+  const b = points[points.length - 1]
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const len = Math.hypot(dx, dy)
+  let worst = -1
+  let at = 0
+  for (let i = 1; i < points.length - 1; i++) {
+    const p = points[i]
+    const d = len === 0
+      ? Math.hypot(p.x - a.x, p.y - a.y)
+      : Math.abs((p.x - a.x) * dy - (p.y - a.y) * dx) / len
+    if (d > worst) { worst = d; at = i }
+  }
+  if (worst <= tolerance) return [a, b]
+  return [...simplifyPolyline(points.slice(0, at + 1), tolerance).slice(0, -1), ...simplifyPolyline(points.slice(at), tolerance)]
+}

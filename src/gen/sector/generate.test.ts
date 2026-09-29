@@ -1,8 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import { pointInRings, type Pt } from '../geometry'
+import { describe, expect, it, vi } from 'vitest'
+import { pointInRings, ringCentroid, type Pt } from '../geometry'
 import { ISLET_MOAT_OUTER_FACTOR, ISLET_RADIUS_MAX } from '../terrain/field'
 import { GENERATOR_VERSION, type Block, type District, type SectorParams, type Terrain } from '../types'
+import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
 import { deriveDistricts, generateSector } from './generate'
+
+// full pipeline is ~3-10 s per 4 km generation (tracing + land clipping dominate)
+vi.setConfig({ testTimeout: 90000 })
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
@@ -33,7 +37,7 @@ describe('generateSector', () => {
     const m = generateSector(base)
     for (const d of m.districts) expect(d.name.length).toBeGreaterThan(0)
     for (const r of m.roads) {
-      if (r.class === 'street') expect(r.name).toBeNull()
+      if (r.class === 'street' || r.class === 'ramp') expect(r.name).toBeNull()
       else expect((r.name ?? '').length).toBeGreaterThan(0)
     }
   })
@@ -58,12 +62,51 @@ describe('generateSector', () => {
   // sample the noise field per cut now) pushes this past the 5s default
   // under parallel test load — same headroom other generation-heavy tests
   // in this file already use
-  it('never anchors a poi in water (coastal, shore-clipped buildings)', { timeout: 15000 }, () => {
+  it('never anchors a poi in water (coastal, shore-clipped buildings)', { timeout: 90000 }, () => {
     const inWater = (t: Terrain, p: { x: number; y: number }) =>
       t.water.some((poly) => pointInRings(p, poly.map((ring) => ring.map(([x, y]) => ({ x, y })))))
     for (const seed of [1, 42, 119560026]) {
       const m = generateSector({ ...base, seed, landform: 'coastal' })
       for (const p of m.pois) expect(inWater(m.terrain, p.at)).toBe(false)
+    }
+  })
+  it('roads include one highway with segments and crossings', () => {
+    const m = generateSector(base)
+    const hw = m.roads.filter((r) => r.class === 'highway')
+    expect(hw.length).toBeGreaterThan(0)
+    expect(hw.every((r) => r.id.startsWith('H1'))).toBe(true)
+    expect(hw[0].segments!.length).toBeGreaterThan(0)
+    expect(Array.isArray(hw[0].crossings)).toBe(true)
+  })
+  it('districts are faces: every block centroid is inside its district poly', () => {
+    const m = generateSector(base)
+    expect(m.blocks.length).toBeGreaterThan(0)
+    for (const b of m.blocks) {
+      const d = m.districts.find((x) => x.id === b.districtId)!
+      const c = ringCentroid(b.poly)
+      const inside = pointInRings(c, [d.poly])
+      const touches = b.footprint.some((p) => pointInRings(p, [d.poly]))
+      expect(inside || touches).toBe(true)
+    }
+  })
+  it('has crossroads on a planned seed', { timeout: 90000 }, () => {
+    const m = generateSector({ ...base, irregularity: 0.15, landform: 'coastal', river: true })
+    const land = m.terrain.land.map((poly) => poly[0].map(([x, y]) => ({ x, y })))
+    const g = buildPlanarGraph(m.roads, [windowRing(4000), ...land])
+    expect(degree4Vertices(g).length).toBeGreaterThanOrEqual(20)
+  })
+  it('2 km sector still has streets and buildings', () => {
+    const m = generateSector({ ...base, size: 2 })
+    expect(m.roads.filter((r) => r.class === 'street').length).toBeGreaterThanOrEqual(20)
+    expect(m.buildings.length).toBeGreaterThanOrEqual(50)
+  })
+  it('ramps are unnamed and never bridges', () => {
+    const m = generateSector(base)
+    const ramps = m.roads.filter((r) => r.class === 'ramp')
+    expect(ramps.length).toBeGreaterThan(0)
+    for (const r of ramps) {
+      expect(r.name).toBeNull()
+      expect(r.bridge).toBeFalsy()
     }
   })
   it('shadowrunish pack changes names but not geometry', () => {
@@ -76,13 +119,9 @@ describe('generateSector', () => {
   it('does not throw on seeds that used to break polygon-clipping on a river corridor', () => {
     // inland/river/islands sector at high irregularity — the crash-reported
     // tag combo (inland,small,dense,balanced,normal,sprawl,river,islands).
-    // 2882370099 is the originally-reported seed (crashed before a reroll);
-    // 4 and 40 also self-intersected in corridorPolygon's old averaged-normal
-    // river-corridor join (src/gen/partition/twisted.ts). 95 and 96 crashed
-    // via a second, independent bug: polygon-clipping choking on a
-    // legitimate-but-numerically-hard block/building clip in
-    // src/gen/sector/buildings.ts (fixed with the same epsilon-nudge-retry
-    // pattern contour.ts already uses for this class of library failure).
+    // 2882370099 is the originally-reported seed; 4, 40, 95 and 96 crashed
+    // the old partitioner / building clip. Kept as a smoke test over the
+    // same seeds for the face and lot clipping that replaced them.
     const params: SectorParams = {
       seed: 0, size: 2, density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.85,
       landform: 'inland', river: true, lakes: false, islands: true, piers: false,

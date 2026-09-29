@@ -36,7 +36,7 @@ describe('renderSector', () => {
   // and streets both), so a 6km sector's extra fabric pushes this past the
   // 5s default under parallel test load — same headroom bump other
   // generation-heavy tests in this codebase already use
-  it('has a metric scale bar', { timeout: 15000 }, () => {
+  it('has a metric scale bar', { timeout: 90000 }, () => {
     expect(renderSector(model, getTheme('neon'))).toContain('500 m')
     const big = generateSector({ ...base, size: 6 })
     expect(renderSector(big, getTheme('neon'))).toContain('1 km')

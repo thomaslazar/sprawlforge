@@ -1,6 +1,6 @@
 import type { Pt } from '../geometry'
 import { bboxOf, pointInRings, ringCentroid } from '../geometry'
-import { irregularityField } from '../partition/irregularity'
+import { irregularityField } from '../streets/irregularity'
 import { distToPolyline } from '../terrain/rivers'
 import { hashSeed, mulberry32 } from '../rng'
 import type { District, SectorParams, Terrain, ZoneType } from '../types'
