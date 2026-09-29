@@ -190,22 +190,61 @@ export function buildPatches(params: SectorParams, terrain: Terrain, sizeM: numb
   return patches
 }
 
+const PATCH_CELL = 300
+const patchKey = (ix: number, iy: number) => ix * 100003 + iy
+
+function patchGrid(patches: Patch[]): Map<number, number[]> {
+  const grid = new Map<number, number[]>()
+  patches.forEach((patch, k) => {
+    const key = patchKey(Math.floor(patch.center.x / PATCH_CELL), Math.floor(patch.center.y / PATCH_CELL))
+    const cell = grid.get(key)
+    if (cell) cell.push(k)
+    else grid.set(key, [k])
+  })
+  return grid
+}
+
+/**
+ * The two nearest patches to p, ordered by (distance, index) — the same pair a
+ * linear scan in index order with strict `<` picks — found by ring search
+ * over the patch grid (after ring r every patch within r * PATCH_CELL is seen).
+ */
+function nearestTwo(patches: Patch[], grid: Map<number, number[]>, p: Pt): [Patch | null, Patch | null, number, number] {
+  let i1 = -1, i2 = -1
+  let d1 = Infinity, d2 = Infinity
+  const cx = Math.floor(p.x / PATCH_CELL)
+  const cy = Math.floor(p.y / PATCH_CELL)
+  const visit = (ix: number, iy: number) => {
+    const cell = grid.get(patchKey(ix, iy))
+    if (!cell) return
+    for (const k of cell) {
+      const c = patches[k].center
+      const d = Math.hypot(p.x - c.x, p.y - c.y)
+      if (d < d1 || (d === d1 && k < i1)) { i2 = i1; d2 = d1; i1 = k; d1 = d }
+      else if (d < d2 || (d === d2 && k < i2)) { i2 = k; d2 = d }
+    }
+  }
+  // patches.length bounds the search: past that many rings every cell was visited
+  for (let r = 0; r <= patches.length + 2; r++) {
+    if (r === 0) visit(cx, cy)
+    else {
+      for (let i = -r; i <= r; i++) { visit(cx + i, cy - r); visit(cx + i, cy + r) }
+      for (let i = -r + 1; i < r; i++) { visit(cx - r, cy + i); visit(cx + r, cy + i) }
+    }
+    if (d2 <= r * PATCH_CELL) break
+  }
+  return [i1 >= 0 ? patches[i1] : null, i2 >= 0 ? patches[i2] : null, d1, d2]
+}
+
 /** grid basis: blend of nearest + second-nearest patch, doubled-angle, smooth across the Voronoi seam */
 function gridBasis(patches: Patch[]): BasisField {
+  const grid = patchGrid(patches)
   return {
     name: 'grid',
     angle(p) {
-      let first: Patch | null = null
-      let second: Patch | null = null
-      let d1 = Infinity
-      let d2 = Infinity
-      for (const patch of patches) {
-        const d = Math.hypot(p.x - patch.center.x, p.y - patch.center.y)
-        if (d < d1) { second = first; d2 = d1; first = patch; d1 = d }
-        else if (d < d2) { second = patch; d2 = d }
-      }
+      const [first, second, d1, d2] = nearestTwo(patches, grid, p)
       if (!first) return null
-      if (!second) return first.angle
+      if (!second) return first!.angle
       const w2 = clamp(0, 1, 1 - (d2 - d1) / SEAM_BAND)
       const sx = Math.cos(2 * first.angle) + w2 * Math.cos(2 * second.angle)
       const sy = Math.sin(2 * first.angle) + w2 * Math.sin(2 * second.angle)
