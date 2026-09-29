@@ -50,7 +50,7 @@ import { THEMES } from './theme'
 
 describe('themes', () => {
   it('every theme defines ramp and highway level colours', () => {
-    for (const t of Object.values(THEMES)) {
+    for (const t of Object.values(themes)) {
       expect(t.road.ramp).toMatch(/^#[0-9a-f]{6}$/i)
       for (const k of ['trench', 'column', 'hatch'] as const) expect(t.highway[k]).toMatch(/^#[0-9a-f]{6}$/i)
     }
@@ -555,7 +555,7 @@ git commit -m "feat: sector pipeline traces roads first, districts from faces"
 
 ```ts
 it('emits ramp polylines, junction markers and highway level groups', () => {
-  const svg = renderSvg(generateSector(params42Planned), THEMES.neon)
+  const svg = renderSvg(generateSector(params42Planned), themes.neon)
   expect(svg).toMatch(/data-class="ramp"/)
   expect((svg.match(/data-junction="4"/g) ?? []).length).toBeGreaterThanOrEqual(20)
   expect(svg).toMatch(/data-level="(elevated|sunken|ground)"/)
