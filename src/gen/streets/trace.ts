@@ -52,21 +52,12 @@ function towards(v: Pt, ref: Pt): Pt {
   return v.x * ref.x + v.y * ref.y < 0 ? { x: -v.x, y: -v.y } : v
 }
 
-function nearestOnSegment(p: Pt, a: Pt, b: Pt): { pt: Pt; d: number } {
-  const abx = b.x - a.x
-  const aby = b.y - a.y
-  const len2 = abx * abx + aby * aby || 1
-  const t = clamp(0, 1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2)
-  const pt = { x: a.x + t * abx, y: a.y + t * aby }
-  return { pt, d: Math.hypot(p.x - pt.x, p.y - pt.y) }
-}
-
 interface Seg { id: string; cls: RoadClass; a: Pt; b: Pt }
 
 /** uniform grid hash of road segments; nearest() scans only the cells within radius */
 export class RoadIndex {
   private cellSize: number
-  private cells = new Map<string, Seg[]>()
+  private cells = new Map<number, Seg[]>()
 
   constructor(cellSize: number) {
     this.cellSize = cellSize
@@ -81,7 +72,7 @@ export class RoadIndex {
       const cy1 = Math.floor(Math.max(seg.a.y, seg.b.y) / this.cellSize)
       for (let cx = cx0; cx <= cx1; cx++) {
         for (let cy = cy0; cy <= cy1; cy++) {
-          const key = `${cx},${cy}`
+          const key = cx * 100003 + cy
           let bucket = this.cells.get(key)
           if (!bucket) { bucket = []; this.cells.set(key, bucket) }
           bucket.push(seg)
@@ -97,11 +88,18 @@ export class RoadIndex {
     const cy1 = Math.floor((p.y + radius) / this.cellSize)
     for (let cx = cx0; cx <= cx1; cx++) {
       for (let cy = cy0; cy <= cy1; cy++) {
-        const bucket = this.cells.get(`${cx},${cy}`)
+        const bucket = this.cells.get(cx * 100003 + cy)
         if (!bucket) continue
         for (const seg of bucket) {
-          const { pt, d } = nearestOnSegment(p, seg.a, seg.b)
-          if (d <= radius) visit(seg, pt, d)
+          // nearest point on the segment; only allocate the point for hits
+          const abx = seg.b.x - seg.a.x
+          const aby = seg.b.y - seg.a.y
+          const len2 = abx * abx + aby * aby || 1
+          const t = clamp(0, 1, ((p.x - seg.a.x) * abx + (p.y - seg.a.y) * aby) / len2)
+          const qx = seg.a.x + t * abx
+          const qy = seg.a.y + t * aby
+          const d = Math.hypot(p.x - qx, p.y - qy)
+          if (d <= radius) visit(seg, { x: qx, y: qy }, d)
         }
       }
     }
