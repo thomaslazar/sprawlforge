@@ -22,6 +22,10 @@
 
   "remoteUser": "node",
 
+  // Host workspace path, so post-create.sh can symlink the container's
+  // Claude Code session dir onto the host's (path differs per machine).
+  "containerEnv": { "HOST_WORKSPACE": "${localWorkspaceFolder}" },
+
   // Vite dev server
   "forwardPorts": [5173],
 

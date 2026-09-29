@@ -5,9 +5,11 @@ set -euo pipefail
 # --- Claude Code session path symlink ---
 # Claude Code indexes sessions by project path. The host path differs from
 # the container path (/workspaces/sprawlforge), so we symlink so sessions
-# are shared in and out of the container.
+# are shared in and out of the container. HOST_WORKSPACE comes from
+# devcontainer.json (${localWorkspaceFolder}) so this works on any machine.
 CONTAINER_KEY=$(pwd | sed 's|/|-|g')
-ln -sfn ~/.claude/projects/-Users-ibn-Development-Sprawlforge \
+HOST_KEY=$(echo "${HOST_WORKSPACE:-/Users/ibn/Development/Sprawlforge}" | sed 's|/|-|g')
+ln -sfn ~/.claude/projects/"$HOST_KEY" \
   ~/.claude/projects/"$CONTAINER_KEY" 2>/dev/null || true
 
 # Ensure directories Claude Code expects exist
