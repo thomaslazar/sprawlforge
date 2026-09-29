@@ -139,6 +139,9 @@ describe('streets/graph', () => {
     const faces = facesOf(g)
     const clipped = clipFacesToLand(faces, terrain)
     expect(clipped.length).toBeGreaterThan(0)
-    for (const { footprint } of clipped) expect(Math.abs(ringArea(footprint))).toBeGreaterThan(0)
+    for (const { poly, footprint } of clipped) {
+      expect(Math.abs(ringArea(footprint))).toBeGreaterThan(0)
+      for (const ring of [poly, footprint]) expect(ring[0]).not.toEqual(ring[ring.length - 1])
+    }
   })
 })

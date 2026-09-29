@@ -13,7 +13,7 @@ import { sampleTerrain } from '../terrain'
 import { GENERATOR_VERSION, type Block, type District, type Road, type SectorModel, type SectorParams, type Terrain } from '../types'
 import { placePiers } from './piers'
 import { placePois } from './pois'
-import { markWetSpans, truncateUnlandableRoads } from './bridges'
+import { markWetSpans } from './bridges'
 import { traceRoads } from './streets'
 import { assignZones } from './zoning'
 
@@ -45,20 +45,14 @@ type Face = { poly: Pt[]; footprint: Pt[] }
 /** roads → cleaned faces clipped to land (dangling stubs pruned, slivers merged) */
 function facesFor(roads: Road[], boundaries: Pt[][], terrain: Terrain): Face[] {
   const g = pruneDanglers(buildPlanarGraph(roads, boundaries))
-  return clipFacesToLand(mergeSlivers(facesOf(g)), terrain).map((f) => ({ poly: open(f.poly), footprint: open(f.footprint) }))
-}
-
-/** polygon-clipping closes its rings; the model's rings are open (no repeated first point) */
-function open(ring: Pt[]): Pt[] {
-  const a = ring[0]
-  const b = ring[ring.length - 1]
-  return ring.length > 3 && a.x === b.x && a.y === b.y ? ring.slice(0, -1) : ring
+  return clipFacesToLand(mergeSlivers(facesOf(g)), terrain)
 }
 
 const centroidDist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y)
 
 /** block -> district by centroid containment, else nearest district centroid */
 function toBlocks(faces: Face[], districts: District[]): Block[] {
+  if (districts.length === 0) return []
   const centers = districts.map((d) => ringCentroid(d.poly))
   const perDistrict = new Map<string, number>()
   return faces.map((f) => {
@@ -100,7 +94,7 @@ export function generateSector(params: SectorParams): SectorModel {
 
   const blocks = toBlocks(facesFor([...hw, ...arterials, ...minor], boundaries, terrain), districts)
 
-  const roads = markWetSpans([...hw, ...truncateUnlandableRoads(arterials, terrain), ...minor, ...ramps], terrain)
+  const roads = markWetSpans([...hw, ...arterials, ...minor, ...ramps], terrain)
 
   const nameRng = mulberry32(hashSeed(params.seed, 'names'))
   const namedDistricts = districts.map((d) => ({

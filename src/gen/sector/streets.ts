@@ -6,7 +6,7 @@ import {
   MAJOR, MINOR, RoadIndex, poissonSeeds, riverCrossingSeeds, seedsAlong, traceLayer,
 } from '../streets/trace'
 import type { Road, SectorParams, Terrain } from '../types'
-import { inWater } from './bridges'
+import { inWater, truncateUnlandableRoads } from './bridges'
 import { effectiveIrregularity } from './zoning'
 
 export interface TracedRoads {
@@ -19,6 +19,8 @@ export interface TracedRoads {
 
 const SIMPLIFY_M = 1
 const simplify = (r: Road): Road => ({ ...r, points: simplifyPolyline(r.points, SIMPLIFY_M) })
+// streets are skipped by truncateUnlandableRoads' own contract; only arterials can be cut
+const finalize = (roads: Road[], terrain: Terrain) => truncateUnlandableRoads(roads.map(simplify), terrain)
 
 /** field → highway → arterials → two street passes, in spec §4 order; every polyline simplified */
 export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number): TracedRoads {
@@ -31,7 +33,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   if (highway) index.add(highway.id, highway.points, 'highway')
 
   const arterialRng = mulberry32(hashSeed(params.seed, 'arterials'))
-  const arterials = traceLayer(
+  const arterialsRaw = traceLayer(
     field, 'major',
     [
       ...(highway ? seedsAlong(highway.points, 400, false) : []),
@@ -40,17 +42,20 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     ],
     terrain, sizeM, index, MAJOR, arterialRng, irregularityAt, 'A', 'arterial',
   )
-  const pass1 = traceLayer(
+  // truncate before seeding so S/L seeds come from the final arterials
+  const arterials = finalize(arterialsRaw, terrain)
+  const pass1Raw = traceLayer(
     field, 'minor', arterials.flatMap((a) => seedsAlong(a.points, 100, true)),
     terrain, sizeM, index, MINOR, mulberry32(hashSeed(params.seed, 'streets')), irregularityAt, 'S', 'street',
   )
-  const pass2 = traceLayer(
+  const pass1 = finalize(pass1Raw, terrain)
+  const pass2Raw = traceLayer(
     field, 'major', pass1.flatMap((s) => seedsAlong(s.points, 100, true)),
     terrain, sizeM, index, MINOR, mulberry32(hashSeed(params.seed, 'streets-2')), irregularityAt, 'L', 'street',
   )
   return {
     highway: highway && simplify(highway),
-    arterials: arterials.map(simplify),
-    streets: { pass1: pass1.map(simplify), pass2: pass2.map(simplify) },
+    arterials,
+    streets: { pass1, pass2: finalize(pass2Raw, terrain) },
   }
 }

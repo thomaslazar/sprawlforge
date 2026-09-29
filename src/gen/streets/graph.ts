@@ -328,6 +328,13 @@ export function degree4Vertices(g: PlanarGraph): Pt[] {
   return out
 }
 
+/** polygon-clipping closes its rings; ours are open (no repeated first point) */
+function openRing(ring: Pt[]): Pt[] {
+  const a = ring[0]
+  const b = ring[ring.length - 1]
+  return ring.length > 3 && a.x === b.x && a.y === b.y ? ring.slice(0, -1) : ring
+}
+
 /** largest-by-area polygon in a clip result, its outer ring only (holes ignored) */
 function largestRing(result: MultiPolygon): Pt[] | null {
   let best: Pt[] | null = null
@@ -337,7 +344,7 @@ function largestRing(result: MultiPolygon): Pt[] | null {
     if (!outer) continue
     const pts = outer.map(([x, y]) => ({ x, y }))
     const area = Math.abs(ringArea(pts))
-    if (area > bestArea) { bestArea = area; best = pts }
+    if (area > bestArea) { bestArea = area; best = openRing(pts) }
   }
   return best
 }
@@ -354,7 +361,7 @@ export function clipFacesToLand(faces: Pt[][], terrain: Terrain): Array<{ poly: 
       continue
     }
     const footprint = largestRing(result)
-    if (footprint) out.push({ poly, footprint })
+    if (footprint) out.push({ poly: openRing(poly), footprint })
   }
   return out
 }
