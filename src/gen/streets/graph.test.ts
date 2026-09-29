@@ -105,6 +105,33 @@ describe('streets/graph', () => {
     expect(a.faces).toEqual(b.faces)
   })
 
+  it('isolated loop inside a square yields exactly two faces', () => {
+    // a closed square road loop, entirely disconnected from the window boundary
+    const loop = [{ x: 400, y: 400 }, { x: 600, y: 400 }, { x: 600, y: 600 }, { x: 400, y: 600 }]
+    const roads = [road('loop', [...loop, loop[0]])]
+    const g = buildPlanarGraph(roads, [windowRing(1000)])
+    const faces = facesOf(g)
+    expect(faces.length).toBe(2)
+    // distinct faces (not the same loop returned twice, once reversed): the
+    // window's own face (still the full 1,000,000 — the loop is a disjoint
+    // component, so subtracting its hole is out of scope) and the loop's
+    // small interior, both concentric so centroids alone can't tell them
+    // apart — compare areas instead.
+    const areas = faces.map((f) => Math.abs(ringArea(f))).sort((a, b) => a - b)
+    expect(areas[0]).toBeCloseTo(40000, 0)
+    expect(areas[1]).toBeCloseTo(1000000, 0)
+  })
+
+  it('disconnected stub does not add a face', () => {
+    // a 2-point road touching nothing — fully isolated
+    const roads = [road('stub', [{ x: 200, y: 200 }, { x: 250, y: 250 }])]
+    const g = buildPlanarGraph(roads, [windowRing(1000)])
+    const rawFaces = facesOf(g)
+    expect(rawFaces.every((f) => Math.abs(ringArea(f)) > 1)).toBe(true) // no zero-area ring leaked
+    const faces = facesOf(pruneDanglers(g))
+    expect(faces.length).toBe(1)
+  })
+
   it('clipFacesToLand keeps only the land footprint', () => {
     const sizeM = coastalParams.size * 1000
     const terrain = sampleTerrain(coastalParams, sizeM)

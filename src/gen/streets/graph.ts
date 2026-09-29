@@ -249,10 +249,13 @@ export function pruneDanglers(g: PlanarGraph): PlanarGraph {
 /**
  * Half-edge walk: at each vertex, outgoing edges are sorted by angle and a
  * directed edge (u,v) continues into the next edge clockwise around v. This
- * partitions every directed edge into exactly one ring per face, including the
- * unbounded outer face. The outer face — recognizable as the ring with the
- * largest absolute area, oriented opposite the inner faces — is dropped; every
- * other ring is returned counter-clockwise (ringArea > 0).
+ * partitions every directed edge into exactly one ring per face — every
+ * bounded (inner) face plus one unbounded outer-boundary ring PER CONNECTED
+ * COMPONENT (R9: a component disconnected from the rest of the graph, e.g. an
+ * isolated loop or a dangling stub, gets its own outer ring too, not just the
+ * graph's single largest one). Inner faces come out counter-clockwise
+ * (ringArea > 0); every component's outer boundary comes out clockwise
+ * (ringArea <= 0) — see the filter below.
  */
 export function facesOf(g: PlanarGraph): Pt[][] {
   const n = g.vertices.length
@@ -295,22 +298,17 @@ export function facesOf(g: PlanarGraph): Pt[][] {
       rings.push(ringIdx.map((i) => g.vertices[i]))
     }
   }
-  if (rings.length === 0) return []
-
-  let outerIdx = 0
-  let outerArea = Math.abs(ringArea(rings[0]))
-  for (let i = 1; i < rings.length; i++) {
-    const a = Math.abs(ringArea(rings[i]))
-    if (a > outerArea) { outerArea = a; outerIdx = i }
-  }
-
-  const out: Pt[][] = []
-  for (let i = 0; i < rings.length; i++) {
-    if (i === outerIdx) continue
-    const ring = rings[i]
-    out.push(ringArea(ring) > 0 ? ring : ring.slice().reverse())
-  }
-  return out
+  // Each CONNECTED COMPONENT gets its own outer-boundary ring from this walk,
+  // not just the graph's single largest one (R9) — a component disconnected
+  // from everything else (an isolated loop, a dangling stub) still produces
+  // a real ring for its own outside. With this turn rule every inner face
+  // comes out CCW (ringArea > 0) and every component's outer boundary comes
+  // out CW (ringArea <= 0, confirmed empirically for both bounded outer
+  // rings and the degenerate zero-area "slit" rings a dangling stub leaves),
+  // so drop every ring that isn't strictly positive-area instead of hunting
+  // for "the" outer ring. Do not try to subtract hole rings (an isolated
+  // loop's own footprint) from the faces around it — out of scope here.
+  return rings.filter((r) => new Set(r.map((p) => `${p.x},${p.y}`)).size >= 3 && ringArea(r) > 0)
 }
 
 /** vertices with exactly four incident edges, all belonging to roads (not boundary pseudo-edges) */
