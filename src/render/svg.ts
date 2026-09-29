@@ -161,8 +161,8 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     out.push('</g></g>')
   }
 
-  // district polys include filled lakes and the river corridor (twisted
-  // bisection carves districts straight from the land domain), so the land
+  // district polys include filled lakes and the river corridor (districts
+  // are faces cut from the land domain), so the land
   // clip still earns its keep against any straggling water sliver at the
   // shoreline (C2)
   out.push('<g clip-path="url(#land-clip)">')

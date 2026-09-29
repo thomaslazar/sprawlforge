@@ -108,8 +108,6 @@ core (clipping, insetting, filling non-rectangular shapes).
   commerce, underworld — exact categories to be worked out). Flavor-pack
   poi types get a category field; the UI gets per-category visibility
   toggles. Display-layer only, no generation change.
-- **Curved highways** — the highway strip stays straight; a gently bent
-  highway corridor is a cheap follow-up on the corridor mechanism.
 - **Street-fabric performance** — the remaining floor is `polygon-clipping`
   in lot generation and coastal face clipping. Measured in the dev container
   (~2x slower than a laptop, seed 42 coastal+river): 4 km ≈ 3.6 s,

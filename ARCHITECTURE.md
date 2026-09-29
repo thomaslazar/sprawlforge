@@ -29,14 +29,14 @@ each other.
 | 6 | Streets pass 2 | same | Second minor pass fills gaps |
 | 7 | Simplify / truncate | `sector/streets.ts`, `sector/bridges.ts` `truncateUnlandableRoads` | Simplified polylines, unlandable arterial tails cut |
 | 8 | Major graph | `streets/graph.ts` `buildPlanarGraph`, `pruneDanglers` | Planar graph of highway + arterials |
-| 9 | Districts | `graph.ts` `facesOf`, `mergeSlivers`, `clipFacesToLand` | Faces of the major graph, clipped to land |
+| 9 | Districts | `streets/graph.ts` `facesOf`, `mergeSlivers`, `clipFacesToLand` | Faces of the major graph, clipped to land |
 | 10 | Zoning | `sector/zoning.ts` `assignZones` | Zone + irregularity per district |
 | 11 | Highway levels | `streets/highway.ts` `assignHighwayLevels`, `cutStreetsAtGround`, `highwayCrossings`, `buildInterchanges` | Ground/elevated/tunnel segments, crossings, ramps |
-| 12 | Full graph + blocks | `generate.ts` `facesFor`/`toBlocks` | Faces of highway + arterials + streets, each block tagged with `districtId` |
+| 12 | Full graph + blocks | `sector/generate.ts` `facesFor`/`toBlocks` | Faces of highway + arterials + streets, each block tagged with `districtId` |
 | 13 | Wet spans | `sector/bridges.ts` `markWetSpans` | Road spans over water flagged as bridges |
-| 14 | Names | `generate.ts`, `names/` | District and road names |
+| 14 | Names | `sector/generate.ts`, `names/` | District and road names |
 | 15 | Lots | `streets/lots.ts` `fillLots` | Rotated lot grid per block, clipped to block ∩ land, minus highway no-build strips |
-| 16 | Labels, POIs, piers | `deriveDistricts`, `sector/pois.ts`, `sector/piers.ts` | Label anchors, zone-filtered POIs, dock piers |
+| 16 | Labels, POIs, piers | `sector/generate.ts` `deriveDistricts`, `sector/pois.ts`, `sector/piers.ts` | Label anchors, zone-filtered POIs, dock piers |
 | 17 | Render | `src/render/svg.ts` + `theme.ts` | One SVG string; themes are pure palettes |
 
 ### The road field and tracer (the heart)
@@ -96,19 +96,18 @@ and patch sizing so planned-grid quarters flow into organic ones spatially.
 ## Deliberate ceilings
 
 Marked with greppable `ponytail:` comments at the site — the ledger of
-known shortcuts (river corridor constant width, epsilon-retry unions,
-islet moat overlaps, label-width estimates, …). Two structural ones:
-arterial render width (24 m) exceeds the 18 m corridor gap on purpose
-(cosmetic overdraw, stays inside the sidewalk inset); `polygon-clipping`
-throws on numerically hard input, so booleans near geometry hot spots go
-through fixed-epsilon retry wrappers (`safeUnion`/`safeIntersection`).
+known shortcuts (river corridor constant width, islet moat overlaps,
+label-width estimates, silent lot drops, …). One structural one:
+`polygon-clipping` throws on numerically hard input, so lot clipping goes
+through a fixed-epsilon retry wrapper (`safeClip` in `streets/lots.ts`)
+and drops the lot if every attempt throws.
 
 ## Tunables (where knobs live)
 
 | Knob | File |
 |------|------|
 | Zone → irregularity bias | `sector/zoning.ts` `ZONE_IRREGULARITY` |
-| Zone → building size/fill | `sector/buildings.ts` `ZONE_BUILD` |
+| Zone → building size/fill | `streets/lots.ts` `ZONE_BUILD` |
 | Street spacing / step / decay | `streets/trace.ts` `MAJOR`, `MINOR` |
 | Patch size / basis fields | `streets/field.ts` |
 | Irregularity field size / contrast | `streets/irregularity.ts` |

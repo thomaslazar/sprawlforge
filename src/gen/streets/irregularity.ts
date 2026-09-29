@@ -7,8 +7,8 @@ import { fractalNoise2D } from '../terrain/noise'
 // center: empirically it rarely strays past ~0.5 ± 0.4 even sampled over many
 // periods, and a single sector-sized sample (a few noise periods) often only
 // reaches ~0.5 ± 0.2-0.3. Left raw, the field would rarely produce values
-// below GRID_BLEND_START (0.15, twisted.ts — pure grid axis) or comfortably
-// above MEANDER_MIN_IRR (0.4, twisted.ts — meander kicks in): every region
+// below the pure-grid threshold (~0.15) or comfortably
+// above the meander threshold (~0.4): every region
 // would read as the same medium-organic blend. Stretch it back out: measure
 // the deviation from center against that empirical half-width, then run it
 // through smootherstep (zero derivative at 0/1) so near-center noise still
