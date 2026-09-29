@@ -132,6 +132,51 @@ export function insetRing(ring: Pt[], d: number): Pt[] | null {
   return out
 }
 
+type Box = { x0: number; y0: number; x1: number; y1: number }
+const boxOf = (pts: Pt[]): Box => {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y) }
+  return { x0, y0, x1, y1 }
+}
+const BOX_MARGIN = 0.01 // m — anything closer than this to a strip edge goes through the real clipper
+
+/** does segment a-b touch the margin-inflated box? slab test */
+function segTouchesBox(a: Pt, b: Pt, bx: Box): boolean {
+  let t0 = 0, t1 = 1
+  for (const [p, d, lo, hi] of [
+    [a.x, b.x - a.x, bx.x0 - BOX_MARGIN, bx.x1 + BOX_MARGIN],
+    [a.y, b.y - a.y, bx.y0 - BOX_MARGIN, bx.y1 + BOX_MARGIN],
+  ]) {
+    if (d === 0) { if (p < lo || p > hi) return false; continue }
+    let u = (lo - p) / d, v = (hi - p) / d
+    if (u > v) [u, v] = [v, u]
+    t0 = Math.max(t0, u); t1 = Math.min(t1, v)
+    if (t0 > t1) return false
+  }
+  return true
+}
+
+/**
+ * clipped minus the no-build strips. A strip none of whose edges touch the
+ * clipped shape's bbox is either wholly away from it (no-op) or wholly
+ * around it (result empty), so only strips with an edge near the shape need
+ * the real polygon difference (the strips are km-long, so this is the
+ * expensive call).
+ */
+function subtractNoBuild(clipped: MultiPolygon, noBuild: Pt[][], noBuildPolys: MultiPolygon[number][], boxes: Box[]): MultiPolygon {
+  if (clipped.length === 0) return clipped
+  const box = boxOf(clipped.flatMap((poly) => poly.flatMap((r) => r.map(([x, y]) => ({ x, y })))))
+  const touching: MultiPolygon[number][] = []
+  for (let k = 0; k < noBuild.length; k++) {
+    const b = boxes[k]
+    if (b.x0 > box.x1 + BOX_MARGIN || b.x1 < box.x0 - BOX_MARGIN || b.y0 > box.y1 + BOX_MARGIN || b.y1 < box.y0 - BOX_MARGIN) continue
+    const ring = noBuild[k]
+    if (ring.some((p, i) => segTouchesBox(p, ring[(i + 1) % ring.length], box))) touching.push(noBuildPolys[k])
+    else if (pointInRings({ x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 }, [ring])) return []
+  }
+  return touching.length > 0 ? polygonClipping.difference(clipped, ...touching) : clipped
+}
+
 /**
  * Fill each block's buildable inset with a rotated grid of lots. A lot fully
  * inside a convex inset and outside every no-build ring is kept as-is; a
@@ -148,6 +193,7 @@ export function fillLots(
   const rng = mulberry32(hashSeed(params.seed, 'buildings'))
   const districtById = new Map(districts.map((d) => [d.id, d]))
   const noBuildPolys = noBuild.map((nb) => [toRing(nb)])
+  const noBuildBoxes = noBuild.map(boxOf)
   const buildings: Building[] = []
   let n = 0
 
@@ -189,7 +235,7 @@ export function fillLots(
         } else {
           pts = largestRing(safeClip(lot, (ring) => {
             const clipped = polygonClipping.intersection([ring], [toRing(inset)])
-            return noBuildPolys.length > 0 ? polygonClipping.difference(clipped, ...noBuildPolys) : clipped
+            return noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes) : clipped
           }))
         }
         if (!pts || Math.abs(ringArea(pts)) < MIN_BUILDING_AREA) continue
