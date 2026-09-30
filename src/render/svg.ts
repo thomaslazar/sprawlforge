@@ -213,6 +213,9 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     )
     batch[c] = []
   }
+  // one translucent path per class: overlapping round caps composite once, no blotches
+  const halo: Array<{ col: string; w: number | string; d: string }> = []
+  let haloAt = 0
   for (const [road] of ordered) {
     // bridge decks are drawn in their own pass below (deck + shadow) — the
     // road-class color never renders for a bridge span, or it'd double-draw
@@ -228,16 +231,18 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     const glow = glows ? glowAttr : ''
     const cls = road.class === 'ramp' ? ' data-class="ramp"' : ''
     const col = theme.road[road.class]
-    if (interactive && theme.glow && glows)
-      out.push(
-        `<polyline points="${pts}" fill="none" stroke="${col}" stroke-width="${n(road.width * 2.2)}" stroke-opacity="0.35" stroke-linecap="round"/>`,
-      )
+    if (interactive && theme.glow && glows) {
+      if (!halo.length) haloAt = out.length
+      halo.push({ col, w: n(road.width * 2.2), d: `M${pts.replace(/ /g, 'L')}` })
+    }
     out.push(
       `<polyline${cls} points="${pts}" fill="none" stroke="${col}" stroke-width="${road.width}"${glow}/>`,
     )
   }
   flush('street')
   flush('ramp')
+  if (halo.length)
+    out.splice(haloAt, 0, `<path data-halo="arterial" d="${halo.map((h) => h.d).join(' ')}" fill="none" stroke="${halo[0].col}" stroke-width="${halo[0].w}" stroke-opacity="0.35" stroke-linecap="round" stroke-linejoin="round"/>`)
   renderHighway(model, theme, out, glowAttr, interactive && theme.glow)
 
   // Bridge decks above roads

@@ -294,4 +294,19 @@ describe('renderSector', () => {
     const opens = (ia.match(/</g) ?? []).length
     expect(opens).toBeLessThan(6000) // measured 4751: POI markers+titles, labels, arterial halos remain (POIs scale with buildings, which concave-block fill tripled here)
   })
+
+  it('interactive halo is one path per class', { timeout: 90000 }, () => {
+    const m = generateSector({
+      ...base, seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, irregularity: 0.85, landform: 'bay',
+    })
+    const ia = renderSector(m, getTheme('neon'), { interactive: true })
+    for (const c of ['highway', 'arterial']) {
+      const paths = ia.match(new RegExp(`<path data-halo="${c}"[^>]*>`, 'g')) ?? []
+      expect(paths).toHaveLength(1)
+      expect(paths[0]).toContain('stroke-linecap="round"')
+      expect(paths[0]).toContain('stroke-linejoin="round"')
+    }
+    expect(ia).not.toMatch(/<polyline[^>]*stroke-opacity="0.35"/)
+    expect(renderSector(m, getTheme('neon'))).not.toContain('data-halo')
+  })
 })
