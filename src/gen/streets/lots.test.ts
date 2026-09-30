@@ -89,6 +89,14 @@ describe('fillLots', () => {
       fillLots([slumDistrict], [makeBlock('D02')], { ...base, density }, dryTerrain, []).length
     expect(count(0.9)).toBeGreaterThan(count(0.1))
   })
+  it('lots vary in size', () => {
+    const district: District = { ...corpDistrict, zone: 'residential', bounds: { x: 0, y: 0, w: 300, h: 300 }, poly: rectPoly(0, 0, 300, 300) }
+    const block: Block = { ...makeBlock('D01'), poly: rectPoly(0, 0, 240, 240), footprint: rectPoly(0, 0, 240, 240) }
+    const areas = fillLots([district], [block], base, dryTerrain, []).map((b) => Math.abs(ringArea(b.footprint)))
+    expect(new Set(areas.map(Math.round)).size).toBeGreaterThanOrEqual(4)
+    expect(Math.max(...areas) / Math.min(...areas)).toBeGreaterThanOrEqual(2)
+  })
+
   it('lots stay inside the block footprint', () => {
     const block = makeBlock('D01')
     const buildings = fillLots([corpDistrict], [block], base, dryTerrain, [])

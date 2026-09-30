@@ -1,5 +1,5 @@
 import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
-import { BOX_MARGIN, boxOf, bboxOf, makeNearTieCheck, pointInRings, segTouchesBox, simplifyPolyline, type Box, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
+import { BOX_MARGIN, boxOf, bboxOf, bspSplit, makeNearTieCheck, pointInRings, segTouchesBox, simplifyPolyline, type Box, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import { inWater } from '../sector/bridges'
 import type { Block, Building, District, SectorParams, Terrain, ZoneType } from '../types'
@@ -264,17 +264,15 @@ export function fillLots(
     const local = inset.map((p) => rotatePt(p, -theta, c))
     const bbox = bboxOf(local)
     const cell = profile.minCell * (1.25 - 0.5 * params.density)
-    const cols = Math.max(1, Math.ceil(bbox.w / cell))
-    const rows = Math.max(1, Math.ceil(bbox.h / cell))
+    const { cells } = bspSplit(bbox, { minCell: cell, gap: 3, jitter: 0.25, rng })
 
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
+    for (const r of cells) {
         if (!rng.chance(fill)) continue
-        const lx = bbox.x + col * cell
-        const ly = bbox.y + row * cell
+        // BSP leftovers too thin to be a building
+        if (r.w < 0.5 * cell || r.h < 0.5 * cell) continue
         const corners: Pt[] = [
-          { x: lx, y: ly }, { x: lx + cell, y: ly },
-          { x: lx + cell, y: ly + cell }, { x: lx, y: ly + cell },
+          { x: r.x, y: r.y }, { x: r.x + r.w, y: r.y },
+          { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h },
         ]
         const lot = corners.map((p) => rotatePt(p, theta, c))
 
@@ -314,7 +312,6 @@ export function fillLots(
           districtId: district.id,
           footprint: pts,
         })
-      }
     }
     }
   }
