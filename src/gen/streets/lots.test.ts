@@ -2,7 +2,7 @@ import polygonClipping from 'polygon-clipping'
 import { describe, expect, it, vi } from 'vitest'
 import { pointInRings, ringArea, type Pt } from '../geometry'
 import type { Block, District, SectorParams, Terrain } from '../types'
-import { fillLots, insetRing } from './lots'
+import { fillLots, insetByClipping, insetRing } from './lots'
 
 const rectPoly = (x: number, y: number, w: number, h: number): Pt[] => [
   { x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h },
@@ -158,6 +158,24 @@ describe('fillLots', () => {
         expect(insideOrOnEdge(mid, inset)).toBe(true)
       }
     }
+  })
+
+  it('concave U block gets buildings via the clipping inset', () => {
+    const u: Pt[] = [
+      { x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 120, y: 200 },
+      { x: 120, y: 80 }, { x: 80, y: 80 }, { x: 80, y: 200 }, { x: 0, y: 200 },
+    ]
+    const block: Block = { id: 'B0001', districtId: 'D03', poly: u, footprint: u, flags: {} }
+    const industrial: District = { ...corpDistrict, id: 'D03', zone: 'industrial' }
+    const buildings = fillLots([industrial], [block], base, dryTerrain, [])
+    expect(buildings.length).toBeGreaterThan(0)
+    for (const bld of buildings) for (const p of bld.footprint) expect(insideOrOnEdge(p, u, 1e-3)).toBe(true)
+  })
+
+  it('insetByClipping shrinks a square by the inset on every side', () => {
+    const rings = insetByClipping(rectPoly(0, 0, 100, 100), 6)
+    expect(rings.length).toBe(1)
+    expect(Math.abs(ringArea(rings[0]))).toBeCloseTo(88 * 88, 0)
   })
 
   it('a clipping failure drops the lot instead of throwing', () => {

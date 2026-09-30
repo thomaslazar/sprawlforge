@@ -292,6 +292,6 @@ describe('renderSector', () => {
     expect(cnt(ia, 'data-ramps')).toBe(m.roads.filter((r) => r.class === 'ramp' && !r.bridge).length)
     expect(cnt(ia, 'data-junctions')).toBe(junctions)
     const opens = (ia.match(/</g) ?? []).length
-    expect(opens).toBeLessThan(2800) // measured 2374: POI markers+titles, labels, arterial halos remain
+    expect(opens).toBeLessThan(6000) // measured 4751: POI markers+titles, labels, arterial halos remain (POIs scale with buildings, which concave-block fill tripled here)
   })
 })
