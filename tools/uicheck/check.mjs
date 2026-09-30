@@ -62,7 +62,9 @@ if (pois < 1) fail('no POIs rendered')
 const readTransform = () =>
   page.locator('.map-viewport').evaluate((el) => {
     const m = el.style.transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([-\d.]+)\)/)
-    return { x: Number(m[1]), y: Number(m[2]), zoom: Number(m[3]) }
+    // effective zoom: once a gesture settles the zoom is baked into the width
+    // (scale back to 1), so it may be read on either side of the bake
+    return { x: Number(m[1]), y: Number(m[2]), zoom: Number(m[3]) * (parseFloat(el.style.width) || 100) / 100 }
   })
 const mapContainerBox = await page.locator('.map-viewport').locator('xpath=..').boundingBox()
 const zx = mapContainerBox.x + 200
@@ -83,6 +85,17 @@ if (Math.abs(afterZoom.x - expectedX) > 1 || Math.abs(afterZoom.y - expectedY) >
     `wheel zoom is not cursor-anchored: got (${afterZoom.x}, ${afterZoom.y}), ` +
       `expected (${expectedX}, ${expectedY})`,
   )
+// baked zoom: once the gesture settles the zoom moves from the CSS scale
+// into the viewport's real size (scale back to ~1, width = zoom × 100 %) so
+// the SVG is painted at full resolution instead of an upscaled raster
+await page.waitForTimeout(400)
+const baked = await page.locator('.map-viewport').evaluate((el) => {
+  const m = el.style.transform.match(/scale\(([-\d.]+)\)/)
+  return { scale: Number(m[1]), width: el.style.width }
+})
+if (Math.abs(baked.scale - 1) > 0.01) fail(`zoom not baked into the viewport after settling: scale ${baked.scale}`)
+if (Math.abs(parseFloat(baked.width) - afterZoom.zoom * 100) > 0.01)
+  fail(`baked viewport width ${baked.width} != ${afterZoom.zoom * 100}%`)
 // reset pan/zoom for the rest of the checks below (which assume load defaults)
 await page.goto(`${BASE}/?seed=42&tags=coastal,large&pack=generic&theme=neon`)
 await page.waitForSelector('svg')
