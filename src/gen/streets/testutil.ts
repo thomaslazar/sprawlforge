@@ -1,5 +1,7 @@
 import { pointAtT, polylineLength, type Pt } from '../geometry'
 import { nearestOnPolyline } from '../terrain/rivers'
+import type { Road } from '../types'
+import { RoadIndex } from './trace'
 
 /** cheap reject: bounding boxes (each padded by `pad`) don't even overlap, so no point of `a` can be within `pad` of `b` */
 export function bboxesFar(a: Pt[], b: Pt[], pad: number): boolean {
@@ -26,4 +28,23 @@ export function maxCloseRun(a: Pt[], b: Pt[], threshold: number): number {
     else { maxRun = Math.max(maxRun, run); run = 0 }
   }
   return Math.max(maxRun, run)
+}
+
+/** for each end (within 6 m of another arterial/highway) of each arterial: meeting line angle (deg) and arc distance of the foot from the target's ends */
+export function endMeetings(roads: Road[], extra: Road[] = []): Array<{ id: string; deg: number; edge: number; end: Pt; cls: string }> {
+  const idx = new RoadIndex(200)
+  for (const r of [...roads, ...extra]) idx.add(r.id, r.points, r.class)
+  const out: Array<{ id: string; deg: number; edge: number; end: Pt; cls: string }> = []
+  for (const r of roads.filter((x) => x.class === 'arterial')) {
+    const p = r.points
+    for (const [e, prev] of [[p[0], p[1]], [p[p.length - 1], p[p.length - 2]]] as const) {
+      if (!prev) continue
+      const hit = idx.nearestMatching(e, 6, (h) => h.id !== r.id && (h.cls === 'arterial' || h.cls === 'highway'))
+      if (!hit) continue
+      let d = Math.abs(Math.atan2(e.y - prev.y, e.x - prev.x) - hit.segAngle) % Math.PI
+      if (d > Math.PI / 2) d = Math.PI - d
+      out.push({ id: r.id, deg: (d * 180) / Math.PI, edge: hit.edge, end: e, cls: hit.cls })
+    }
+  }
+  return out
 }

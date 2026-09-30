@@ -20,8 +20,9 @@ export interface TracedRoads {
 const SIMPLIFY_M = 1
 const simplify = (r: Road): Road => ({ ...r, points: simplifyPolyline(r.points, SIMPLIFY_M) })
 // streets are skipped by truncateUnlandableRoads' own contract; only arterials can be cut
-const finalize = (roads: Road[], terrain: Terrain, index: RoadIndex) =>
-  truncateUnlandableRoads(trimStubs(roads, index).map(simplify), terrain)
+const finalize = (roads: Road[], terrain: Terrain, index: RoadIndex, maxStub = 40) =>
+  truncateUnlandableRoads(trimStubs(roads, index, maxStub).map(simplify), terrain)
+const ARTERIAL_STUB_M = 0.3 * MAJOR.separation
 
 /** field → highway → arterials → two street passes, in spec §4 order; every polyline simplified */
 /** field axis closest to the seed's (highway-normal) direction: a highway seed must cross it, not run along it */
@@ -53,11 +54,11 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   // this pass a flat inland grid gets only parallel arterials that never meet
   // (they stop on rule 4 instead of snapping onto a crossing road)
   const crossRaw = traceLayer(
-    field, 'minor', finalize(arterialsRaw, terrain, index).flatMap((a) => seedsAlong(a.points, 400, true)),
+    field, 'minor', finalize(arterialsRaw, terrain, index, ARTERIAL_STUB_M).flatMap((a) => seedsAlong(a.points, 400, true)),
     terrain, sizeM, index, MAJOR, mulberry32(hashSeed(params.seed, 'arterials-2')), irregularityAt, 'B', 'arterial',
   )
   // truncate before seeding so S/L seeds come from the final arterials
-  let arterials = finalize([...arterialsRaw, ...crossRaw], terrain, index)
+  let arterials = finalize([...arterialsRaw, ...crossRaw], terrain, index, ARTERIAL_STUB_M)
   // an arterial must end on an arterial / the highway (not a street): extend before streets exist
   const artIndex = new RoadIndex(200)
   if (highway) artIndex.add(highway.id, highway.points, 'highway')

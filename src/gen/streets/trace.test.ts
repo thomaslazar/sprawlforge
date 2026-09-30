@@ -7,7 +7,7 @@ import { sampleTerrain } from '../terrain'
 import { nearestOnPolyline } from '../terrain/rivers'
 import type { Road, SectorParams, Terrain } from '../types'
 import { buildRoadField, type RoadField } from './field'
-import { bboxesFar, maxCloseRun } from './testutil'
+import { bboxesFar, endMeetings, maxCloseRun } from './testutil'
 import {
   MAJOR, MINOR, RoadIndex, extendToJunction, poissonSeeds, riverCrossingSeeds, seedsAlong, traceLayer, traceStreamline,
   type Seed, type TraceOpts,
@@ -456,5 +456,20 @@ describe('extendToJunction', () => {
   it('stops at water', () => {
     const wet = { water: [[[[340, 400], [360, 400], [360, 600], [340, 600], [340, 400]]]] } as unknown as Terrain
     expect(mk(400, wet)).toBe(A)
+  })
+})
+
+describe('join quality', () => {
+  const { roads, index, terrain, sizeM } = traceArterials()
+  const ext = extendToJunction(roads, index, terrain, sizeM, 600, 10, (c) => c === 'arterial', 300)
+  const ms = endMeetings(ext)
+  it('joins meet the target at 30° or more', () => {
+    console.log('meetings', ms.length, 'min deg', Math.min(...ms.map((m) => m.deg)))
+    expect(ms.length).toBeGreaterThan(0)
+    expect(ms.filter((m) => m.deg < 25)).toEqual([])
+  })
+  it('joins never land within 30 m of a target\'s end', () => {
+    // perpendicular-ish snaps (rule 3) may land anywhere; any oblique meeting is a join
+    expect(ms.filter((m) => m.deg < 60 && !(m.edge >= 30))).toEqual([])
   })
 })

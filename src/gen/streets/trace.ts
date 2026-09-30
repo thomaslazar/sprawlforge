@@ -54,7 +54,20 @@ function towards(v: Pt, ref: Pt): Pt {
   return v.x * ref.x + v.y * ref.y < 0 ? { x: -v.x, y: -v.y } : v
 }
 
-interface Seg { id: string; cls: RoadClass; a: Pt; b: Pt }
+interface Seg { id: string; cls: RoadClass; a: Pt; b: Pt; arc: number; total: number }
+
+/** a nearestMatching hit; `edge` = arc distance (m) from the hit point to the nearer end of its road */
+export interface MatchHit { id: string; at: Pt; dist: number; segAngle: number; cls: RoadClass; edge: number }
+
+const JOIN_EDGE_M = 30
+const JOIN_ANGLE = (30 * Math.PI) / 180
+/** a join/bend onto `hit` from `from` is valid: >= 30 m from the target's ends, meeting it at >= 30° */
+function joinOk(from: Pt, hit: MatchHit): boolean {
+  if (hit.edge < JOIN_EDGE_M) return false
+  const dx = hit.at.x - from.x
+  const dy = hit.at.y - from.y
+  return Math.hypot(dx, dy) < 0.5 || angleGapLines(Math.atan2(dy, dx), hit.segAngle) >= JOIN_ANGLE
+}
 
 /** uniform grid hash of road segments; nearest() scans only the cells within radius */
 export class RoadIndex {
@@ -66,8 +79,11 @@ export class RoadIndex {
   }
 
   add(id: string, points: Pt[], cls: RoadClass): void {
+    const total = polylineLength(points)
+    let arc = 0
     for (let i = 1; i < points.length; i++) {
-      const seg: Seg = { id, cls, a: points[i - 1], b: points[i] }
+      const seg: Seg = { id, cls, a: points[i - 1], b: points[i], arc, total }
+      arc += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y)
       const cx0 = Math.floor(Math.min(seg.a.x, seg.b.x) / this.cellSize)
       const cx1 = Math.floor(Math.max(seg.a.x, seg.b.x) / this.cellSize)
       const cy0 = Math.floor(Math.min(seg.a.y, seg.b.y) / this.cellSize)
@@ -83,7 +99,7 @@ export class RoadIndex {
     }
   }
 
-  private forEachInRadius(p: Pt, radius: number, visit: (seg: Seg, pt: Pt, d: number) => void): void {
+  private forEachInRadius(p: Pt, radius: number, visit: (seg: Seg, pt: Pt, d: number, edge: number) => void): void {
     const cx0 = Math.floor((p.x - radius) / this.cellSize)
     const cx1 = Math.floor((p.x + radius) / this.cellSize)
     const cy0 = Math.floor((p.y - radius) / this.cellSize)
@@ -101,7 +117,10 @@ export class RoadIndex {
           const qx = seg.a.x + t * abx
           const qy = seg.a.y + t * aby
           const d = Math.hypot(p.x - qx, p.y - qy)
-          if (d <= radius) visit(seg, { x: qx, y: qy }, d)
+          if (d <= radius) {
+            const at = seg.arc + t * Math.sqrt(len2)
+            visit(seg, { x: qx, y: qy }, d, Math.min(at, seg.total - at))
+          }
         }
       }
     }
@@ -109,12 +128,12 @@ export class RoadIndex {
 
   nearest(
     p: Pt, radius: number, filter?: (cls: RoadClass) => boolean,
-  ): { id: string; at: Pt; dist: number; segAngle: number } | null {
-    let best: { id: string; at: Pt; dist: number; segAngle: number } | null = null
-    this.forEachInRadius(p, radius, (seg, pt, d) => {
+  ): { id: string; at: Pt; dist: number; segAngle: number; edge: number } | null {
+    let best: { id: string; at: Pt; dist: number; segAngle: number; edge: number } | null = null
+    this.forEachInRadius(p, radius, (seg, pt, d, edge) => {
       if (filter && !filter(seg.cls)) return
       if (!best || d < best.dist)
-        best = { id: seg.id, at: pt, dist: d, segAngle: Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x) }
+        best = { id: seg.id, at: pt, dist: d, segAngle: Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x), edge }
     })
     return best
   }
@@ -128,13 +147,14 @@ export class RoadIndex {
    * point wins outright" would silently mask the one that actually matters.
    */
   nearestMatching(
-    p: Pt, radius: number, test: (hit: { id: string; dist: number; segAngle: number; cls: RoadClass }) => boolean,
-  ): { id: string; at: Pt; dist: number; segAngle: number; cls: RoadClass } | null {
-    let best: { id: string; at: Pt; dist: number; segAngle: number; cls: RoadClass } | null = null
-    this.forEachInRadius(p, radius, (seg, pt, d) => {
+    p: Pt, radius: number, test: (hit: MatchHit) => boolean,
+  ): MatchHit | null {
+    let best: MatchHit | null = null
+    this.forEachInRadius(p, radius, (seg, pt, d, edge) => {
       const segAngle = Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x)
-      if (!test({ id: seg.id, dist: d, segAngle, cls: seg.cls })) return
-      if (!best || d < best.dist) best = { id: seg.id, at: pt, dist: d, segAngle, cls: seg.cls }
+      const hit = { id: seg.id, at: pt, dist: d, segAngle, cls: seg.cls, edge }
+      if (!test(hit)) return
+      if (!best || d < best.dist) best = hit
     })
     return best
   }
@@ -236,13 +256,22 @@ function traceHalf(
     // R6) lets the child immediately leave its parent while every OTHER
     // road, and the parent itself once far enough away, is still checked.
     const hitSame = index.nearest(next, 0.3 * sep, sameOrHigher)
-    if (hitSame && !isSourceAt(hitSame.id, next)) { pts.push(hitSame.at); stop = 'other'; break }
+    if (hitSame && !isSourceAt(hitSame.id, next)) {
+      // arterials: a shallow graze or a landing on a road's end is no junction; stop short instead of merging into a wedge
+      if (opts.bridgeRivers && (hitSame.edge < JOIN_EDGE_M || angleGapLines(Math.atan2(newDir.y, newDir.x), hitSame.segAngle) < JOIN_ANGLE)) { stop = 'parallel'; break }
+      pts.push(hitSame.at); stop = 'other'; break
+    }
 
     // nearestMatching, not nearest: a closer but merely-CROSSING road (angle
     // >= 25°) must not hide a farther but genuinely near-parallel one — with
     // plain `nearest` a doubled lane could sit safely past whatever nearer
     // road happens to win the distance comparison and never get caught.
     const dirAngle = Math.atan2(newDir.y, newDir.x)
+    // a child that hugs its own parent from the seed on is a sliver twin (the
+    // parent exclusion below would let it run on for 0.35 sep): kill this half (arterials only)
+    if (opts.bridgeRivers && sourceId && pts.length < 4 && index.nearestMatching(
+      next, 25, (hit) => hit.id === sourceId && angleGapLines(Math.atan2(newDir.y, newDir.x), hit.segAngle) < PARALLEL_ANGLE,
+    )) return []
     const hitPar = index.nearestMatching(
       next, 0.7 * sep, (hit) => !isSourceAt(hit.id, next) && angleGapLines(dirAngle, hit.segAngle) < PARALLEL_ANGLE,
     )
@@ -267,8 +296,8 @@ function traceHalf(
     const join =
       index.nearestMatching(
         last, 0.5 * sep,
-        (hit) => !isSourceAt(hit.id, last) && angleGapLines(lastAngle, hit.segAngle) >= PARALLEL_ANGLE,
-      ) ?? index.nearestMatching(last, 0.3 * sep, (hit) => !isSourceAt(hit.id, last))
+        (hit) => !isSourceAt(hit.id, last) && angleGapLines(lastAngle, hit.segAngle) >= PARALLEL_ANGLE && joinOk(last, hit),
+      ) ?? index.nearestMatching(last, 0.3 * sep, (hit) => !isSourceAt(hit.id, last) && joinOk(last, hit))
     if (join && join.dist > 0.5) pts.push(join.at)
   }
   return pts
@@ -503,9 +532,9 @@ export function extendToJunction(
         const p = { x: end.x + d.x * t, y: end.y + d.y * t }
         if (p.x < 0 || p.y < 0 || p.x > sizeM || p.y > sizeM || inWater(terrain, p)) break
         const hit = index.nearestMatching(p, 6, other)
-        if (hit) { joinedAt = hit.at; break }
+        if (hit) { if (joinOk(end, hit)) joinedAt = hit.at; break }
       }
-      if (!joinedAt && bendReach > 0) joinedAt = index.nearestMatching(end, bendReach, other)?.at ?? null
+      if (!joinedAt && bendReach > 0) joinedAt = index.nearestMatching(end, bendReach, (h) => other(h) && joinOk(end, h))?.at ?? null
       if (joinedAt) {
         const joined = [joinedAt, ...seq]
         pts = fromEnd ? joined.reverse() : joined

@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest'
-import { pointInRings, polylineLength, ringCentroid, type Pt } from '../geometry'
+import { pointAtT, pointInRings, polylineLength, ringCentroid, type Pt } from '../geometry'
 import { ISLET_MOAT_OUTER_FACTOR, ISLET_RADIUS_MAX } from '../terrain/field'
 import { GENERATOR_VERSION, type Block, type District, type SectorParams, type Terrain } from '../types'
 import { hashSeed, mulberry32 } from '../rng'
 import { RoadIndex, riverCrossingSeeds } from '../streets/trace'
 import { inWater } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
-import { bboxesFar, maxCloseRun } from '../streets/testutil'
+import { bboxesFar, endMeetings, maxCloseRun } from '../streets/testutil'
 import { deriveDistricts, generateSector } from './generate'
 
 // full pipeline is ~3-10 s per 4 km generation (tracing + land clipping dominate)
@@ -338,10 +338,12 @@ describe('no doubled arterials', () => {
       irregularity: 0.85, landform: 'bay',
     })
     const arts = m.roads.filter((r) => r.class === 'arterial')
-    // oblique children must survive: 81 streets / 22 arterials measured
+    // oblique children must survive: 74 streets / 13 arterials measured after the
+    // Y-merge fixes (sliver twins hugging their parent are killed; 81 / 22 before)
+    // (earlier: 81 streets / 22 arterials measured
     // (116 / 16 before a2ebfa4, 50 / 12 after it); bounds = measured - 10 %
-    expect(m.roads.filter((r) => r.class === 'street').length).toBeGreaterThanOrEqual(73)
-    expect(arts.length).toBeGreaterThanOrEqual(14)
+    expect(m.roads.filter((r) => r.class === 'street').length).toBeGreaterThanOrEqual(66)
+    expect(arts.length).toBeGreaterThanOrEqual(11)
     let worst = 0
     for (let i = 0; i < arts.length; i++) {
       for (let j = i + 1; j < arts.length; j++) {
@@ -354,5 +356,62 @@ describe('no doubled arterials', () => {
     // 700 m after the birth check (749 m before a2ebfa4: the doubled lane;
     // more arterials survive now, so more Y-merges) + ~10 %
     expect(worst).toBeLessThanOrEqual(770)
+  })
+})
+
+describe('reference seed road quality', () => {
+  const m = generateSector({
+    ...base, seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, poiDensity: 0.5,
+    irregularity: 0.85, landform: 'bay',
+  })
+  const arts = m.roads.filter((r) => r.class === 'arterial')
+  const hw = m.roads.filter((r) => r.class === 'highway')
+
+  it('no acute arterial merges', () => {
+    const S = m.meta.sizeM
+    // ends on the window edge, at water or on the highway are exempt
+    const ms = endMeetings(arts, hw).filter(
+      (x) => x.cls === 'arterial' && !nearWater(m.terrain, x.end, 25) && x.end.x > 1 && x.end.y > 1 && x.end.x < S - 1 && x.end.y < S - 1,
+    )
+    console.log('meetings', ms.length, JSON.stringify(ms.filter((x) => x.deg < 25).map((x) => [x.id, Math.round(x.end.x), Math.round(x.end.y), Math.round(x.deg * 10) / 10, Math.round(x.edge)])))
+    expect(ms.filter((x) => x.deg < 25)).toEqual([])
+  })
+
+  it('interchanges cross the highway at 45° or more', () => {
+    const h = hw[0]
+    const idx = new RoadIndex(200)
+    idx.add(h.id, h.points, 'highway')
+    const ics = (h.crossings ?? []).filter((c) => c.interchange)
+    expect(ics.length).toBeGreaterThan(0)
+    for (const c of ics) {
+      const a = arts.find((r) => r.id === c.roadId || r.id.startsWith(c.roadId + '-'))!
+      const at = pointAtT(h.points, c.at)
+      const hit = idx.nearestMatching(at, 50, () => true)!
+      const ah = new RoadIndex(50)
+      ah.add(a.id, a.points, 'arterial')
+      const ar = ah.nearestMatching(at, 50, () => true)!
+      let d = Math.abs(hit.segAngle - ar.segAngle) % Math.PI
+      if (d > Math.PI / 2) d = Math.PI - d
+      expect((d * 180) / Math.PI).toBeGreaterThanOrEqual(44)
+    }
+  })
+
+  it('no arterial tail under 120 m past a junction', () => {
+    const idx = new RoadIndex(200)
+    for (const r of [...arts, ...hw]) idx.add(r.id, r.points, r.class)
+    const touches = (p: Pt, id: string, r: number) => !!idx.nearestMatching(p, r, (h) => h.id !== id && h.cls !== 'street')
+    const bad: string[] = []
+    for (const r of arts) {
+      for (const pts of [r.points, r.points.slice().reverse()]) {
+        if (touches(pts[0], r.id, 6)) continue
+        let arc = 0
+        for (let i = 1; i < pts.length; i++) {
+          arc += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
+          if (arc > 120) break
+          if (touches(pts[i], r.id, 3)) { bad.push(`${r.id}@${Math.round(arc)}`); break }
+        }
+      }
+    }
+    expect(bad).toEqual([])
   })
 })

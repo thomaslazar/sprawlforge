@@ -491,8 +491,15 @@ export function buildInterchanges(
     }
     return res
   }
+  // ramps fold into loops when the arterial crosses at a shallow angle
+  const squareEnough = (c: HighwayCrossing) => {
+    const at = pointAtT(hp, c.at)
+    const h = nearestTangent(hp, at)
+    const a = nearestTangent(arterials.get(c.roadId)!.points, at)
+    return Math.abs(h.x * a.x + h.y * a.y) <= Math.cos(Math.PI / 4)
+  }
   const ok = (c: HighwayCrossing) =>
-    arterials.has(c.roadId) && !chosen.includes(c)
+    arterials.has(c.roadId) && !chosen.includes(c) && squareEnough(c)
     && !inWater(terrain, pointAtT(hp, c.at))
     && Math.abs(c.at * len - target) <= IC_REACH_M
     && chosen.every((o) => Math.abs(o.at - c.at) * len >= IC_REACH_M)
