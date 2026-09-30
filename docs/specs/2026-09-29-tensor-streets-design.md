@@ -50,7 +50,7 @@ Recorded from the brainstorm; each has a one-line reason.
 3. **Hard performance budget** (§10), with step and seed caps so the worst
    case is bounded, not just the typical one.
 4. **River crossings are seeds.** Bridges are decided at trace time by
-   seeding a crossing every ~1 km; all other roads stop at the bank.
+   seeding a crossing every ~1 km; arterials bridge corridors up to 450 m wide; streets stop at the bank.
 5. **Highway level is per district**, sticky along the highway, one step at
    a time (sunken ↔ ground ↔ elevated). Roads pass under, over, or are
    barred depending on the level.

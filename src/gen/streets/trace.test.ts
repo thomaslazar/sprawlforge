@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { pointAtT, polylineLength, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
-import { inWater } from '../sector/bridges'
+import { inWater, waterIntervals } from '../sector/bridges'
 import { effectiveIrregularity } from '../sector/zoning'
 import { sampleTerrain } from '../terrain'
 import { nearestOnPolyline } from '../terrain/rivers'
@@ -220,6 +220,34 @@ describe('streets/trace', () => {
       if (firstWet > 0 && lastWet < wetFlags.length - 1) { crossed = points; break }
     }
     expect(crossed).not.toBeNull()
+  })
+
+  it('MAJOR arterials bridge a narrow river', () => {
+    // minor axis with MAJOR opts = the cross arterials; on the major axis the
+    // field runs parallel to the river so it is rarely met head-on
+    const { sizeM, terrain, field, irregularityAt } = setup()
+    const rng = mulberry32(hashSeed(42, 'arterials'))
+    const seeds = poissonSeeds(sizeM, MAJOR.separation, rng, (pt) => !inWater(terrain, pt))
+    const roads = traceLayer(field, 'minor', seeds, terrain, sizeM, new RoadIndex(200), MAJOR, rng, irregularityAt, 'A', 'arterial')
+    // the bridge is one long segment over the water, so look for a wet span
+    // strictly inside the polyline (dry land on both sides)
+    const bridged = roads.some((r) => waterIntervals(terrain, r.points).some(([a, b]) => a > 0 && b < 1))
+    expect(bridged).toBe(true)
+  })
+
+  it('MINOR streets still stop at the bank', () => {
+    const { sizeM, terrain, field, irregularityAt } = setup()
+    const rng = mulberry32(hashSeed(42, 'streets'))
+    const seeds = poissonSeeds(sizeM, MINOR.separation, rng, (pt) => !inWater(terrain, pt))
+    const roads = traceLayer(field, 'minor', seeds, terrain, sizeM, new RoadIndex(200), MINOR, rng, irregularityAt, 'S', 'street')
+    expect(roads.length).toBeGreaterThan(0)
+    for (const r of roads) expect(r.points.some((pt) => inWater(terrain, pt))).toBe(false)
+  })
+
+  it('no bridge over sea', () => {
+    const { roads, terrain } = traceArterials({ landform: 'bay', river: false })
+    expect(roads.length).toBeGreaterThan(0)
+    for (const r of roads) expect(r.points.some((pt) => inWater(terrain, pt))).toBe(false)
   })
 
   it('respects maxSteps', () => {

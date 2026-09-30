@@ -25,9 +25,11 @@ export interface TraceOpts {
   decay: number
   /** radians per step, default π (no clamp) */
   maxTurn?: number
+  /** arterials only: continue across a narrow river corridor as a bridge instead of stopping at the bank */
+  bridgeRivers?: boolean
 }
 
-export const MAJOR: TraceOpts = { separation: 400, step: 10, maxSteps: 600, minLength: 60, jitter: 0, decay: 0 }
+export const MAJOR: TraceOpts = { separation: 400, step: 10, maxSteps: 600, minLength: 60, jitter: 0, decay: 0, bridgeRivers: true }
 export const MINOR: TraceOpts = { separation: 100, step: 10, maxSteps: 200, minLength: 60, jitter: 0.4, decay: 0.2 }
 
 // highway > arterial > street > ramp
@@ -183,6 +185,8 @@ function clampToWindow(p: Pt, sizeM: number): Pt {
   return { x: clamp(0, sizeM, p.x), y: clamp(0, sizeM, p.y) }
 }
 
+const CROSSING_MAX_REACH = 450
+const CROSSING_SAMPLE_STEP = 10
 const PARALLEL_ANGLE = (25 * Math.PI) / 180
 
 function traceHalf(
@@ -197,6 +201,7 @@ function traceHalf(
   const pts: Pt[] = []
   let p = start
   let dir = initDir
+  let bridges = 0
   let stop: 'parallel' | 'decay' | 'steps' | 'other' = 'other'
   const isSourceAt = (id: string, at: Pt) =>
     id === sourceId && Math.hypot(at.x - seedAt.x, at.y - seedAt.y) < opts.separation
@@ -208,7 +213,20 @@ function traceHalf(
       pts.push(clampToWindow(next, sizeM))
       break
     }
-    if (inWater(terrain, next) && !(crossWater && inRiverBand(terrain, next, opts.step, corridorWidth))) break
+    if (inWater(terrain, next) && !(crossWater && inRiverBand(terrain, next, opts.step, corridorWidth))) {
+      // arterials bridge a narrow river along their current heading (at most 2 per half)
+      const river = terrain.riverSlice
+      if (!opts.bridgeRivers || crossWater || bridges >= 2 || !river) break
+      if (distToPolyline(next, river.course) > river.width * 1.5) break
+      let d = opts.step
+      while (d <= CROSSING_MAX_REACH && inWater(terrain, { x: p.x + dir.x * d, y: p.y + dir.y * d })) d += CROSSING_SAMPLE_STEP
+      const land = { x: p.x + dir.x * d, y: p.y + dir.y * d }
+      if (d > CROSSING_MAX_REACH || land.x < 0 || land.x > sizeM || land.y < 0 || land.y > sizeM) break
+      pts.push(land)
+      p = land
+      bridges++
+      continue
+    }
 
     // a seed forked off an existing road (e.g. a street seeded ON an
     // arterial) sits at distance ~0 from it; excluding that one specific
@@ -365,8 +383,6 @@ export function seedsAlong(points: Pt[], every: number, alternate: boolean): See
 
 const RIVER_CROSSING_SPACING = 1000
 const RIVER_CROSSING_JITTER = 200
-const CROSSING_MAX_REACH = 450
-const CROSSING_SAMPLE_STEP = 10
 const CROSSING_RETRY_OFFSETS = [0, 100, -100, 200, -200]
 
 /**

@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { pointInRings, ringCentroid, type Pt } from '../geometry'
+import { pointInRings, polylineLength, ringCentroid, type Pt } from '../geometry'
 import { ISLET_MOAT_OUTER_FACTOR, ISLET_RADIUS_MAX } from '../terrain/field'
 import { GENERATOR_VERSION, type Block, type District, type SectorParams, type Terrain } from '../types'
-import { RoadIndex } from '../streets/trace'
+import { hashSeed, mulberry32 } from '../rng'
+import { RoadIndex, riverCrossingSeeds } from '../streets/trace'
 import { inWater } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
 import { deriveDistricts, generateSector } from './generate'
@@ -312,3 +313,17 @@ const nearWater = (t: Terrain, p: Pt, r: number): boolean => {
   }
   return inWater(t, p)
 }
+
+describe('arterial bridges', () => {
+  it('arterial bridges appear between the seeded crossings', () => {
+    const m = generateSector({
+      seed: 4280430344, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15,
+      landform: 'coastal', river: true, lakes: true, islands: false, piers: false, pack: 'generic', theme: 'neon',
+    })
+    const seeds = riverCrossingSeeds(m.terrain, mulberry32(hashSeed(4280430344, 'arterials'))).length
+    const bridges = m.roads.filter((r) => r.class === 'arterial' && r.bridge)
+    console.log('arterial bridges', bridges.length, 'crossing seeds', seeds)
+    expect(bridges.length).toBeGreaterThanOrEqual(1.5 * seeds)
+    for (const b of bridges) expect(polylineLength(b.points)).toBeLessThan(600) // 579 m: pre-existing B004, a seeded crossing that doubles back in the channel
+  })
+})

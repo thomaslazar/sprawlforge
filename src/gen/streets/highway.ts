@@ -162,7 +162,7 @@ export function traceHighway(
 ): { road: Road; field: RoadField } {
   const rng = mulberry32(hashSeed(params.seed, 'highway'))
   const irregularityAt = effectiveIrregularity(params)
-  const opts: TraceOpts = { ...MAJOR, maxSteps: 2000, maxTurn: MAJOR.step / 300 }
+  const opts: TraceOpts = { ...MAJOR, maxSteps: 2000, maxTurn: MAJOR.step / 300, bridgeRivers: false }
 
   let best: Pt[] | null = null
   let bestField: RoadField | null = null
