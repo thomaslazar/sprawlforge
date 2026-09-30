@@ -126,13 +126,13 @@ export class RoadIndex {
    * point wins outright" would silently mask the one that actually matters.
    */
   nearestMatching(
-    p: Pt, radius: number, test: (hit: { id: string; dist: number; segAngle: number }) => boolean,
-  ): { id: string; at: Pt; dist: number; segAngle: number } | null {
-    let best: { id: string; at: Pt; dist: number; segAngle: number } | null = null
+    p: Pt, radius: number, test: (hit: { id: string; dist: number; segAngle: number; cls: RoadClass }) => boolean,
+  ): { id: string; at: Pt; dist: number; segAngle: number; cls: RoadClass } | null {
+    let best: { id: string; at: Pt; dist: number; segAngle: number; cls: RoadClass } | null = null
     this.forEachInRadius(p, radius, (seg, pt, d) => {
       const segAngle = Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x)
-      if (!test({ id: seg.id, dist: d, segAngle })) return
-      if (!best || d < best.dist) best = { id: seg.id, at: pt, dist: d, segAngle }
+      if (!test({ id: seg.id, dist: d, segAngle, cls: seg.cls })) return
+      if (!best || d < best.dist) best = { id: seg.id, at: pt, dist: d, segAngle, cls: seg.cls }
     })
     return best
   }
@@ -460,9 +460,14 @@ export function traceLayer(
   return roads
 }
 
-/** Ray-march each dangling end along its last direction until it meets another indexed road, then end there. */
+/**
+ * Ray-march each dangling end along its last direction until it meets another indexed road
+ * (only `accept`ed classes when given), then end there. With `bendReach`, an end with nothing
+ * straight ahead bends to the nearest accepted road within that radius in any direction.
+ */
 export function extendToJunction(
   roads: Road[], index: RoadIndex, terrain: Terrain, sizeM: number, maxExtend: number, step = 10,
+  accept?: (cls: RoadClass) => boolean, bendReach = 0,
 ): Road[] {
   const onEdge = (p: Pt) => p.x < 1 || p.y < 1 || p.x > sizeM - 1 || p.y > sizeM - 1
   return roads.map((r) => {
@@ -471,20 +476,22 @@ export function extendToJunction(
       const seq = fromEnd ? pts.slice().reverse() : pts
       if (seq.length < 2) continue
       const end = seq[0]
-      const other = (h: { id: string }) => h.id !== r.id
+      const other = (h: { id: string; cls: RoadClass }) => h.id !== r.id && (!accept || accept(h.cls))
       if (onEdge(end) || inWater(terrain, end) || index.nearestMatching(end, 6, other)) continue
       const len = Math.hypot(end.x - seq[1].x, end.y - seq[1].y)
       if (len === 0) continue
       const d = { x: (end.x - seq[1].x) / len, y: (end.y - seq[1].y) / len }
+      let joinedAt: Pt | null = null
       for (let t = step; t <= maxExtend; t += step) {
         const p = { x: end.x + d.x * t, y: end.y + d.y * t }
         if (p.x < 0 || p.y < 0 || p.x > sizeM || p.y > sizeM || inWater(terrain, p)) break
         const hit = index.nearestMatching(p, 6, other)
-        if (hit) {
-          const joined = [hit.at, ...seq]
-          pts = fromEnd ? joined.reverse() : joined
-          break
-        }
+        if (hit) { joinedAt = hit.at; break }
+      }
+      if (!joinedAt && bendReach > 0) joinedAt = index.nearestMatching(end, bendReach, other)?.at ?? null
+      if (joinedAt) {
+        const joined = [joinedAt, ...seq]
+        pts = fromEnd ? joined.reverse() : joined
       }
     }
     return pts === r.points ? r : { ...r, points: pts }

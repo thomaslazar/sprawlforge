@@ -399,6 +399,25 @@ describe('extendToJunction', () => {
   it('leaves an end alone when nothing is within reach', () => {
     expect(mk(900)).toBe(A)
   })
+  it('extendToJunction with a class filter ignores streets', () => {
+    const idx = new RoadIndex(200)
+    idx.add('A', A.points, 'arterial')
+    idx.add('B', [{ x: 400, y: 0 }, { x: 400, y: 1000 }], 'street')
+    idx.add('C', [{ x: 550, y: 0 }, { x: 550, y: 1000 }], 'arterial')
+    const out = extendToJunction([A], idx, dry, 1000, 600, 10, (c) => c === 'arterial')[0]
+    const last = out.points[out.points.length - 1]
+    expect(Math.hypot(last.x - 550, last.y - 500)).toBeLessThan(1)
+  })
+  it('extendToJunction bends to a nearby arterial when nothing is straight ahead', () => {
+    const idx = new RoadIndex(200)
+    idx.add('A', A.points, 'arterial')
+    const C = [{ x: 100, y: 700 }, { x: 350, y: 700 }]
+    idx.add('C', C, 'arterial')
+    const out = extendToJunction([A], idx, dry, 1000, 600, 10, (c) => c === 'arterial', 300)[0]
+    const first = out.points[0]
+    const last = out.points[out.points.length - 1]
+    expect(Math.abs(last.y - 700) < 1 || Math.abs(first.y - 700) < 1).toBe(true)
+  })
   it('stops at water', () => {
     const wet = { water: [[[[340, 400], [360, 400], [360, 600], [340, 600], [340, 400]]]] } as unknown as Terrain
     expect(mk(400, wet)).toBe(A)

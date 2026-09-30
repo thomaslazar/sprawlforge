@@ -30,7 +30,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   const traced = traceHighway(params, terrain, sizeM).road
   const highway = traced.points.length > 0 ? traced : undefined
 
-  const index = new RoadIndex(200)
+  let index = new RoadIndex(200)
   if (highway) index.add(highway.id, highway.points, 'highway')
 
   const arterialRng = mulberry32(hashSeed(params.seed, 'arterials'))
@@ -52,6 +52,14 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   )
   // truncate before seeding so S/L seeds come from the final arterials
   let arterials = finalize([...arterialsRaw, ...crossRaw], terrain, index)
+  // an arterial must end on an arterial / the highway (not a street): extend before streets exist
+  const artIndex = new RoadIndex(200)
+  if (highway) artIndex.add(highway.id, highway.points, 'highway')
+  arterials.forEach((r) => artIndex.add(r.id, r.points, r.class))
+  arterials = extendToJunction(arterials, artIndex, terrain, sizeM, 600, 10, (c) => c === 'arterial' || c === 'highway', 300)
+  index = new RoadIndex(200)
+  if (highway) index.add(highway.id, highway.points, 'highway')
+  arterials.forEach((r) => index.add(r.id, r.points, r.class))
   const pass1Raw = traceLayer(
     field, 'minor', arterials.flatMap((a) => seedsAlong(a.points, 100, true)),
     terrain, sizeM, index, MINOR, mulberry32(hashSeed(params.seed, 'streets')), irregularityAt, 'S', 'street',
@@ -67,8 +75,6 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   const addAll = (rs: Road[]) => rs.forEach((r) => idx.add(r.id, r.points, r.class))
   if (highway) idx.add(highway.id, highway.points, 'highway')
   addAll(arterials); addAll(pass1); addAll(pass2)
-  arterials = extendToJunction(arterials, idx, terrain, sizeM, 300)
-  addAll(arterials)
   const pass1Ext = extendToJunction(pass1, idx, terrain, sizeM, 120)
   pass2 = extendToJunction(pass2, idx, terrain, sizeM, 120)
   return {
