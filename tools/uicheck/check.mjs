@@ -7,6 +7,9 @@ mkdirSync(OUT, { recursive: true })
 
 const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+// sum data-count over matching elements (batched svg geometry)
+const countAttr = (pg, sel) =>
+  pg.$$eval(sel, (els) => els.reduce((a, e) => a + Number(e.getAttribute('data-count') ?? 0), 0))
 const fail = (msg) => {
   console.error(`FAIL: ${msg}`)
   process.exitCode = 1
@@ -45,7 +48,7 @@ const initialBox = await page.locator('svg').boundingBox()
 if (initialBox.height > 901 || initialBox.width > 1401)
   fail(`map does not fit viewport on load: ${initialBox.width}x${initialBox.height}`)
 
-const buildings = await page.locator('svg polygon[data-id^="BLD"]').count()
+const buildings = await countAttr(page, 'svg [data-buildings]')
 if (buildings < 50) fail(`expected a dense map, got ${buildings} buildings`)
 
 const pois = await page.locator('svg circle[data-id^="P"]').count()
@@ -285,7 +288,7 @@ for (const { tags, shot, wet, bridge, seed = 42 } of TERRAIN_SWEEP) {
   await page.waitForSelector('svg')
   await page.screenshot({ path: `${OUT}/terrain-${shot}.png` })
 
-  const bld = await page.locator('svg polygon[data-id^="BLD"]').count()
+  const bld = await countAttr(page, 'svg [data-buildings]')
   if (bld < 1) fail(`terrain ${tags}: no buildings rendered`)
 
   if (wet) {
@@ -310,17 +313,17 @@ await page.goto(`${BASE}/?seed=42&tags=coastal,planned`)
 await page.waitForSelector('svg')
 await page.screenshot({ path: `${OUT}/streets-planned.png` })
 const svgPlanned = await page.locator('svg').innerHTML()
-if ((await page.locator('svg polygon[data-id^="BLD"]').count()) < 50)
+if ((await countAttr(page, 'svg [data-buildings]')) < 50)
   fail('planned: too few buildings')
 if (!(await page.getByRole('button', { name: 'Planned', pressed: true }).isVisible()))
   fail('planned chip not pressed from URL tags')
-if ((await page.locator('svg polyline[data-class="ramp"]').count()) < 1) fail('planned: no ramps')
-if ((await page.locator('svg circle[data-junction="4"]').count()) < 20) fail('planned: too few crossroads')
+if ((await countAttr(page, 'svg [data-ramps]')) < 1) fail('planned: no ramps')
+if ((await countAttr(page, 'svg [data-junctions]')) < 20) fail('planned: too few crossroads')
 
 await page.goto(`${BASE}/?seed=42&tags=coastal,sprawl`)
 await page.waitForSelector('svg')
 await page.screenshot({ path: `${OUT}/streets-sprawl.png` })
-if ((await page.locator('svg polygon[data-id^="BLD"]').count()) < 50)
+if ((await countAttr(page, 'svg [data-buildings]')) < 50)
   fail('sprawl: too few buildings')
 if ((await page.locator('svg').innerHTML()) === svgPlanned)
   fail('planned and sprawl render identically')

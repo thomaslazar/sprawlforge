@@ -110,7 +110,7 @@ export function App() {
     [model, showPois],
   )
   const svg = useMemo(
-    () => (visibleModel ? renderSector(visibleModel, getTheme(params.theme), { labelZoom }) : ''),
+    () => (visibleModel ? renderSector(visibleModel, getTheme(params.theme), { labelZoom, interactive: true }) : ''),
     [visibleModel, params.theme, labelZoom],
   )
 

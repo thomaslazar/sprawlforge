@@ -56,13 +56,13 @@ function fullHighway(roads: Road[]): { line: Pt[]; first: Road } | null {
 }
 
 /** sunken trench, level-styled highway, crossing decks, transitions */
-export function renderHighway(model: SectorModel, theme: Theme, out: string[], glowAttr = ''): void {
+export function renderHighway(model: SectorModel, theme: Theme, out: string[], glowAttr = '', halo = false): void {
   const hw = fullHighway(model.roads)
   const segs = hw?.first.segments
   if (!hw || !segs?.length) return
   const { line } = hw
   const W = HIGHWAY_WIDTH
-  const poly = (p: Pt[], stroke: string, w: number, extra = '') =>
+  const poly = (p: Pt[], stroke: string, w: number | string, extra = '') =>
     `<polyline points="${pts(p)}" fill="none" stroke="${stroke}" stroke-width="${w}"${extra}/>`
   const slice = (s: { from: number; to: number }) => slicePolyline(line, s.from, s.to)
 
@@ -87,6 +87,8 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
       for (let m = 0; m < (s.to - s.from) * total; m += 40) ts.push(s.from + m / total)
       out.push(`<path d="${ticks(line, ts, W / 2, W / 2 + 8, true).join('')}" fill="none" stroke="${theme.highway.column}" stroke-width="2"/>`)
     }
+    if (halo)
+      out.push(poly(p, theme.road.highway, n(W * 2.2), ' stroke-opacity="0.35" stroke-linecap="round"'))
     out.push(poly(p, theme.road.highway, W, glowAttr), '</g>')
   }
 
@@ -125,8 +127,5 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
 /** invisible crossroad markers for uicheck */
 export function renderJunctionMarkers(model: SectorModel, out: string[]): void {
   const g = buildPlanarGraph(model.roads.filter((r) => r.class !== 'ramp'), [], 5)
-  out.push('<g data-junctions="">')
-  for (const p of degree4Vertices(g))
-    out.push(`<circle data-junction="4" cx="${n(p.x)}" cy="${n(p.y)}" r="0" fill="none"/>`)
-  out.push('</g>')
+  out.push(`<g data-junctions="" data-count="${degree4Vertices(g).length}"/>`)
 }

@@ -269,12 +269,29 @@ describe('renderSector', () => {
     expect(band![1]).toContain('600,')
   })
 
-  it('emits ramp polylines, junction markers and highway level groups', { timeout: 90000 }, () => {
+  it('export keeps per-element detail; interactive batches and drops filters', { timeout: 90000 }, () => {
     const m = generateSector({ ...base, landform: 'inland', irregularity: 0.15 })
-    const svg = renderSector(m, getTheme('neon'))
+    const theme = getTheme('neon')
+    const svg = renderSector(m, theme)
     expect(svg).toMatch(/data-class="ramp"/)
     expect(svg).not.toMatch(/data-class="ramp"[^>]*filter=/)
-    expect((svg.match(/data-junction="4"/g) ?? []).length).toBeGreaterThanOrEqual(20)
+    expect(svg).toMatch(/<polygon data-id="BLD/)
+    expect(svg).toContain('filter="url(#glow)"')
     expect(svg).toMatch(/data-level="(elevated|sunken|ground)"/)
+    const cnt = (x: string, a: string) => Number(x.match(new RegExp(`${a}[^>]*data-count="(\\d+)"`))?.[1] ?? 0)
+    const junctions = cnt(svg, 'data-junctions')
+    expect(junctions).toBeGreaterThanOrEqual(20)
+
+    const ia = renderSector(m, theme, { interactive: true })
+    expect(ia).not.toContain('url(#glow)') // shoreblur (shoreline) is unchanged
+    expect(ia).not.toContain('<filter id="glow"')
+    expect(ia).not.toContain('<polygon data-id="BLD')
+    const sum = (re: RegExp) => [...ia.matchAll(re)].reduce((a, x) => a + Number(x[1]), 0)
+    expect(sum(/<path data-buildings data-count="(\d+)"/g)).toBe(m.buildings.length)
+    expect(cnt(ia, 'data-streets')).toBe(m.roads.filter((r) => r.class === 'street' && !r.bridge).length)
+    expect(cnt(ia, 'data-ramps')).toBe(m.roads.filter((r) => r.class === 'ramp' && !r.bridge).length)
+    expect(cnt(ia, 'data-junctions')).toBe(junctions)
+    const opens = (ia.match(/</g) ?? []).length
+    expect(opens).toBeLessThan(2800) // measured 2374: POI markers+titles, labels, arterial halos remain
   })
 })
