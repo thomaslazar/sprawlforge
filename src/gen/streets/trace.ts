@@ -203,8 +203,10 @@ function traceHalf(
   let dir = initDir
   let bridges = 0
   let stop: 'parallel' | 'decay' | 'steps' | 'other' = 'other'
+  // parent exclusion: only the snap rule, only while a perpendicular child
+  // is still inside the 0.3 × sep snap radius of its parent
   const isSourceAt = (id: string, at: Pt) =>
-    id === sourceId && Math.hypot(at.x - seedAt.x, at.y - seedAt.y) < opts.separation
+    id === sourceId && Math.hypot(at.x - seedAt.x, at.y - seedAt.y) < 0.35 * opts.separation
   for (let i = 0; i < opts.maxSteps; i++) {
     const newDir = clampTurn(dir, rk4Dir(field, axis, p, dir, opts.step), maxTurn)
     const next = { x: p.x + newDir.x * opts.step, y: p.y + newDir.y * opts.step }
@@ -233,11 +235,8 @@ function traceHalf(
     // segment (not a blanket grace window, and not for the whole trace —
     // R6) lets the child immediately leave its parent while every OTHER
     // road, and the parent itself once far enough away, is still checked.
-    const nearSeed = Math.hypot(next.x - seedAt.x, next.y - seedAt.y) < opts.separation
-    const isSource = (id: string) => id === sourceId && nearSeed
-
     const hitSame = index.nearest(next, 0.3 * sep, sameOrHigher)
-    if (hitSame && !isSource(hitSame.id)) { pts.push(hitSame.at); stop = 'other'; break }
+    if (hitSame && !isSourceAt(hitSame.id, next)) { pts.push(hitSame.at); stop = 'other'; break }
 
     // nearestMatching, not nearest: a closer but merely-CROSSING road (angle
     // >= 25°) must not hide a farther but genuinely near-parallel one — with
@@ -245,7 +244,7 @@ function traceHalf(
     // road happens to win the distance comparison and never get caught.
     const dirAngle = Math.atan2(newDir.y, newDir.x)
     const hitPar = index.nearestMatching(
-      next, 0.7 * sep, (hit) => !isSource(hit.id) && angleGapLines(dirAngle, hit.segAngle) < PARALLEL_ANGLE,
+      next, 0.7 * sep, (hit) => angleGapLines(dirAngle, hit.segAngle) < PARALLEL_ANGLE,
     )
     if (hitPar) { stop = 'parallel'; break }
 

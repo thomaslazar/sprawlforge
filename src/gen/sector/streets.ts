@@ -1,9 +1,9 @@
 import { simplifyPolyline, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
-import { buildRoadField } from '../streets/field'
+import { buildRoadField, type RoadField } from '../streets/field'
 import { traceHighway } from '../streets/highway'
 import {
-  MAJOR, MINOR, RoadIndex, extendToJunction, poissonSeeds, riverCrossingSeeds, seedsAlong, traceLayer, trimStubs,
+  MAJOR, MINOR, RoadIndex, extendToJunction, poissonSeeds, riverCrossingSeeds, seedsAlong, traceLayer, trimStubs, type Seed,
 } from '../streets/trace'
 import type { Road, SectorParams, Terrain } from '../types'
 import { inWater, truncateUnlandableRoads } from './bridges'
@@ -24,6 +24,12 @@ const finalize = (roads: Road[], terrain: Terrain, index: RoadIndex) =>
   truncateUnlandableRoads(trimStubs(roads, index).map(simplify), terrain)
 
 /** field → highway → arterials → two street passes, in spec §4 order; every polyline simplified */
+/** field axis closest to the seed's (highway-normal) direction: a highway seed must cross it, not run along it */
+function crossingAxis(field: RoadField, s: Seed): 'major' | 'minor' {
+  const m = field.sample(s.at).major
+  return Math.abs(m.x * s.dir!.x + m.y * s.dir!.y) >= Math.SQRT1_2 ? 'major' : 'minor'
+}
+
 export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number): TracedRoads {
   const field = buildRoadField(params, terrain, sizeM)
   const irregularityAt = effectiveIrregularity(params)
@@ -37,7 +43,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   const arterialsRaw = traceLayer(
     field, 'major',
     [
-      ...(highway ? seedsAlong(highway.points, 400, false) : []),
+      ...(highway ? seedsAlong(highway.points, 400, false).map((s) => ({ ...s, axis: crossingAxis(field, s) })) : []),
       ...riverCrossingSeeds(terrain, arterialRng),
       ...poissonSeeds(sizeM, 400, arterialRng, (p: Pt) => !inWater(terrain, p)),
     ],

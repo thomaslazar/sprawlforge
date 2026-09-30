@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { pointAtT, polylineLength, type Pt } from '../geometry'
+import { polylineLength, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import { inWater, waterIntervals } from '../sector/bridges'
 import { effectiveIrregularity } from '../sector/zoning'
 import { sampleTerrain } from '../terrain'
 import { nearestOnPolyline } from '../terrain/rivers'
 import type { Road, SectorParams, Terrain } from '../types'
-import { buildRoadField } from './field'
+import { buildRoadField, type RoadField } from './field'
+import { bboxesFar, maxCloseRun } from './testutil'
 import {
   MAJOR, MINOR, RoadIndex, extendToJunction, poissonSeeds, riverCrossingSeeds, seedsAlong, traceLayer, traceStreamline,
   type Seed, type TraceOpts,
@@ -47,33 +48,6 @@ function othersIndex(all: Road[], excludeId: string): RoadIndex {
 function normalizeVec(v: Pt): Pt {
   const len = Math.hypot(v.x, v.y) || 1
   return { x: v.x / len, y: v.y / len }
-}
-
-/** cheap reject: bounding boxes (each padded by `pad`) don't even overlap, so no point of `a` can be within `pad` of `b` */
-function bboxesFar(a: Pt[], b: Pt[], pad: number): boolean {
-  const box = (pts: Pt[]) => {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
-    for (const p of pts) { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y) }
-    return { minX, minY, maxX, maxY }
-  }
-  const ba = box(a)
-  const bb = box(b)
-  return ba.maxX + pad < bb.minX || bb.maxX + pad < ba.minX || ba.maxY + pad < bb.minY || bb.maxY + pad < ba.minY
-}
-
-/** longest contiguous arc-length run (sampled along `a`, 10 m steps) where a's distance to `b` stays under `threshold` */
-function maxCloseRun(a: Pt[], b: Pt[], threshold: number): number {
-  const lenA = polylineLength(a)
-  const steps = Math.max(1, Math.round(lenA / 10))
-  let run = 0
-  let maxRun = 0
-  for (let s = 0; s <= steps; s++) {
-    const pt = pointAtT(a, s / steps)
-    const { dist } = nearestOnPolyline(pt, b)
-    if (dist < threshold) run += lenA / steps
-    else { maxRun = Math.max(maxRun, run); run = 0 }
-  }
-  return Math.max(maxRun, run)
 }
 
 function lineAngleGap(a: number, b: number): number {
@@ -151,6 +125,29 @@ function endpointIsExplained(
   return check(pts[0], pts[1] ?? pts[0]) && check(pts[pts.length - 1], pts[pts.length - 2] ?? pts[pts.length - 1])
 }
 
+describe('parent exclusion', () => {
+  const stub = (major: Pt, minor: Pt): RoadField => ({ sizeM: 2000, patches: [], sample: () => ({ major, minor }) } as unknown as RoadField)
+  const dry = () => setup({ landform: 'inland', river: false, lakes: false, irregularity: 0.05 })
+  const trace = (field: RoadField, dir: Pt, axis: 'major' | 'minor') => {
+    const { terrain, irregularityAt } = dry()
+    const index = new RoadIndex(200)
+    index.add('P', [{ x: 0, y: 500 }, { x: 1000, y: 500 }], 'arterial')
+    return traceStreamline(field, axis, { at: { x: 500, y: 500 }, dir }, terrain, 2000, index, MAJOR, mulberry32(1), irregularityAt)
+  }
+  it('a child seeded parallel to its parent is discarded', () => {
+    const r = trace(stub({ x: 1, y: 0 }, { x: 0, y: 1 }), { x: 1, y: 0 }, 'major')
+    expect(r === null || polylineLength(r) < 2 * MAJOR.step).toBe(true)
+  })
+  it('a child seeded perpendicular to its parent still leaves it', () => {
+    const r = trace(stub({ x: 0, y: 1 }, { x: 1, y: 0 }), { x: 0, y: 1 }, 'major')
+    expect(r).not.toBeNull()
+    expect(polylineLength(r!)).toBeGreaterThan(200)
+    for (const p of r!) {
+      if (Math.hypot(p.x - 500, p.y - 500) > 0.5 * MAJOR.separation) expect(Math.abs(p.y - 500)).toBeGreaterThanOrEqual(0.5 * MAJOR.separation - 1e-6)
+    }
+  })
+})
+
 describe('streets/trace', () => {
   it('is deterministic', () => {
     const run = () => {
@@ -185,7 +182,10 @@ describe('streets/trace', () => {
     const SEP = MAJOR.separation * 0.5
     for (let i = 0; i < roads.length; i++) {
       for (let j = i + 1; j < roads.length; j++) {
-        expect(maxCloseRun(roads[i].points, roads[j].points, SEP)).toBeLessThanOrEqual(500)
+        // a perpendicular/oblique crossing alone holds two arterials within
+        // 0.5 sep for ~2 x 200 m, so the 320 m join-connector bound is
+        // unreachable; measured worst 450 m on this fixture + ~10 %
+        expect(maxCloseRun(roads[i].points, roads[j].points, SEP)).toBeLessThanOrEqual(495)
       }
     }
   })
