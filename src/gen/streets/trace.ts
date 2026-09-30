@@ -197,6 +197,9 @@ function traceHalf(
   const pts: Pt[] = []
   let p = start
   let dir = initDir
+  let stop: 'parallel' | 'decay' | 'steps' | 'other' = 'other'
+  const isSourceAt = (id: string, at: Pt) =>
+    id === sourceId && Math.hypot(at.x - seedAt.x, at.y - seedAt.y) < opts.separation
   for (let i = 0; i < opts.maxSteps; i++) {
     const newDir = clampTurn(dir, rk4Dir(field, axis, p, dir, opts.step), maxTurn)
     const next = { x: p.x + newDir.x * opts.step, y: p.y + newDir.y * opts.step }
@@ -216,7 +219,7 @@ function traceHalf(
     const isSource = (id: string) => id === sourceId && nearSeed
 
     const hitSame = index.nearest(next, 0.3 * sep, sameOrHigher)
-    if (hitSame && !isSource(hitSame.id)) { pts.push(hitSame.at); break }
+    if (hitSame && !isSource(hitSame.id)) { pts.push(hitSame.at); stop = 'other'; break }
 
     // nearestMatching, not nearest: a closer but merely-CROSSING road (angle
     // >= 25°) must not hide a farther but genuinely near-parallel one — with
@@ -226,13 +229,30 @@ function traceHalf(
     const hitPar = index.nearestMatching(
       next, 0.7 * sep, (hit) => !isSource(hit.id) && angleGapLines(dirAngle, hit.segAngle) < PARALLEL_ANGLE,
     )
-    if (hitPar) break
+    if (hitPar) { stop = 'parallel'; break }
 
     pts.push(next)
     p = next
     dir = newDir
 
-    if (irregularityAt(p) > 0.4 && rng.chance((opts.decay * opts.step) / 1000)) break
+    if (irregularityAt(p) > 0.4 && rng.chance((opts.decay * opts.step) / 1000)) { stop = 'decay'; break }
+    stop = 'steps'
+  }
+  // A parallel-stop or step-cap end otherwise dangles mid-block; join it to
+  // the nearest road within half a separation (any class) so it reads as a
+  // T-junction. Decay stops stay true dead ends (sprawl cul-de-sacs), water
+  // and window stops already sit on a boundary.
+  if ((stop === 'parallel' || stop === 'steps') && pts.length > 0) {
+    const last = pts[pts.length - 1]
+    const lastAngle = Math.atan2(dir.y, dir.x)
+    // prefer a road we would cross (a T-junction); a merely parallel one
+    // only when it is close enough that the connector stays short
+    const join =
+      index.nearestMatching(
+        last, 0.5 * sep,
+        (hit) => !isSourceAt(hit.id, last) && angleGapLines(lastAngle, hit.segAngle) >= PARALLEL_ANGLE,
+      ) ?? index.nearestMatching(last, 0.3 * sep, (hit) => !isSourceAt(hit.id, last))
+    if (join && join.dist > 0.5) pts.push(join.at)
   }
   return pts
 }
@@ -269,6 +289,39 @@ export function traceStreamline(
   const points = [...backward.slice().reverse(), seed.at, ...forward]
   if (polylineLength(points) < opts.minLength) return null
   return points
+}
+
+/**
+ * Cut short tails that poke past a junction: walking back from each end of a
+ * road, the first point within `weld` metres of ANOTHER indexed road inside
+ * the first `maxStub` metres of arc becomes the new end (moved onto that
+ * road). Cause-agnostic cleanup for the little "blips" a step-discretised
+ * trace leaves beyond the road it snapped to.
+ */
+export function trimStubs(roads: Road[], index: RoadIndex, maxStub = 40, weld = 3): Road[] {
+  return roads.map((r) => {
+    let pts = r.points
+    for (const fromEnd of [false, true]) {
+      const seq = fromEnd ? pts.slice().reverse() : pts
+      let arc = 0
+      let cutAt = -1
+      let joinPt: Pt | null = null
+      for (let i = 1; i < seq.length && arc <= maxStub; i++) {
+        arc += Math.hypot(seq[i].x - seq[i - 1].x, seq[i].y - seq[i - 1].y)
+        if (arc > maxStub) break
+        const hit = index.nearestMatching(seq[i], weld, (h) => h.id !== r.id)
+        if (hit) { cutAt = i; joinPt = hit.at }
+      }
+      // only a tail: the end itself must NOT already sit on another road
+      const endHit = index.nearestMatching(seq[0], weld, (h) => h.id !== r.id)
+      if (cutAt > 0 && joinPt && !endHit) {
+        const kept = seq.slice(cutAt)
+        kept[0] = joinPt
+        pts = fromEnd ? kept.reverse() : kept
+      }
+    }
+    return pts === r.points ? r : { ...r, points: pts }
+  })
 }
 
 /** jittered lattice at `spacing`, filtered by `accept`, shuffled for lattice-order independence */

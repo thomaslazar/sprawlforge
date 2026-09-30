@@ -366,12 +366,16 @@ describe('streets/trace', () => {
     // own quantization can overshoot the true continuous value by a sample
     // or so (measured worst case on this fixture: ~101 m at 1 m sampling,
     // ~110 m at the default ~10 m sampling, vs the literal 100 m) — same
-    // discretization slack reasoning used throughout this file.
+    // discretization slack reasoning used throughout this file. A road that
+    // stops on the parallel rule then JOINS the nearest crossing road (a
+    // connector of up to 0.5 × separation) legitimately extends the run by
+    // that connector, so allow it on top.
+    const JOIN = 0.5 * MINOR.separation
     for (const road of pass2) {
       for (const other of allStreets) {
         if (other.id === road.id) continue
         if (bboxesFar(road.points, other.points, CLOSE)) continue
-        expect(maxCloseRun(road.points, other.points, CLOSE)).toBeLessThanOrEqual(100 + 2 * MINOR.step)
+        expect(maxCloseRun(road.points, other.points, CLOSE)).toBeLessThanOrEqual(100 + 2 * MINOR.step + JOIN)
       }
     }
   }, 20000)
