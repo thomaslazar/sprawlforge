@@ -459,3 +459,34 @@ export function traceLayer(
   }
   return roads
 }
+
+/** Ray-march each dangling end along its last direction until it meets another indexed road, then end there. */
+export function extendToJunction(
+  roads: Road[], index: RoadIndex, terrain: Terrain, sizeM: number, maxExtend: number, step = 10,
+): Road[] {
+  const onEdge = (p: Pt) => p.x < 1 || p.y < 1 || p.x > sizeM - 1 || p.y > sizeM - 1
+  return roads.map((r) => {
+    let pts = r.points
+    for (const fromEnd of [false, true]) {
+      const seq = fromEnd ? pts.slice().reverse() : pts
+      if (seq.length < 2) continue
+      const end = seq[0]
+      const other = (h: { id: string }) => h.id !== r.id
+      if (onEdge(end) || inWater(terrain, end) || index.nearestMatching(end, 6, other)) continue
+      const len = Math.hypot(end.x - seq[1].x, end.y - seq[1].y)
+      if (len === 0) continue
+      const d = { x: (end.x - seq[1].x) / len, y: (end.y - seq[1].y) / len }
+      for (let t = step; t <= maxExtend; t += step) {
+        const p = { x: end.x + d.x * t, y: end.y + d.y * t }
+        if (p.x < 0 || p.y < 0 || p.x > sizeM || p.y > sizeM || inWater(terrain, p)) break
+        const hit = index.nearestMatching(p, 6, other)
+        if (hit) {
+          const joined = [hit.at, ...seq]
+          pts = fromEnd ? joined.reverse() : joined
+          break
+        }
+      }
+    }
+    return pts === r.points ? r : { ...r, points: pts }
+  })
+}

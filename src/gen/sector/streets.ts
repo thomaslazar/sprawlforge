@@ -3,7 +3,7 @@ import { hashSeed, mulberry32 } from '../rng'
 import { buildRoadField } from '../streets/field'
 import { traceHighway } from '../streets/highway'
 import {
-  MAJOR, MINOR, RoadIndex, poissonSeeds, riverCrossingSeeds, seedsAlong, traceLayer, trimStubs,
+  MAJOR, MINOR, RoadIndex, extendToJunction, poissonSeeds, riverCrossingSeeds, seedsAlong, traceLayer, trimStubs,
 } from '../streets/trace'
 import type { Road, SectorParams, Terrain } from '../types'
 import { inWater, truncateUnlandableRoads } from './bridges'
@@ -51,7 +51,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     terrain, sizeM, index, MAJOR, mulberry32(hashSeed(params.seed, 'arterials-2')), irregularityAt, 'B', 'arterial',
   )
   // truncate before seeding so S/L seeds come from the final arterials
-  const arterials = finalize([...arterialsRaw, ...crossRaw], terrain, index)
+  let arterials = finalize([...arterialsRaw, ...crossRaw], terrain, index)
   const pass1Raw = traceLayer(
     field, 'minor', arterials.flatMap((a) => seedsAlong(a.points, 100, true)),
     terrain, sizeM, index, MINOR, mulberry32(hashSeed(params.seed, 'streets')), irregularityAt, 'S', 'street',
@@ -61,9 +61,19 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     field, 'major', pass1.flatMap((s) => seedsAlong(s.points, 100, true)),
     terrain, sizeM, index, MINOR, mulberry32(hashSeed(params.seed, 'streets-2')), irregularityAt, 'L', 'street',
   )
+  let pass2 = finalize(pass2Raw, terrain, index)
+  // the tracer only joins roads indexed at its own time: sweep dangling ends onto the final network
+  const idx = new RoadIndex(200)
+  const addAll = (rs: Road[]) => rs.forEach((r) => idx.add(r.id, r.points, r.class))
+  if (highway) idx.add(highway.id, highway.points, 'highway')
+  addAll(arterials); addAll(pass1); addAll(pass2)
+  arterials = extendToJunction(arterials, idx, terrain, sizeM, 300)
+  addAll(arterials)
+  const pass1Ext = extendToJunction(pass1, idx, terrain, sizeM, 120)
+  pass2 = extendToJunction(pass2, idx, terrain, sizeM, 120)
   return {
     highway: highway && simplify(highway),
     arterials,
-    streets: { pass1, pass2: finalize(pass2Raw, terrain, index) },
+    streets: { pass1: pass1Ext, pass2 },
   }
 }

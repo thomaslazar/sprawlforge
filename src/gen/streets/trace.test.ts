@@ -5,10 +5,10 @@ import { inWater } from '../sector/bridges'
 import { effectiveIrregularity } from '../sector/zoning'
 import { sampleTerrain } from '../terrain'
 import { nearestOnPolyline } from '../terrain/rivers'
-import type { Road, SectorParams } from '../types'
+import type { Road, SectorParams, Terrain } from '../types'
 import { buildRoadField } from './field'
 import {
-  MAJOR, MINOR, RoadIndex, poissonSeeds, riverCrossingSeeds, seedsAlong, traceLayer, traceStreamline,
+  MAJOR, MINOR, RoadIndex, extendToJunction, poissonSeeds, riverCrossingSeeds, seedsAlong, traceLayer, traceStreamline,
   type Seed, type TraceOpts,
 } from './trace'
 
@@ -379,4 +379,28 @@ describe('streets/trace', () => {
       }
     }
   }, 20000)
+})
+
+describe('extendToJunction', () => {
+  const dry = { water: [] } as unknown as Terrain
+  const road = (id: string, pts: Pt[]): Road => ({ id, class: 'arterial', points: pts, width: 12, name: null })
+  const A = road('A', [{ x: 0, y: 500 }, { x: 300, y: 500 }])
+  const mk = (x: number, terrain = dry, max = 300) => {
+    const B = road('B', [{ x, y: 0 }, { x, y: 1000 }])
+    const idx = new RoadIndex(200)
+    idx.add('A', A.points, 'arterial'); idx.add('B', B.points, 'arterial')
+    return extendToJunction([A], idx, terrain, 1000, max)[0]
+  }
+  it('connects a dangling end to the road ahead', () => {
+    const out = mk(400)
+    const last = out.points[out.points.length - 1]
+    expect(Math.hypot(last.x - 400, last.y - 500)).toBeLessThan(1)
+  })
+  it('leaves an end alone when nothing is within reach', () => {
+    expect(mk(900)).toBe(A)
+  })
+  it('stops at water', () => {
+    const wet = { water: [[[[340, 400], [360, 400], [360, 600], [340, 600], [340, 400]]]] } as unknown as Terrain
+    expect(mk(400, wet)).toBe(A)
+  })
 })

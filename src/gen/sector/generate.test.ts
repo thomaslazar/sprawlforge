@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { pointInRings, ringCentroid, type Pt } from '../geometry'
 import { ISLET_MOAT_OUTER_FACTOR, ISLET_RADIUS_MAX } from '../terrain/field'
 import { GENERATOR_VERSION, type Block, type District, type SectorParams, type Terrain } from '../types'
+import { RoadIndex } from '../streets/trace'
+import { inWater } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
 import { deriveDistricts, generateSector } from './generate'
 
@@ -271,3 +273,37 @@ describe('generateSector invariants', () => {
     }
   })
 })
+
+describe('arterial connectivity', () => {
+  it('arterials rarely dangle', () => {
+    const m = generateSector({
+      seed: 4280430344, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15,
+      landform: 'coastal', river: true, lakes: true, islands: false, piers: false, pack: 'generic', theme: 'neon',
+    })
+    const roads = m.roads.filter((r) => r.class !== 'ramp')
+    const idx = new RoadIndex(200)
+    for (const r of roads) idx.add(r.id, r.points, r.class)
+    const S = m.meta.sizeM
+    let ends = 0
+    let dangling = 0
+    for (const r of roads.filter((x) => x.class === 'arterial')) {
+      for (const e of [r.points[0], r.points[r.points.length - 1]]) {
+        ends++
+        if (e.x < 1 || e.y < 1 || e.x > S - 1 || e.y > S - 1) continue
+        if (idx.nearestMatching(e, 6, (h) => h.id !== r.id)) continue
+        if (nearWater(m.terrain, e, 15)) continue
+        dangling++
+      }
+    }
+    console.log('arterial dangling', dangling, 'of', ends)
+    expect(dangling / ends).toBeLessThanOrEqual(0.05)
+  })
+})
+
+const nearWater = (t: Terrain, p: Pt, r: number): boolean => {
+  for (let a = 0; a < 16; a++) {
+    const q = { x: p.x + r * Math.cos((a * Math.PI) / 8), y: p.y + r * Math.sin((a * Math.PI) / 8) }
+    if (inWater(t, q)) return true
+  }
+  return inWater(t, p)
+}
