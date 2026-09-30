@@ -158,10 +158,16 @@ function draw(): void {
           ...riverCrossingSeeds(terrain, seedRng),
           ...poissonSeeds(sizeM, 400, seedRng, (p) => !inWater(terrain, p)),
         ]
-        return traceLayer(
+        const major = traceLayer(
           field, 'major', seeds, terrain, sizeM, index, MAJOR,
           mulberry32(hashSeed(seed, 'arterials')), irregularityAt, 'A', 'arterial',
         )
+        // cross arterials on the minor axis (same as src/gen/sector/streets.ts)
+        const cross = traceLayer(
+          field, 'minor', major.flatMap((a) => seedsAlong(a.points, 400, true)), terrain, sizeM, index, MAJOR,
+          mulberry32(hashSeed(seed, 'arterials-2')), irregularityAt, 'B', 'arterial',
+        )
+        return [...major, ...cross]
       }) ?? []
     : []
 

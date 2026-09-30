@@ -42,8 +42,15 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     ],
     terrain, sizeM, index, MAJOR, arterialRng, irregularityAt, 'A', 'arterial',
   )
+  // cross arterials on the minor axis, seeded from the major-axis ones — without
+  // this pass a flat inland grid gets only parallel arterials that never meet
+  // (they stop on rule 4 instead of snapping onto a crossing road)
+  const crossRaw = traceLayer(
+    field, 'minor', finalize(arterialsRaw, terrain).flatMap((a) => seedsAlong(a.points, 400, true)),
+    terrain, sizeM, index, MAJOR, mulberry32(hashSeed(params.seed, 'arterials-2')), irregularityAt, 'B', 'arterial',
+  )
   // truncate before seeding so S/L seeds come from the final arterials
-  const arterials = finalize(arterialsRaw, terrain)
+  const arterials = finalize([...arterialsRaw, ...crossRaw], terrain)
   const pass1Raw = traceLayer(
     field, 'minor', arterials.flatMap((a) => seedsAlong(a.points, 100, true)),
     terrain, sizeM, index, MINOR, mulberry32(hashSeed(params.seed, 'streets')), irregularityAt, 'S', 'street',
