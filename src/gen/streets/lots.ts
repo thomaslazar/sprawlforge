@@ -263,7 +263,12 @@ export function fillLots(
     const c = ringCentroid(inset)
     const local = inset.map((p) => rotatePt(p, -theta, c))
     const bbox = bboxOf(local)
-    const cell = profile.minCell * (1.25 - 0.5 * params.density)
+    // blocks are ~100 m now (street separation), so a zone's minCell alone
+    // (60-80 m for corp/industrial/docks) would leave most blocks as ONE
+    // lot filling the whole block; cap the cell so a block splits into at
+    // least ~2×2 lots, never below 18 m (the slum lot size)
+    const zoneCell = profile.minCell * (1.25 - 0.5 * params.density)
+    const cell = Math.min(zoneCell, Math.max(18, 0.45 * Math.min(bbox.w, bbox.h)))
     const { cells } = bspSplit(bbox, { minCell: cell, gap: 3, jitter: 0.25, rng })
 
     for (const r of cells) {
