@@ -338,6 +338,10 @@ describe('no doubled arterials', () => {
       irregularity: 0.85, landform: 'bay',
     })
     const arts = m.roads.filter((r) => r.class === 'arterial')
+    // oblique children must survive: 81 streets / 22 arterials measured
+    // (116 / 16 before a2ebfa4, 50 / 12 after it); bounds = measured - 10 %
+    expect(m.roads.filter((r) => r.class === 'street').length).toBeGreaterThanOrEqual(73)
+    expect(arts.length).toBeGreaterThanOrEqual(14)
     let worst = 0
     for (let i = 0; i < arts.length; i++) {
       for (let j = i + 1; j < arts.length; j++) {
@@ -347,7 +351,8 @@ describe('no doubled arterials', () => {
     }
     // a perpendicular crossing alone keeps two arterials within 0.5 sep for
     // ~2 x 200 m and an acute Y-merge more, so 320 is unreachable; measured
-    // 638 m after the fix (749 m before: the doubled lane) + ~10 %
-    expect(worst).toBeLessThanOrEqual(700)
+    // 700 m after the birth check (749 m before a2ebfa4: the doubled lane;
+    // more arterials survive now, so more Y-merges) + ~10 %
+    expect(worst).toBeLessThanOrEqual(770)
   })
 })

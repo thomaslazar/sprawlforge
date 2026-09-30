@@ -138,6 +138,13 @@ describe('parent exclusion', () => {
     const r = trace(stub({ x: 1, y: 0 }, { x: 0, y: 1 }), { x: 1, y: 0 }, 'major')
     expect(r === null || polylineLength(r) < 2 * MAJOR.step).toBe(true)
   })
+  it('an oblique child leaves its parent', () => {
+    const a = (35 * Math.PI) / 180
+    const minor = { x: Math.cos(a), y: Math.sin(a) }
+    const r = trace(stub({ x: -minor.y, y: minor.x }, minor), minor, 'minor')
+    expect(r).not.toBeNull()
+    expect(polylineLength(r!)).toBeGreaterThan(200)
+  })
   it('a child seeded perpendicular to its parent still leaves it', () => {
     const r = trace(stub({ x: 0, y: 1 }, { x: 1, y: 0 }), { x: 0, y: 1 }, 'major')
     expect(r).not.toBeNull()

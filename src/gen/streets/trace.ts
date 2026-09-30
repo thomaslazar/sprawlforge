@@ -203,8 +203,8 @@ function traceHalf(
   let dir = initDir
   let bridges = 0
   let stop: 'parallel' | 'decay' | 'steps' | 'other' = 'other'
-  // parent exclusion: only the snap rule, only while a perpendicular child
-  // is still inside the 0.3 × sep snap radius of its parent
+  // parent exclusion (rules 3 and 4, and the join): only while the trace is
+  // still within 0.35 × sep of the seed; beyond that the parent is ordinary
   const isSourceAt = (id: string, at: Pt) =>
     id === sourceId && Math.hypot(at.x - seedAt.x, at.y - seedAt.y) < 0.35 * opts.separation
   for (let i = 0; i < opts.maxSteps; i++) {
@@ -244,7 +244,7 @@ function traceHalf(
     // road happens to win the distance comparison and never get caught.
     const dirAngle = Math.atan2(newDir.y, newDir.x)
     const hitPar = index.nearestMatching(
-      next, 0.7 * sep, (hit) => angleGapLines(dirAngle, hit.segAngle) < PARALLEL_ANGLE,
+      next, 0.7 * sep, (hit) => !isSourceAt(hit.id, next) && angleGapLines(dirAngle, hit.segAngle) < PARALLEL_ANGLE,
     )
     if (hitPar) { stop = 'parallel'; break }
 
@@ -294,6 +294,8 @@ export function traceStreamline(
 
   const sample = field.sample(seed.at)
   const initDir = seed.dir ? normalize(seed.dir) : (useAxis === 'major' ? sample.major : sample.minor)
+  // a twin is never born: seeded along its own parent
+  if (source && angleGapLines(Math.atan2(initDir.y, initDir.x), source.segAngle) < PARALLEL_ANGLE) return null
   const forward = traceHalf(
     field, useAxis, seed.at, initDir, terrain, sizeM, index, opts, sep, rng, irregularityAt,
     crossWater, sourceId, seed.at, seed.corridorWidth,
