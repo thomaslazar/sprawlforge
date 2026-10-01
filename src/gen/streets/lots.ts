@@ -49,6 +49,8 @@ function largestRing(result: MultiPolygon): Pt[] | null {
   for (const poly of result) {
     for (const r of poly) {
       const pts = r.map(([x, y]) => ({ x, y }))
+      // polygon-clipping rings are closed: drop the repeated first vertex
+      if (pts.length > 1 && pts[0].x === pts[pts.length - 1].x && pts[0].y === pts[pts.length - 1].y) pts.pop()
       const area = Math.abs(ringArea(pts))
       if (area > bestArea) { bestArea = area; best = pts }
     }
@@ -291,6 +293,23 @@ export function insetByClipping(full: Pt[], d: number): Pt[][] {
   }).filter((r) => r.length >= 3 && Math.abs(ringArea(r)) >= MIN_BLOCK_AREA)
 }
 
+const NOTCH_P: Record<BlockStyle, number> = { plaza: 0.5, courtyard: 0.35, rows: 0.1, sheds: 0 }
+
+/**
+ * Notch to cut from rect `r`: a corner square (L) or a side slot (U), 30-45 %
+ * per side, overshooting the rect edge by 1 m so the cut never shares an edge.
+ */
+function notchOf(r: { x: number; y: number; w: number; h: number }, rng: { next(): number; chance(p: number): boolean }): Pt[] {
+  const nw = r.w * (0.3 + 0.15 * rng.next())
+  const nh = r.h * (0.3 + 0.15 * rng.next())
+  const u = rng.chance(0.5)
+  const flipX = rng.chance(0.5)
+  const flipY = rng.chance(0.5)
+  const x0 = u ? (r.w - nw) / 2 : -1
+  const pts: Pt[] = [{ x: x0, y: -1 }, { x: x0 + nw + (u ? 0 : 1), y: -1 }, { x: x0 + nw + (u ? 0 : 1), y: nh }, { x: x0, y: nh }]
+  return pts.map((p) => ({ x: r.x + (flipX ? r.w - p.x : p.x), y: r.y + (flipY ? r.h - p.y : p.y) }))
+}
+
 const boxesOverlap = (a: Box, b: Box) => a.x0 <= b.x1 && a.x1 >= b.x0 && a.y0 <= b.y1 && a.y1 >= b.y0
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
 const MIN_STYLED_AREA = 3000
@@ -320,6 +339,8 @@ export function fillLots(
   forceStyle?: BlockStyle,
 ): { buildings: Building[]; blocks: Block[] } {
   const rng = mulberry32(hashSeed(params.seed, 'buildings'))
+  // own stream: notches must not reshuffle the lots the main stream lays out
+  const notchRng = mulberry32(hashSeed(params.seed, 'notches'))
   const neighbourhood = fractalNoise2D(hashSeed(params.seed, 'neighbourhood'), 2)
   const districtById = new Map(districts.map((d) => [d.id, d]))
   const noBuildPolys = noBuild.map((nb) => [toRing(nb)])
@@ -415,6 +436,8 @@ export function fillLots(
           { x: r.x, y: r.y }, { x: r.x + r.w, y: r.y },
           { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h },
         ]
+        // the lot is clipped as a plain rect (fast paths intact), then notched
+        const notch = notchRng.chance(NOTCH_P[style]) ? notchOf(r, notchRng).map((p) => rotatePt(p, theta, c)) : null
         const lot = corners.map((p) => rotatePt(p, theta, c))
 
         // convex: corner tests suffice. Otherwise count the inset edges touching
@@ -444,6 +467,10 @@ export function fillLots(
             const clipped: MultiPolygon = inInset ? [[ring]] : cut ? (cut.length >= 3 ? [[toRing(cut)]] : []) : polygonClipping.intersection([ring], [toRing(inset)])
             return noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, near, convexNb, nearTie) : clipped
           }))
+        }
+        if (pts && notch) {
+          const lp = pts
+          pts = largestRing(safeClip(lp, (ring) => polygonClipping.difference([ring], [toRing(notch)])))
         }
         if (pts && inner.length) {
           // lot minus the courtyard: a lot clear of every courtyard edge is wholly in or out

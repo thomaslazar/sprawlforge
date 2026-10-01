@@ -82,6 +82,19 @@ describe('block styles', () => {
       expect(out.buildings.length).toBeLessThanOrEqual(3)
     }
   })
+  it('notched lots are concave', () => {
+    let notched = 0
+    for (let seed = 1; seed <= 40; seed++) {
+      const out = fillLotsFull([resDistrict], [bigBlock('D04')], { ...base, seed }, dryTerrain, [], 'plaza')
+      notched += out.buildings.filter((b) => b.footprint.length >= 6).length
+    }
+    expect(notched).toBeGreaterThan(0)
+  })
+  it('sheds stay rectangles', () => {
+    for (let seed = 1; seed <= 20; seed++)
+      for (const b of fillLotsFull([resDistrict], [bigBlock('D04')], { ...base, seed }, dryTerrain, [], 'sheds').buildings)
+        expect(b.footprint.length).toBe(4)
+  })
   it('rows blocks carry alleys and other styles do not', () => {
     const alleys = (style: 'rows' | 'courtyard' | 'plaza' | 'sheds') =>
       fillLotsFull([resDistrict], [bigBlock('D04')], base, dryTerrain, [], style).blocks[0].alleys.length
