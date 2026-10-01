@@ -8,8 +8,11 @@ import {
 import {
   buildPlanarGraph, clipFacesToLand, facesOf, dropSlivers, pruneDanglers, windowRing,
 } from '../streets/graph'
+import { RoadIndex, endKey, pruneDangling } from '../streets/trace'
+import { distToPolyline } from '../terrain/rivers'
 import { SIDEWALK, corridorRects, fillLots } from '../streets/lots'
 import { sampleTerrain } from '../terrain'
+import { HIGHWAY_WIDTH } from '../streets/highway'
 import { GENERATOR_VERSION, type Block, type District, type Road, type SectorModel, type SectorParams, type Terrain } from '../types'
 import { placePiers } from './piers'
 import { placePois } from './pois'
@@ -69,6 +72,23 @@ function toBlocks(faces: Face[], districts: District[]): Block[] {
   })
 }
 
+/**
+ * A ground-level cut leaves street ends at the corridor edge; the highway never
+ * anchors a street, so cut those back to a real junction. Ends outside the
+ * corridor were already validated by traceRoads and are kept as they are.
+ */
+function pruneCutStreets(streets: Road[], arterials: Road[], highway: Road, terrain: Terrain, sizeM: number): Road[] {
+  const index = new RoadIndex(200)
+  for (const r of [...arterials, ...streets]) index.add(r.id, r.points, r.class)
+  const keep = new Set<string>()
+  for (const r of streets) {
+    for (const p of [r.points[0], r.points[r.points.length - 1]]) {
+      if (distToPolyline(p, highway.points) > HIGHWAY_WIDTH / 2 + 10) keep.add(endKey(p))
+    }
+  }
+  return pruneDangling(streets, index, terrain, sizeM, { accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, keep })
+}
+
 export function generateSector(params: SectorParams): SectorModel {
   const sizeM = params.size * 1000
   const pack = getPack(params.pack)
@@ -83,7 +103,7 @@ export function generateSector(params: SectorParams): SectorModel {
   // highway levels decide where streets stop at the ground-level highway
   const levelRng = mulberry32(hashSeed(params.seed, 'highway-levels'))
   const segments = highway ? assignHighwayLevels(highway, districts, terrain, levelRng) : []
-  const minor = highway ? cutStreetsAtGround(streets, highway, segments) : streets
+  const minor = highway ? pruneCutStreets(cutStreetsAtGround(streets, highway, segments), arterials, highway, terrain, sizeM) : streets
   const crossings = highway ? highwayCrossings(highway, [...arterials, ...minor], segments, levelRng) : []
   const { crossings: finalCrossings, ramps } = highway
     ? buildInterchanges(highway, crossings, arterials, segments, terrain, sizeM)

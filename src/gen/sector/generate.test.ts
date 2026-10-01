@@ -5,6 +5,7 @@ import { GENERATOR_VERSION, type Block, type District, type SectorParams, type T
 import { hashSeed, mulberry32 } from '../rng'
 import { distToPolyline } from '../terrain/rivers'
 import { RoadIndex, riverCrossingSeeds } from '../streets/trace'
+import { HIGHWAY_WIDTH } from '../streets/highway'
 import { inWater } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
 import { bboxesFar, endMeetings, maxCloseRun } from '../streets/testutil'
@@ -342,7 +343,7 @@ describe('no doubled arterials', () => {
     const arts = m.roads.filter((r) => r.class === 'arterial')
     // 66 streets / 9 arterials measured (66 before the singularity stop, 41 with it ending
     // halves at the seed; 74 / 13 before prune-dangling); bounds = measured - 10 %
-    expect(m.roads.filter((r) => r.class === 'street').length).toBeGreaterThanOrEqual(59)
+    expect(m.roads.filter((r) => r.class === 'street').length).toBeGreaterThanOrEqual(44) // 49 measured after streets stopped anchoring on the highway (hooks gone)
     expect(arts.length).toBeGreaterThanOrEqual(8)
     let worst = 0
     for (let i = 0; i < arts.length; i++) {
@@ -382,7 +383,7 @@ describe('reference seed road quality', () => {
     const idx = new RoadIndex(200)
     idx.add(h.id, h.points, 'highway')
     const ics = (h.crossings ?? []).filter((c) => c.interchange)
-    expect(ics.length).toBeGreaterThan(0)
+    // the seed's only interchange sat on a 150 m arterial stub (now ineligible); none left is fine
     for (const c of ics) {
       const a = arts.find((r) => r.id === c.roadId || r.id.startsWith(c.roadId + '-'))!
       const at = pointAtT(h.points, c.at)
@@ -461,7 +462,8 @@ describe('coast-aligned streets', () => {
     // baseline f3d4114 (NW lost almost everything: 0 240 169 320 m) -> 1142 1237 169 320 m after this fix, floors = measured - 10 %.
     // The older a154b6a 1354/1041/729/483 is NOT the target: that NW network was one arterial hairpinning back
     // onto its own parent highway (>= 124 deg turn), which the no-hairpin rule forbids.
-    ;[1028, 1113, 152, 288].forEach((floor, k) => expect(len[k]).toBeGreaterThanOrEqual(floor))
+    // NE 1113 -> 918 floor (1020 m measured) once highway-hook streets are pruned
+    ;[1028, 918, 152, 288].forEach((floor, k) => expect(len[k]).toBeGreaterThanOrEqual(floor))
   })
 
   it('no road runs through a block', () => {
@@ -511,4 +513,52 @@ describe('density tags', () => {
     expect(s).toBeLessThan(d * 0.85)
     expect(d).toBeLessThan(p * 0.9)
   })
+})
+
+describe('streets at the highway', () => {
+  const cases = [
+    { seed: 4280430344, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15,
+      landform: 'coastal', river: true, lakes: true },
+    { seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, poiDensity: 0.5, irregularity: 0.85,
+      landform: 'bay', river: false, lakes: false },
+  ] as const
+  for (const c of cases) {
+    const m = generateSector({ ...c, islands: false, piers: false, pack: 'generic', theme: 'print' })
+    // markWetSpans may split the highway; crossings are copied to every piece
+    const pieces = m.roads.filter((r) => r.class === 'highway')
+    const hw = { ...pieces[0], points: pieces.flatMap((r) => r.points) }
+    it(`no street ends at the highway (seed ${c.seed})`, () => {
+      const idx = new RoadIndex(200)
+      for (const r of m.roads) if (r.class === 'street' || r.class === 'arterial') idx.add(r.id, r.points, r.class)
+      const bad: string[] = []
+      for (const r of m.roads.filter((x) => x.class === 'street')) {
+        for (const p of [r.points[0], r.points[r.points.length - 1]]) {
+          if (distToPolyline(p, hw.points) > HIGHWAY_WIDTH / 2 + 10) continue
+          if (!idx.nearestMatching(p, 6, (h) => h.id !== r.id)) bad.push(`${r.id}@${Math.round(p.x)},${Math.round(p.y)}`)
+        }
+      }
+      expect(bad).toEqual([])
+    })
+    it(`every crossing deck belongs to a road that crosses (seed ${c.seed})`, () => {
+      const side = (p: Pt) => {
+        const d = distToPolyline(p, hw.points)
+        if (d < HIGHWAY_WIDTH / 2) return 0
+        let best = Infinity, sgn = 1
+        for (let i = 0; i < hw.points.length - 1; i++) {
+          const a = hw.points[i], b = hw.points[i + 1]
+          const l2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2 || 1
+          const t = Math.max(0, Math.min(1, ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / l2))
+          const dd = Math.hypot(p.x - a.x - t * (b.x - a.x), p.y - a.y - t * (b.y - a.y))
+          if (dd < best) { best = dd; sgn = Math.sign((b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)) }
+        }
+        return sgn
+      }
+      for (const cr of hw.crossings ?? []) {
+        const rs = m.roads.filter((r) => r.id === cr.roadId || r.id.startsWith(cr.roadId + '-'))
+        expect(rs.length).toBeGreaterThan(0)
+        const sides = new Set(rs.flatMap((r) => r.points.map(side)))
+        expect(sides.has(-1) && sides.has(1)).toBe(true)
+      }
+    })
+  }
 })

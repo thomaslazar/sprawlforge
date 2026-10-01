@@ -335,7 +335,11 @@ export function highwayCrossings(highway: Road, roads: Road[], segments: Highway
       for (let j = 0; j < hp.length - 1; j++) {
         const l = Math.hypot(hp[j + 1].x - hp[j].x, hp[j + 1].y - hp[j].y)
         const f = segHit(hp[j], hp[j + 1], road.points[i], road.points[i + 1])
-        if (f !== null) {
+        // a road that merely ends on the highway (T-junction) does not cross it
+        const rp = road.points
+        const hitPt = f === null ? null : { x: hp[j].x + f * (hp[j + 1].x - hp[j].x), y: hp[j].y + f * (hp[j + 1].y - hp[j].y) }
+        const atEnd = hitPt && [rp[0], rp[rp.length - 1]].some((e) => Math.hypot(e.x - hitPt.x, e.y - hitPt.y) < 6)
+        if (f !== null && !atEnd) {
           const at = (acc + f * l) / total
           const level = levelAt(segments, at)
           const kind = level === 'elevated' ? 'under' : level === 'sunken' ? 'over'

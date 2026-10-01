@@ -82,9 +82,9 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     (r) => crossing(field, seedsAlong(r.points, 100, true)),
   )
   const streets = finalize(raw, terrain, index)
-  // streets may keep genuine decay cul-de-sacs; every other dangling end is pruned
+  // streets may keep genuine decay cul-de-sacs; every other dangling end is pruned (the highway never anchors a street)
   const all = indexOf([...arterials, ...streets])
-  const pruned = pruneDangling(streets, all, terrain, sizeM, { accept: () => true, minLength: 60, keep: new Set(decayEnds.map(endKey)) })
+  const pruned = pruneDangling(streets, all, terrain, sizeM, { accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, keep: new Set(decayEnds.map(endKey)) })
   return {
     highway: highway && simplify(highway),
     arterials,

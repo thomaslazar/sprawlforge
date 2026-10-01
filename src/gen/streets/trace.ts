@@ -520,25 +520,27 @@ export interface PruneOpts {
   /** `endKey`s of ends that may dangle (decay cul-de-sacs) */
   keep?: Set<string>
   weld?: number
+  /** a junction must be >= weld m of arc from both ends of the other road (end-to-end chains don't anchor) */
+  interiorOnly?: boolean
 }
 
 /**
  * Prune, never invent: a road end that is not on the window edge, near water,
- * or welded to an accepted road is cut back along the polyline to the first
+ * or welded to the interior (>= weld m from both ends) of an accepted road is cut back along the polyline to the first
  * junction with an accepted road (the dangling tail goes); no junction, or a
  * remainder under `minLength`, drops the road. `index` must hold every road
  * (incl. `roads`) and is kept in sync as roads are cut; repeats until stable
- * (a cut can un-anchor a neighbour), max 5 passes. Only changed roads are new objects.
+ * (a cut can un-anchor a neighbour), max 10 passes. Only changed roads are new objects.
  */
 export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain, sizeM: number, opts: PruneOpts): Road[] {
   const weld = opts.weld ?? 6
   const onEdge = (p: Pt) => p.x < 1 || p.y < 1 || p.x > sizeM - 1 || p.y > sizeM - 1
   let cur = roads
-  for (let pass = 0; pass < 5; pass++) {
+  for (let pass = 0; pass < 10; pass++) {
     let changed = false
     const next: Road[] = []
     for (const r of cur) {
-      const near = (p: Pt) => index.nearestMatching(p, weld, (h) => h.id !== r.id && opts.accept(h.cls))
+      const near = (p: Pt) => index.nearestMatching(p, weld, (h) => h.id !== r.id && opts.accept(h.cls) && (!opts.interiorOnly || h.edge >= weld))
       let pts = r.points
       let dead = false
       for (const fromEnd of [false, true]) {

@@ -444,6 +444,16 @@ describe('pruneDangling', () => {
     const out = run([A, E], wet)
     expect(out.every((r, i) => r === [A, E][i])).toBe(true)
   })
+  it('pruneDangling unravels a chain of end-to-end streets hanging off an arterial', () => {
+    const st = (id: string, a: Pt, b: Pt) => road(id, [a, b], 'street')
+    const chain = [
+      st('S1', { x: 300, y: 500 }, { x: 400, y: 500 }),
+      st('S2', { x: 400, y: 500 }, { x: 400, y: 600 }),
+      st('S3', { x: 400, y: 600 }, { x: 500, y: 600 }),
+    ]
+    const out = run([B, ...chain], dry, { accept: () => true, interiorOnly: true, minLength: 50 })
+    expect(out.map((r) => r.id)).toEqual(['B'])
+  })
   it('pruneDangling keeps a decay cul-de-sac', () => {
     const A = road('A', [{ x: 0, y: 500 }, { x: 600, y: 500 }])
     const out = run([A, B], dry, { ...opts, keep: new Set([endKey({ x: 600, y: 500 })]) })
