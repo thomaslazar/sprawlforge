@@ -465,11 +465,11 @@ describe('coast-aligned streets', () => {
   })
 
   it('no road runs through a block', () => {
-    // residual = block faces that swallow a street: mergeSlivers merging across it, and faces with a hole
-    // (a loop hanging off a bridge edge: footprint is one ring, holes are dropped). ROADMAP; ratchet down, never up.
+    // slivers are dropped, not merged. Residual (3 on seed 3017268931, 43 on seed 42) (B1412:S024 B1412:L008 B1109:L006) = faces with a
+    // hole / pruned dead ends; buildings still never sit on them (second assertion). Ratchet down, never up.
     const cases: Array<[SectorParams, number]> = [
-      [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'print' }, 8],
-      [{ ...base, seed: 42, landform: 'coastal', river: true }, 57],
+      [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'print' }, 3],
+      [{ ...base, seed: 42, landform: 'coastal', river: true }, 43],
     ]
     for (const [params, max] of cases) {
       const m = generateSector(params)
@@ -486,7 +486,10 @@ describe('coast-aligned streets', () => {
           if (pts.some((p) => p.x > x0 && p.x < x1 && p.y > y0 && p.y < y1 && pointInRings(p, [b.footprint]) && distToPolyline(p, ring) > lim)) bad.push(`${b.id}:${r.id}:${r.class}`)
         }
       }
-      expect(bad.length, `seed ${params.seed}: ${bad.join(' ')}`).toBeLessThanOrEqual(max)
+      expect(bad.length, `seed ${params.seed} (${bad.length}): ${bad.join(' ')}`).toBeLessThanOrEqual(max)
+      // whatever the face graph did, no building vertex sits on a road's paved width
+      const under = m.buildings.filter((bl) => bl.footprint.some((p) => m.roads.some((r) => r.class !== 'highway' && distToPolyline(p, r.points) < r.width / 2 - 0.5)))
+      expect(under.map((bl) => bl.id), `seed ${params.seed}`).toEqual([])
     }
   })
 })

@@ -6,9 +6,9 @@ import {
   assignHighwayLevels, buildInterchanges, cutStreetsAtGround, highwayCrossings, noBuildStrips,
 } from '../streets/highway'
 import {
-  buildPlanarGraph, clipFacesToLand, facesOf, mergeSlivers, pruneDanglers, windowRing,
+  buildPlanarGraph, clipFacesToLand, facesOf, dropSlivers, pruneDanglers, windowRing,
 } from '../streets/graph'
-import { fillLots } from '../streets/lots'
+import { SIDEWALK, corridorRects, fillLots } from '../streets/lots'
 import { sampleTerrain } from '../terrain'
 import { GENERATOR_VERSION, type Block, type District, type Road, type SectorModel, type SectorParams, type Terrain } from '../types'
 import { placePiers } from './piers'
@@ -42,10 +42,10 @@ export function deriveDistricts(districts: District[], blocks: Block[]): Distric
 
 type Face = { poly: Pt[]; footprint: Pt[] }
 
-/** roads → cleaned faces clipped to land (dangling stubs pruned, slivers merged) */
+/** roads → cleaned faces clipped to land (dangling stubs pruned, slivers dropped) */
 function facesFor(roads: Road[], boundaries: Pt[][], terrain: Terrain): Face[] {
   const g = pruneDanglers(buildPlanarGraph(roads, boundaries))
-  return clipFacesToLand(mergeSlivers(facesOf(g)), terrain)
+  return clipFacesToLand(dropSlivers(facesOf(g)), terrain)
 }
 
 const centroidDist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y)
@@ -110,7 +110,10 @@ export function generateSector(params: SectorParams): SectorModel {
     return { ...r, name: roadNames.get(base)! }
   })
 
-  const buildings = fillLots(namedDistricts, blocks, params, terrain, highway ? noBuildStrips(highway, segments) : [])
+  const buildings = fillLots(namedDistricts, blocks, params, terrain, [
+    ...(highway ? noBuildStrips(highway, segments) : []),
+    ...roads.filter((r) => r.class !== 'highway').flatMap((r) => corridorRects(r.points, r.width / 2 + SIDEWALK)),
+  ])
   const finalDistricts = deriveDistricts(namedDistricts, blocks)
   const pois = placePois(finalDistricts, buildings, pack, params)
   const piers = placePiers(finalDistricts, terrain, params)

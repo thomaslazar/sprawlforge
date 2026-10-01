@@ -3,7 +3,7 @@ import { ringArea, type Pt } from '../geometry'
 import { sampleTerrain } from '../terrain'
 import type { Road, SectorParams } from '../types'
 import {
-  buildPlanarGraph, clipFacesToLand, degree4Vertices, facesOf, mergeSlivers, pruneDanglers, windowRing,
+  buildPlanarGraph, clipFacesToLand, degree4Vertices, facesOf, dropSlivers, pruneDanglers, windowRing,
 } from './graph'
 
 const road = (id: string, points: Pt[]): Road => ({ id, class: 'street', points, width: 9, name: null })
@@ -66,13 +66,14 @@ describe('streets/graph', () => {
     expect(Math.abs(ringArea(faces[0]))).toBeCloseTo(1000000, 0)
   })
 
-  it('mergeSlivers removes thin faces', () => {
+  it('dropSlivers drops thin faces without touching neighbours', () => {
     const rect = (x0: number, x1: number): Pt[] => [
       { x: x0, y: 0 }, { x: x1, y: 0 }, { x: x1, y: 1000 }, { x: x0, y: 1000 },
     ]
     const faces = [rect(-1000, 0), rect(0, 15), rect(15, 1015)]
-    const merged = mergeSlivers(faces)
-    expect(merged.length).toBe(2)
+    const kept = dropSlivers(faces)
+    expect(kept.length).toBe(2)
+    expect(kept[1]).toEqual(faces[2])
   })
 
   it('degree4Vertices counts crossroads', () => {

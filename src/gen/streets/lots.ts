@@ -13,9 +13,31 @@ export const ZONE_BUILD: Record<ZoneType, { minCell: number; fill: number }> = {
   docks: { minCell: 70, fill: 0.75 },
 }
 
-const SIDEWALK = 6
+export const SIDEWALK = 6
+const BUCKET = 200
 const MIN_BLOCK_AREA = 500
 const MIN_BUILDING_AREA = 40
+
+/**
+ * Corridor of a polyline buffered by `half` each side: one small rectangle per
+ * segment, extended `half` past both ends so bends leave no wedge gap. Small
+ * rings keep each lot's polygon difference cheap (a km-long ring would not).
+ */
+export function corridorRects(line: Pt[], half: number): Pt[][] {
+  const out: Pt[][] = []
+  for (let i = 1; i < line.length; i++) {
+    const a = line[i - 1], b = line[i]
+    const l = Math.hypot(b.x - a.x, b.y - a.y)
+    if (l < 1e-6) continue
+    const ux = (b.x - a.x) / l, uy = (b.y - a.y) / l
+    const [ax, ay, bx, by] = [a.x - ux * half, a.y - uy * half, b.x + ux * half, b.y + uy * half]
+    out.push([
+      { x: ax - uy * half, y: ay + ux * half }, { x: bx - uy * half, y: by + ux * half },
+      { x: bx + uy * half, y: by - ux * half }, { x: ax + uy * half, y: ay - ux * half },
+    ])
+  }
+  return out
+}
 
 const toRing = (pts: Pt[]): [number, number][] => pts.map((p) => [p.x, p.y])
 
@@ -68,6 +90,20 @@ function halfPlaneClip(poly: Pt[], a: Pt, b: Pt, ccw: boolean): Pt[] {
     }
   }
   return out
+}
+
+/** convex `poly` minus convex `rect`, as disjoint convex pieces (one half-plane cut per rect edge) */
+function subtractConvex(poly: Pt[], rect: Pt[]): Pt[][] {
+  const ccw = ringArea(rect) > 0
+  const pieces: Pt[][] = []
+  let cur = poly
+  for (let i = 0; i < rect.length && cur.length >= 3; i++) {
+    const a = rect[i], b = rect[(i + 1) % rect.length]
+    const out = halfPlaneClip(cur, b, a, ccw)
+    if (out.length >= 3) pieces.push(out)
+    cur = halfPlaneClip(cur, a, b, ccw)
+  }
+  return pieces
 }
 
 /** true when every consecutive edge turn has the same sign (zero turns ignored) */
@@ -161,21 +197,46 @@ export function insetRing(ring: Pt[], d: number): Pt[] | null {
  */
 function subtractNoBuild(
   clipped: MultiPolygon, noBuild: Pt[][], noBuildPolys: MultiPolygon[number][], boxes: Box[],
+  near: (box: Box) => number[], convexNb: boolean[],
   nearTie: (pts: Array<readonly [number, number]>) => boolean,
 ): MultiPolygon {
   if (clipped.length === 0) return clipped
   const coords = clipped.flatMap((poly) => poly.flat())
   const box = boxOf(coords.map(([x, y]) => ({ x, y })))
-  let touching = false
-  for (let k = 0; k < noBuild.length; k++) {
+  const hit: number[] = []
+  const cand = near(box)
+  for (const k of cand) {
     const b = boxes[k]
     if (b.x0 > box.x1 + BOX_MARGIN || b.x1 < box.x0 - BOX_MARGIN || b.y0 > box.y1 + BOX_MARGIN || b.y1 < box.y0 - BOX_MARGIN) continue
     const ring = noBuild[k]
-    if (ring.some((p, i) => segTouchesBox(p, ring[(i + 1) % ring.length], box))) touching = true
+    if (ring.some((p, i) => segTouchesBox(p, ring[(i + 1) % ring.length], box))) hit.push(k)
     else if (pointInRings({ x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 }, [ring])) return []
   }
+  // lot minus convex strips: exact half-plane cuts, no polygon-clipping call
+  if (hit.length > 0 && clipped.length === 1 && clipped[0].length === 1 && hit.every((k) => convexNb[k])) {
+    const r0 = clipped[0][0]
+    const closed = r0.length > 1 && r0[0][0] === r0[r0.length - 1][0] && r0[0][1] === r0[r0.length - 1][1]
+    const lot = (closed ? r0.slice(0, -1) : r0).map(([x, y]) => ({ x, y }))
+    if (lot.length >= 3 && isConvex(lot)) {
+      // only the largest piece survives (callers keep largestRing), so don't let pieces fragment
+      let piece = lot
+      for (const k of hit) {
+        const next = subtractConvex(piece, noBuild[k])
+        if (next.length === 0) return []
+        piece = next.reduce((a, b) => (Math.abs(ringArea(b)) > Math.abs(ringArea(a)) ? b : a))
+      }
+      return [[toRing(piece)]]
+    }
+  }
   // near-ties would make polygon-clipping snap our coordinates to a strip's: do the real thing
-  return touching || nearTie(coords) ? polygonClipping.difference(clipped, ...noBuildPolys) : clipped
+  if (hit.length === 0 && !nearTie(coords)) return clipped
+  // one strip at a time: a single n-ary difference over dozens of overlapping corridor rects can stall the clipper
+  let cur = clipped
+  for (const k of hit.length ? hit : cand) {
+    if (cur.length === 0) break
+    cur = polygonClipping.difference(cur, noBuildPolys[k])
+  }
+  return cur
 }
 
 /**
@@ -240,6 +301,24 @@ export function fillLots(
   const districtById = new Map(districts.map((d) => [d.id, d]))
   const noBuildPolys = noBuild.map((nb) => [toRing(nb)])
   const noBuildBoxes = noBuild.map(boxOf)
+  const convexNb = noBuild.map(isConvex)
+  // 200 m grid of strip indices: a lot only looks at strips whose bbox shares a cell with it
+  const grid = new Map<string, number[]>()
+  noBuildBoxes.forEach((b, k) => {
+    for (let gx = Math.floor((b.x0 - BOX_MARGIN) / BUCKET); gx <= Math.floor((b.x1 + BOX_MARGIN) / BUCKET); gx++)
+      for (let gy = Math.floor((b.y0 - BOX_MARGIN) / BUCKET); gy <= Math.floor((b.y1 + BOX_MARGIN) / BUCKET); gy++) {
+        const key = gx + ',' + gy
+        const l = grid.get(key)
+        if (l) l.push(k); else grid.set(key, [k])
+      }
+  })
+  const near = (box: Box): number[] => {
+    const out = new Set<number>()
+    for (let gx = Math.floor(box.x0 / BUCKET); gx <= Math.floor(box.x1 / BUCKET); gx++)
+      for (let gy = Math.floor(box.y0 / BUCKET); gy <= Math.floor(box.y1 / BUCKET); gy++)
+        for (const k of grid.get(gx + ',' + gy) ?? []) out.add(k)
+    return [...out]
+  }
   const nearTie = makeNearTieCheck(noBuild.flat().map((p) => [p.x, p.y] as const))
   const buildings: Building[] = []
   let n = 0
@@ -293,8 +372,9 @@ export function fillLots(
           if (touching === 0 && !pointInRings(lot[0], [inset])) continue
         }
         const clear = convex || touching === 0
-        const allInside = clear && lot.every((p) =>
-          pointInRings(p, [inset]) && noBuild.every((nb) => !pointInRings(p, [nb])))
+        const lotNear = clear ? near(lb) : []
+        const inInset = clear && lot.every((p) => pointInRings(p, [inset]))
+        const allInside = inInset && lot.every((p) => lotNear.every((k) => !pointInRings(p, [noBuild[k]])))
 
         let pts: Pt[] | null
         if (allInside) {
@@ -302,8 +382,8 @@ export function fillLots(
         } else {
           const cut = touching === 1 ? halfPlaneClip(lot, inset[hit], inset[(hit + 1) % inset.length], insetCcw) : null
           pts = largestRing(safeClip(lot, (ring) => {
-            const clipped: MultiPolygon = cut ? (cut.length >= 3 ? [[toRing(cut)]] : []) : polygonClipping.intersection([ring], [toRing(inset)])
-            return noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, nearTie) : clipped
+            const clipped: MultiPolygon = inInset ? [[ring]] : cut ? (cut.length >= 3 ? [[toRing(cut)]] : []) : polygonClipping.intersection([ring], [toRing(inset)])
+            return noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, near, convexNb, nearTie) : clipped
           }))
         }
         if (!pts || Math.abs(ringArea(pts)) < MIN_BUILDING_AREA) continue

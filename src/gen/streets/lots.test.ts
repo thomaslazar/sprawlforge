@@ -2,7 +2,7 @@ import polygonClipping from 'polygon-clipping'
 import { describe, expect, it, vi } from 'vitest'
 import { pointInRings, ringArea, type Pt } from '../geometry'
 import type { Block, District, SectorParams, Terrain } from '../types'
-import { fillLots, insetByClipping, insetRing } from './lots'
+import { corridorRects, fillLots, insetByClipping, insetRing } from './lots'
 
 const rectPoly = (x: number, y: number, w: number, h: number): Pt[] => [
   { x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h },
@@ -51,6 +51,18 @@ const makeBlock = (districtId: string, id = 'B0001'): Block => ({
   poly: rectPoly(0, 0, 120, 120),
   footprint: rectPoly(0, 0, 120, 120),
   flags: {},
+})
+
+describe('road strips', () => {
+  it('lots never overlap a road strip', () => {
+    const block: Block = { ...makeBlock('D01'), poly: rectPoly(0, 0, 200, 200), footprint: rectPoly(0, 0, 200, 200) }
+    const street = [{ x: 0, y: 100 }, { x: 100, y: 108 }, { x: 200, y: 100 }]
+    const strips = corridorRects(street, 4.5 + 6)
+    const buildings = fillLots([corpDistrict], [block], base, dryTerrain, strips)
+    expect(buildings.length).toBeGreaterThan(0)
+    for (const b of buildings) for (const p of b.footprint)
+      for (let i = 1; i < street.length; i++) expect(distToSegment(p, street[i - 1], street[i])).toBeGreaterThanOrEqual(10.5 - 0.01)
+  })
 })
 
 describe('insetRing', () => {
