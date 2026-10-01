@@ -463,7 +463,8 @@ describe('coast-aligned streets', () => {
     // The older a154b6a 1354/1041/729/483 is NOT the target: that NW network was one arterial hairpinning back
     // onto its own parent highway (>= 124 deg turn), which the no-hairpin rule forbids.
     // NE 1113 -> 918 floor (1020 m measured) once highway-hook streets are pruned
-    ;[1028, 918, 152, 288].forEach((floor, k) => expect(len[k]).toBeGreaterThanOrEqual(floor))
+    // NW 1142 -> 908 m once parallel-stopped streets end on their neighbour (they used to be pruned whole): floor 817 (-10 %)
+    ;[817, 918, 152, 288].forEach((floor, k) => expect(len[k]).toBeGreaterThanOrEqual(floor))
   })
 
   it('no road runs through a block', () => {

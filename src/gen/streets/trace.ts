@@ -204,6 +204,8 @@ const CROSSING_SAMPLE_STEP = 10
 const PARALLEL_ANGLE = (25 * Math.PI) / 180
 /** a raw direction flip beyond this between two steps is a field singularity: stop, never clamp (a clamped hairpin is a U-loop) */
 const SINGULARITY_TURN = (60 * Math.PI) / 180
+/** a street may end on a near-parallel road only broadside and after a real run (a stub right beside its parent is a wedge) */
+const JOIN_MIN_ANGLE = (60 * Math.PI) / 180
 
 function traceHalf(
   field: RoadField, axis: 'major' | 'minor', start: Pt, initDir: Pt,
@@ -285,7 +287,14 @@ function traceHalf(
     const hitPar = index.nearestMatching(
       next, 0.7 * sep, (hit) => !isSourceAt(hit.id, next) && angleGapLines(dirAngle, hit.segAngle) < PARALLEL_ANGLE,
     )
-    if (hitPar) break
+    if (hitPar) {
+      // a street stopped by a near-parallel road would end free and the prune would drop it (and the
+      // void it blocked stays empty): end it on that road instead, if the foot lies ahead of the walker
+      const foot = hitPar.at
+      const join = angleGapLines(Math.atan2(foot.y - p.y, foot.x - p.x), hitPar.segAngle)
+      if (!opts.bridgeRivers && hitPar.cls !== 'highway' && hitPar.edge >= 6 && join > JOIN_MIN_ANGLE && pts.length * opts.step >= 0.5 * sep && (foot.x - p.x) * dir.x + (foot.y - p.y) * dir.y > 0) pts.push(foot)
+      break
+    }
 
     pts.push(next)
     p = next
