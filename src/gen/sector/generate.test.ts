@@ -3,6 +3,7 @@ import { pointAtT, pointInRings, polylineLength, ringCentroid, type Pt } from '.
 import { ISLET_MOAT_OUTER_FACTOR, ISLET_RADIUS_MAX } from '../terrain/field'
 import { GENERATOR_VERSION, type Block, type District, type SectorParams, type Terrain } from '../types'
 import { hashSeed, mulberry32 } from '../rng'
+import { distToPolyline } from '../terrain/rivers'
 import { RoadIndex, riverCrossingSeeds } from '../streets/trace'
 import { inWater } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
@@ -461,5 +462,31 @@ describe('coast-aligned streets', () => {
     // The older a154b6a 1354/1041/729/483 is NOT the target: that NW network was one arterial hairpinning back
     // onto its own parent highway (>= 124 deg turn), which the no-hairpin rule forbids.
     ;[1028, 1113, 152, 288].forEach((floor, k) => expect(len[k]).toBeGreaterThanOrEqual(floor))
+  })
+
+  it('no road runs through a block', () => {
+    // residual = block faces that swallow a street: mergeSlivers merging across it, and faces with a hole
+    // (a loop hanging off a bridge edge: footprint is one ring, holes are dropped). ROADMAP; ratchet down, never up.
+    const cases: Array<[SectorParams, number]> = [
+      [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'print' }, 8],
+      [{ ...base, seed: 42, landform: 'coastal', river: true }, 57],
+    ]
+    for (const [params, max] of cases) {
+      const m = generateSector(params)
+      const bad: string[] = []
+      for (const b of m.blocks) {
+        const xs = b.footprint.map((p) => p.x), ys = b.footprint.map((p) => p.y)
+        const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
+        const ring = [...b.footprint, b.footprint[0]]
+        for (const r of m.roads) {
+          if (r.class === 'ramp') continue
+          const pts: Pt[] = [...r.points]
+          for (let i = 1; i < r.points.length; i++) pts.push({ x: (r.points[i - 1].x + r.points[i].x) / 2, y: (r.points[i - 1].y + r.points[i].y) / 2 })
+          const lim = r.width / 2 + 1
+          if (pts.some((p) => p.x > x0 && p.x < x1 && p.y > y0 && p.y < y1 && pointInRings(p, [b.footprint]) && distToPolyline(p, ring) > lim)) bad.push(`${b.id}:${r.id}:${r.class}`)
+        }
+      }
+      expect(bad.length, `seed ${params.seed}: ${bad.join(' ')}`).toBeLessThanOrEqual(max)
+    }
   })
 })

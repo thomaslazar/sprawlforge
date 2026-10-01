@@ -181,6 +181,45 @@ export function buildPlanarGraph(roads: Road[], boundaries: Pt[][], snapTol = 5)
   for (const road of [...roads].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)))
     addPolyline(road.points, road.id, false)
 
+  // weld only looks at edges that already exist, so a vertex inserted before a later
+  // road passed by was never joined to it: a free road end within 2 x snapTol of a
+  // foreign edge gets linked to its foot, and any vertex lying on a foreign edge
+  // splits it (this also folds collinear overlaps onto shared edges). Left
+  // alone, pruneDanglers eats the street / a spur lives inside a face and the
+  // lots ignore it.
+  const degree = new Map<number, number>()
+  for (const e of edges.values()) for (const v of [e.a, e.b]) degree.set(v, (degree.get(v) ?? 0) + 1)
+  for (const v of [...degree.keys()].sort((x, y) => x - y)) {
+    const free = degree.get(v) === 1
+    const own = free ? [...edges.values()].find((e) => e.a === v || e.b === v) : undefined
+    const [cx, cy] = cellOf(vertices[v])
+    let bestId = -1
+    let bestD = free ? 2 * snapTol : 0.5
+    let bestPt: Pt | null = null
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (const id of eGrid.get(cellKey(cx + dx, cy + dy)) ?? []) {
+          const e = edges.get(id)
+          if (!e || e.a === v || e.b === v) continue
+          const { pt, d } = nearestOnSegment(vertices[v], vertices[e.a], vertices[e.b])
+          if (d < bestD) { bestD = d; bestId = id; bestPt = pt }
+        }
+      }
+    }
+    if (bestId < 0 || !bestPt) continue
+    const e = removeEdge(bestId)!
+    if (free) {
+      const end = [e.a, e.b].find((i) => Math.hypot(vertices[i].x - bestPt!.x, vertices[i].y - bestPt!.y) < 1)
+      const w = end ?? vAdd(bestPt)
+      addEdge(e.a, w, e.roadId)
+      addEdge(w, e.b, e.roadId)
+      addEdge(v, w, own!.roadId)
+    } else {
+      addEdge(e.a, v, e.roadId)
+      addEdge(v, e.b, e.roadId)
+    }
+  }
+
   // --- intersection pass over the welded snapshot: gather every crossing, then
   // cut each edge once at all of its crossings (sorted along its length) ---
   const snapshot = [...edges.entries()]
