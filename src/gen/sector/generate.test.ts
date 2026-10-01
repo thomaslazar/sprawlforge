@@ -339,9 +339,9 @@ describe('no doubled arterials', () => {
       irregularity: 0.85, landform: 'bay',
     })
     const arts = m.roads.filter((r) => r.class === 'arterial')
-    // 41 streets / 9 arterials measured after the singularity stop (66 / 9 before it;
-    // 74 / 13 before prune-dangling); bounds = measured - 10 %
-    expect(m.roads.filter((r) => r.class === 'street').length).toBeGreaterThanOrEqual(37)
+    // 66 streets / 9 arterials measured (66 before the singularity stop, 41 with it ending
+    // halves at the seed; 74 / 13 before prune-dangling); bounds = measured - 10 %
+    expect(m.roads.filter((r) => r.class === 'street').length).toBeGreaterThanOrEqual(59)
     expect(arts.length).toBeGreaterThanOrEqual(8)
     let worst = 0
     for (let i = 0; i < arts.length; i++) {

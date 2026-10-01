@@ -476,3 +476,25 @@ describe('field singularity', () => {
     expect(fwd.length).toBeGreaterThan(2)
   })
 })
+
+describe('snap behind the walker', () => {
+  it('a snap that lands behind the walker backtracks onto the target', () => {
+    const field = {
+      sizeM: 2000, patches: [],
+      sample: () => ({ major: { x: 1, y: 0 }, minor: { x: 0, y: 1 } }),
+    } as unknown as RoadField
+    const { terrain, irregularityAt } = setup({ landform: 'inland', river: false, lakes: false, irregularity: 0.05 })
+    const index = new RoadIndex(200)
+    index.add('T', [{ x: 500, y: 0 }, { x: 500, y: 1000 }], 'arterial')
+    const pts = traceStreamline(
+      field, 'major', { at: { x: 300, y: 500 }, dir: { x: 1, y: 0 } }, terrain, 2000, index, { ...MAJOR, step: 10 }, mulberry32(1), irregularityAt,
+    )!
+    const fwd = pts.filter((q) => q.x >= 300)
+    expect(Math.abs(fwd[fwd.length - 1].x - 500)).toBeLessThanOrEqual(1)
+    expect(Math.max(...pts.map((q) => q.x))).toBeLessThanOrEqual(501)
+    for (let i = 2; i < pts.length; i++) {
+      const t = Math.atan2(pts[i].y - pts[i - 1].y, pts[i].x - pts[i - 1].x) - Math.atan2(pts[i - 1].y - pts[i - 2].y, pts[i - 1].x - pts[i - 2].x)
+      expect(Math.abs(Math.atan2(Math.sin(t), Math.cos(t)))).toBeLessThanOrEqual((60 * Math.PI) / 180 + 1e-9)
+    }
+  })
+})

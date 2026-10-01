@@ -225,7 +225,7 @@ function traceHalf(
   for (let i = 0; i < opts.maxSteps; i++) {
     const rawDir = rk4Dir(field, axis, p, dir, opts.step)
     // the highway (maxTurn set) is smoothed by its clamp instead
-    if (opts.maxTurn === undefined && Math.acos(clamp(-1, 1, dir.x * rawDir.x + dir.y * rawDir.y)) > SINGULARITY_TURN) break
+    if (i > 0 && opts.maxTurn === undefined && Math.acos(clamp(-1, 1, dir.x * rawDir.x + dir.y * rawDir.y)) > SINGULARITY_TURN) break
     const newDir = clampTurn(dir, rawDir, maxTurn)
     const next = { x: p.x + newDir.x * opts.step, y: p.y + newDir.y * opts.step }
 
@@ -255,9 +255,15 @@ function traceHalf(
     // road, and the parent itself once far enough away, is still checked.
     const hitSame = index.nearest(next, 0.3 * sep, sameOrHigher)
     if (hitSame && !isSourceAt(hitSame.id, next)) {
-      // a join behind the walker would be a hairpin: end dangling, prune cleans up
-      const jx = hitSame.at.x - p.x, jy = hitSame.at.y - p.y
-      if (jx * dir.x + jy * dir.y >= 0) pts.push(hitSame.at)
+      // the walker overshot the target by < 1 step: backtrack (a few points) so the road ends on it without doubling back
+      const foot = hitSame.at
+      const ahead = () => {
+        const last = pts.length > 0 ? pts[pts.length - 1] : start
+        const prev = pts.length >= 2 ? pts[pts.length - 2] : pts.length === 1 ? start : { x: start.x - initDir.x, y: start.y - initDir.y }
+        return (foot.x - last.x) * (last.x - prev.x) + (foot.y - last.y) * (last.y - prev.y) >= 0
+      }
+      for (let k = 0; k < 3 && pts.length > 0 && !ahead(); k++) pts.pop()
+      if (ahead()) pts.push(foot)
       break
     }
 
