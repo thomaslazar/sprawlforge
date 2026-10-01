@@ -503,3 +503,12 @@ describe('block styles', () => {
     expect(rows).toBeLessThan(0.9)
   })
 })
+
+describe('density tags', () => {
+  it('density tags give distinct building counts', () => {
+    const n = (density: number) => generateSector({ ...base, density }).buildings.length
+    const [s, d, p] = [n(0.25), n(0.6), n(0.9)]
+    expect(s).toBeLessThan(d * 0.85)
+    expect(d).toBeLessThan(p * 0.9)
+  })
+})

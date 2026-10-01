@@ -411,7 +411,7 @@ export function fillLots(
     // self-intersects fall back to the clipping inset (possibly several pieces)
     const insets = fast ? [fast] : insetByClipping(block.footprint, SIDEWALK)
     const profile = ZONE_BUILD[district.zone]
-    const fill = Math.min(0.98, profile.fill * (0.75 + 0.5 * params.density))
+    const fill = Math.min(0.98, profile.fill * (0.55 + 0.5 * params.density))
     const theta = longestEdgeAngle(block.footprint)
     for (const inset of insets) {
     if (Math.abs(ringArea(inset)) < MIN_BLOCK_AREA) continue
@@ -426,7 +426,7 @@ export function fillLots(
     // (60-80 m for corp/industrial/docks) would leave most blocks as ONE
     // lot filling the whole block; cap the cell so a block splits into at
     // least ~2×2 lots, never below 18 m (the slum lot size)
-    const zoneCell = profile.minCell * (1.25 - 0.5 * params.density)
+    const zoneCell = profile.minCell * (1.3 - 0.6 * params.density)
     const cell = Math.min(zoneCell, Math.max(18, 0.45 * Math.min(bbox.w, bbox.h)))
     const style: BlockStyle = Math.abs(ringArea(inset)) < MIN_STYLED_AREA ? 'rows' : chosen
     if (style !== 'rows') blockStyle = style
