@@ -440,6 +440,7 @@ export function cutStreetsAtGround(streets: Road[], highway: Road, segments: Hig
 
 const IC_SPACING_M = 1000
 const IC_REACH_M = 500
+const IC_CONTINUE_M = 300
 const IC_TRANSITION_CLEAR_M = 200
 const RAMP_ART_M = 120
 const RAMP_HWY_M = 200
@@ -498,8 +499,20 @@ export function buildInterchanges(
     const a = nearestTangent(arterials.get(c.roadId)!.points, at)
     return Math.abs(h.x * a.x + h.y * a.y) <= Math.cos(Math.PI / 4)
   }
+  /** both sides run >= IC_CONTINUE_M of arc from the crossing, or meet another arterial within it */
+  const continues = (c: HighwayCrossing) => {
+    const art = arterials.get(c.roadId)!
+    const artLen = polylineLength(art.points)
+    const s = nearestT(pointAtT(hp, c.at), art.points).t * artLen
+    const others = [...arterials.values()].filter((o) => o !== art)
+    return [s, artLen - s].every((arc) => {
+      if (arc >= IC_CONTINUE_M) return true
+      const end = pointAtT(art.points, arc === s ? 0 : 1)
+      return others.some((o) => distToPolyline(end, o.points) <= 6)
+    })
+  }
   const ok = (c: HighwayCrossing) =>
-    arterials.has(c.roadId) && !chosen.includes(c) && squareEnough(c)
+    arterials.has(c.roadId) && !chosen.includes(c) && squareEnough(c) && continues(c)
     && !inWater(terrain, pointAtT(hp, c.at))
     && Math.abs(c.at * len - target) <= IC_REACH_M
     && chosen.every((o) => Math.abs(o.at - c.at) * len >= IC_REACH_M)

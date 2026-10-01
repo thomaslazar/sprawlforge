@@ -325,6 +325,19 @@ describe('highway levels', () => {
     expect(ramps).toHaveLength(0)
   })
 
+  it('no interchange on an arterial that ends 150 m past the highway', () => {
+    const arts = [line('A0', 'arterial', { x: 0, y: 1000 }, { x: 2150, y: 1000 })]
+    const segs = [seg(0, 1, 'elevated')]
+    const cr = highwayCrossings(hw, arts, segs, rng())
+    expect(cr).toHaveLength(1)
+    const { crossings, ramps } = buildInterchanges(hw, cr, arts, segs, dry, 4000)
+    expect(crossings.some((c) => c.interchange)).toBe(false)
+    expect(ramps).toHaveLength(0)
+    const long = [line('A0', 'arterial', { x: 0, y: 1000 }, { x: 2350, y: 1000 })]
+    const cr2 = highwayCrossings(hw, long, segs, rng())
+    expect(buildInterchanges(hw, cr2, long, segs, dry, 4000).crossings.some((c) => c.interchange)).toBe(true)
+  })
+
   it('interchanges keep 500 m apart', () => {
     const arts = [1050, 1100].map((y, i) => line('A' + i, 'arterial', { x: 0, y }, { x: 4000, y }))
     const segs = [seg(0, 1, 'elevated')]
