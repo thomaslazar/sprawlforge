@@ -330,6 +330,37 @@ export function chooseStyle(zone: ZoneType, density: number, neighbourhood: numb
  * Buildings plus the blocks annotated with their style and alley segments.
  * `forceStyle` overrides the style choice (tests).
  */
+
+/**
+ * Sub-segments of a-b that lie inside `ring`: split a-b at every ring-edge
+ * crossing and keep the pieces whose midpoint is inside. A BSP cut spans the
+ * block's whole bbox, so without this an alley pokes out of a rotated or
+ * concave block (and over the water next to it).
+ */
+function clipSegmentToRing(a: Pt, b: Pt, ring: Pt[]): Array<[Pt, Pt]> {
+  const ts = [0, 1]
+  const dx = b.x - a.x, dy = b.y - a.y
+  for (let i = 0; i < ring.length; i++) {
+    const p = ring[i], q = ring[(i + 1) % ring.length]
+    const ex = q.x - p.x, ey = q.y - p.y
+    const den = dx * ey - dy * ex
+    if (Math.abs(den) < 1e-12) continue
+    const t = ((p.x - a.x) * ey - (p.y - a.y) * ex) / den
+    const u = ((p.x - a.x) * dy - (p.y - a.y) * dx) / den
+    if (t > 0 && t < 1 && u >= 0 && u <= 1) ts.push(t)
+  }
+  ts.sort((x, y) => x - y)
+  const out: Array<[Pt, Pt]> = []
+  for (let i = 1; i < ts.length; i++) {
+    const t0 = ts[i - 1], t1 = ts[i]
+    if (t1 - t0 < 1e-9) continue
+    const mid = { x: a.x + dx * (t0 + t1) / 2, y: a.y + dy * (t0 + t1) / 2 }
+    if (pointInRings(mid, [ring]))
+      out.push([{ x: a.x + dx * t0, y: a.y + dy * t0 }, { x: a.x + dx * t1, y: a.y + dy * t1 }])
+  }
+  return out
+}
+
 export function fillLots(
   districts: District[],
   blocks: Block[],
@@ -421,7 +452,7 @@ export function fillLots(
           ? [{ x: strip.x + strip.w / 2, y: strip.y }, { x: strip.x + strip.w / 2, y: strip.y + strip.h }]
           : [{ x: strip.x, y: strip.y + strip.h / 2 }, { x: strip.x + strip.w, y: strip.y + strip.h / 2 }]
         const [wa, wb] = [rotatePt(a, theta, c), rotatePt(b, theta, c)]
-        if (pointInRings({ x: (wa.x + wb.x) / 2, y: (wa.y + wb.y) / 2 }, [inset])) alleys.push([wa, wb])
+        for (const piece of clipSegmentToRing(wa, wb, inset)) alleys.push(piece)
       }
     // BSP leftovers too thin to be a building
     let cells = bsp.cells.filter((r) => r.w >= 0.5 * st.cell && r.h >= 0.5 * st.cell)

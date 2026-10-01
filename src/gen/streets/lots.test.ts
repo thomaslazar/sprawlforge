@@ -95,6 +95,30 @@ describe('block styles', () => {
       for (const b of fillLotsFull([resDistrict], [bigBlock('D04')], { ...base, seed }, dryTerrain, [], 'sheds').buildings)
         expect(b.footprint.length).toBe(4)
   })
+  it('alleys stay inside the block inset', () => {
+    // an L-shaped (concave) rows block: a bbox-spanning cut would poke out of the notch
+    const ring = [{x:0,y:0},{x:240,y:0},{x:240,y:120},{x:120,y:120},{x:120,y:240},{x:0,y:240}]
+    const block: Block = { ...makeBlock('D04'), poly: ring, footprint: ring }
+    const out = fillLotsFull([resDistrict], [block], base, dryTerrain, [], 'rows')
+    const inset = insetRing(ring, 6)!
+    expect(out.blocks[0].alleys.length).toBeGreaterThan(0)
+    const nearRing = (p: Pt) => {
+      let d = Infinity
+      for (let i = 0; i < inset.length; i++) {
+        const a = inset[i], b = inset[(i + 1) % inset.length]
+        const l2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2 || 1
+        const t = Math.max(0, Math.min(1, ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / l2))
+        d = Math.min(d, Math.hypot(p.x - (a.x + t * (b.x - a.x)), p.y - (a.y + t * (b.y - a.y))))
+      }
+      return d
+    }
+    for (const [a, b] of out.blocks[0].alleys) {
+      for (const p of [a, b, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }]) {
+        expect(pointInRings(p, [inset]) || nearRing(p) < 0.5).toBe(true)
+      }
+    }
+  })
+
   it('rows blocks carry alleys and other styles do not', () => {
     const alleys = (style: 'rows' | 'courtyard' | 'plaza' | 'sheds') =>
       fillLotsFull([resDistrict], [bigBlock('D04')], base, dryTerrain, [], style).blocks[0].alleys.length
