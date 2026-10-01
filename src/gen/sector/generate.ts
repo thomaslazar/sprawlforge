@@ -65,7 +65,7 @@ function toBlocks(faces: Face[], districts: District[]): Block[] {
     const districtId = districts[di].id
     const n = (perDistrict.get(districtId) ?? 0) + 1
     perDistrict.set(districtId, n)
-    return { id: `B${districtId.slice(1)}${String(n).padStart(2, '0')}`, districtId, poly: f.poly, footprint: f.footprint, flags: {} }
+    return { id: `B${districtId.slice(1)}${String(n).padStart(2, '0')}`, districtId, poly: f.poly, footprint: f.footprint, style: 'rows', alleys: [], flags: {} }
   })
 }
 
@@ -92,7 +92,7 @@ export function generateSector(params: SectorParams): SectorModel {
     : { crossings, ramps: [] as Road[] }
   const hw = highway ? [{ ...highway, segments, crossings: finalCrossings }] : []
 
-  const blocks = toBlocks(facesFor([...hw, ...arterials, ...minor], boundaries, terrain), districts)
+  const rawBlocks = toBlocks(facesFor([...hw, ...arterials, ...minor], boundaries, terrain), districts)
 
   const roads = markWetSpans([...hw, ...arterials, ...minor, ...ramps], terrain)
 
@@ -110,7 +110,7 @@ export function generateSector(params: SectorParams): SectorModel {
     return { ...r, name: roadNames.get(base)! }
   })
 
-  const buildings = fillLots(namedDistricts, blocks, params, terrain, [
+  const { buildings, blocks } = fillLots(namedDistricts, rawBlocks, params, terrain, [
     ...(highway ? noBuildStrips(highway, segments) : []),
     ...roads.filter((r) => r.class !== 'highway').flatMap((r) => corridorRects(r.points, r.width / 2 + SIDEWALK)),
   ])

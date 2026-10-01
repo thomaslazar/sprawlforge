@@ -310,3 +310,11 @@ describe('renderSector', () => {
     expect(renderSector(m, getTheme('neon'))).not.toContain('data-halo')
   })
 })
+
+describe('alleys', () => {
+  it('alleys render as one path in interactive mode', () => {
+    const svg = renderSector(model, getTheme('neon'), { interactive: true })
+    expect(svg.match(/<path data-alleys/g)!.length).toBe(1)
+    expect(svg.indexOf('data-alleys')).toBeLessThan(svg.indexOf('data-streets'))
+  })
+})

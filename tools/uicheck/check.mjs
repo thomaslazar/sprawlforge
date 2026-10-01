@@ -51,6 +51,8 @@ if (initialBox.height > 901 || initialBox.width > 1401)
 const buildings = await countAttr(page, 'svg [data-buildings]')
 if (buildings < 50) fail(`expected a dense map, got ${buildings} buildings`)
 
+if ((await page.locator('svg path[data-alleys]').count()) !== 1) fail('expected exactly one alleys path')
+
 const pois = await page.locator('svg circle[data-id^="P"]').count()
 if (pois < 1) fail('no POIs rendered')
 

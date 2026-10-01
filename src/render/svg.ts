@@ -197,6 +197,14 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     }
   }
 
+  // alleys: thin translucent strokes between buildings, under the streets
+  const alleyPath = (blocks: typeof model.blocks) => {
+    const d = blocks.flatMap((b) => b.alleys.map(([a, c]) => `M${n(a.x)},${n(a.y)}L${n(c.x)},${n(c.y)}`)).join(' ')
+    return d ? `<path data-alleys="1" d="${d}" fill="none" stroke="${theme.road.street}" stroke-width="2" stroke-opacity="0.5"/>` : ''
+  }
+  if (interactive) out.push(alleyPath(model.blocks))
+  else for (const b of model.blocks) out.push(alleyPath([b]))
+
   // streets → arterials → ramps; the highway itself is drawn per level by
   // renderHighway once it has segments
   const hasLevels = model.roads.some((r) => r.class === 'highway' && r.segments?.length)

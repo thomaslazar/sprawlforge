@@ -188,7 +188,7 @@ const block = (id: string, districtId: string, rect: { x: number; y: number; w: 
     { x: rect.x, y: rect.y }, { x: rect.x + rect.w, y: rect.y },
     { x: rect.x + rect.w, y: rect.y + rect.h }, { x: rect.x, y: rect.y + rect.h },
   ]
-  return { id, districtId, poly, footprint: poly, flags: {} }
+  return { id, districtId, poly, footprint: poly, style: 'rows', alleys: [], flags: {} }
 }
 const district = (id: string, bounds: { x: number; y: number; w: number; h: number }): District => ({
   id, zone: 'corp', name: 'X', bounds,
@@ -491,5 +491,15 @@ describe('coast-aligned streets', () => {
       const under = m.buildings.filter((bl) => bl.footprint.some((p) => m.roads.some((r) => r.class !== 'highway' && distToPolyline(p, r.points) < r.width / 2 - 0.5)))
       expect(under.map((bl) => bl.id), `seed ${params.seed}`).toEqual([])
     }
+  })
+})
+
+describe('block styles', () => {
+  it('a sector mixes block styles', () => {
+    const styles = generateSector(base).blocks.map((b) => b.style)
+    expect(new Set(styles).size).toBeGreaterThanOrEqual(2)
+    const rows = styles.filter((s) => s === 'rows').length / styles.length
+    expect(rows).toBeGreaterThan(0.3)
+    expect(rows).toBeLessThan(0.9)
   })
 })

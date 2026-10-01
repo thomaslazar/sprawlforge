@@ -2,7 +2,10 @@ import polygonClipping from 'polygon-clipping'
 import { describe, expect, it, vi } from 'vitest'
 import { pointInRings, ringArea, type Pt } from '../geometry'
 import type { Block, District, SectorParams, Terrain } from '../types'
-import { corridorRects, fillLots, insetByClipping, insetRing } from './lots'
+import { corridorRects, fillLots as fillLotsFull, insetByClipping, insetRing } from './lots'
+
+// pre-style tests assumed BSP rows everywhere, so the shared helper forces 'rows'
+const fillLots = (...a: Parameters<typeof fillLotsFull>) => fillLotsFull(a[0], a[1], a[2], a[3], a[4], 'rows').buildings
 
 const rectPoly = (x: number, y: number, w: number, h: number): Pt[] => [
   { x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h },
@@ -50,7 +53,41 @@ const makeBlock = (districtId: string, id = 'B0001'): Block => ({
   districtId,
   poly: rectPoly(0, 0, 120, 120),
   footprint: rectPoly(0, 0, 120, 120),
+  style: 'rows', alleys: [],
   flags: {},
+})
+
+const resDistrict: District = { ...corpDistrict, id: 'D04', zone: 'residential' }
+const bigBlock = (districtId: string, x = 0, y = 0): Block => ({
+  ...makeBlock(districtId), poly: rectPoly(x, y, 200, 200), footprint: rectPoly(x, y, 200, 200),
+})
+
+describe('block styles', () => {
+  it('styles follow zone and density', () => {
+    const industrial: District = { ...corpDistrict, id: 'D03', zone: 'industrial' }
+    expect(fillLotsFull([industrial], [bigBlock('D03')], base, dryTerrain, []).blocks[0].style).toBe('sheds')
+    expect(fillLotsFull([corpDistrict], [bigBlock('D01')], { ...base, density: 0.1 }, dryTerrain, []).blocks[0].style).toBe('plaza')
+    const blocks = Array.from({ length: 20 }, (_, i) => bigBlock('D04', i * 700, (i % 3) * 900))
+    const styles = fillLotsFull([resDistrict], blocks, { ...base, density: 0.9 }, dryTerrain, []).blocks.map((b) => b.style)
+    expect(styles.filter((s) => s === 'rows').length).toBeGreaterThan(styles.length / 2)
+  })
+  it('courtyard blocks keep their middle empty', () => {
+    const out = fillLotsFull([resDistrict], [bigBlock('D04')], base, dryTerrain, [], 'courtyard')
+    expect(out.buildings.length).toBeGreaterThan(0)
+    for (const b of out.buildings) for (const p of b.footprint) expect(Math.hypot(p.x - 100, p.y - 100)).toBeGreaterThan(30)
+  })
+  it('plaza blocks have at most three buildings', () => {
+    for (let seed = 1; seed <= 15; seed++) {
+      const out = fillLotsFull([resDistrict], [bigBlock('D04')], { ...base, seed }, dryTerrain, [], 'plaza')
+      expect(out.buildings.length).toBeLessThanOrEqual(3)
+    }
+  })
+  it('rows blocks carry alleys and other styles do not', () => {
+    const alleys = (style: 'rows' | 'courtyard' | 'plaza' | 'sheds') =>
+      fillLotsFull([resDistrict], [bigBlock('D04')], base, dryTerrain, [], style).blocks[0].alleys.length
+    expect(alleys('rows')).toBeGreaterThan(0)
+    for (const s of ['courtyard', 'plaza', 'sheds'] as const) expect(alleys(s)).toBe(0)
+  })
 })
 
 describe('road strips', () => {
@@ -164,7 +201,7 @@ describe('fillLots', () => {
       { x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 140, y: 200 },
       { x: 140, y: 120 }, { x: 100, y: 120 }, { x: 100, y: 200 }, { x: 0, y: 200 },
     ]
-    const block: Block = { id: 'B0001', districtId: 'D03', poly: u, footprint: u, flags: {} }
+    const block: Block = { id: 'B0001', districtId: 'D03', poly: u, footprint: u, style: 'rows', alleys: [], flags: {} }
     const industrial: District = { ...corpDistrict, id: 'D03', zone: 'industrial' }
     const inset = insetRing(u, 6)!
     const buildings = fillLots([industrial], [block], base, dryTerrain, [])
@@ -185,7 +222,7 @@ describe('fillLots', () => {
       { x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 120, y: 200 },
       { x: 120, y: 80 }, { x: 80, y: 80 }, { x: 80, y: 200 }, { x: 0, y: 200 },
     ]
-    const block: Block = { id: 'B0001', districtId: 'D03', poly: u, footprint: u, flags: {} }
+    const block: Block = { id: 'B0001', districtId: 'D03', poly: u, footprint: u, style: 'rows', alleys: [], flags: {} }
     const industrial: District = { ...corpDistrict, id: 'D03', zone: 'industrial' }
     const buildings = fillLots([industrial], [block], base, dryTerrain, [])
     expect(buildings.length).toBeGreaterThan(0)

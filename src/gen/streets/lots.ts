@@ -1,8 +1,9 @@
 import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
 import { BOX_MARGIN, boxOf, bboxOf, bspSplit, makeNearTieCheck, pointInRings, segTouchesBox, simplifyPolyline, type Box, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
+import { fractalNoise2D } from '../terrain/noise'
 import { inWater } from '../sector/bridges'
-import type { Block, Building, District, SectorParams, Terrain, ZoneType } from '../types'
+import type { Block, BlockStyle, Building, District, SectorParams, Terrain, ZoneType } from '../types'
 
 export const ZONE_BUILD: Record<ZoneType, { minCell: number; fill: number }> = {
   corp: { minCell: 60, fill: 0.7 },
@@ -290,14 +291,36 @@ export function insetByClipping(full: Pt[], d: number): Pt[][] {
   }).filter((r) => r.length >= 3 && Math.abs(ringArea(r)) >= MIN_BLOCK_AREA)
 }
 
+const boxesOverlap = (a: Box, b: Box) => a.x0 <= b.x1 && a.x1 >= b.x0 && a.y0 <= b.y1 && a.y1 >= b.y0
+const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
+const MIN_STYLED_AREA = 3000
+
+/** block style from zone, sector density and ~500 m neighbourhood noise (0..1) */
+export function chooseStyle(zone: ZoneType, density: number, neighbourhood: number): BlockStyle {
+  const d = clamp01(density * 0.6 + neighbourhood * 0.6 - 0.1)
+  if (zone === 'industrial') return 'sheds'
+  if (zone === 'docks') return d < 0.5 ? 'sheds' : 'rows'
+  if (zone === 'corp') return d < 0.6 ? 'plaza' : 'rows'
+  // ponytail: thresholds 0.45/0.25 (design said 0.55/0.3) so rows hold 30-90 % at density 0.5
+  if (d >= 0.45) return 'rows'
+  if (d >= 0.25 || zone === 'slum') return 'courtyard'
+  return 'plaza'
+}
+
+/**
+ * Buildings plus the blocks annotated with their style and alley segments.
+ * `forceStyle` overrides the style choice (tests).
+ */
 export function fillLots(
   districts: District[],
   blocks: Block[],
   params: SectorParams,
   terrain: Terrain,
   noBuild: Pt[][],
-): Building[] {
+  forceStyle?: BlockStyle,
+): { buildings: Building[]; blocks: Block[] } {
   const rng = mulberry32(hashSeed(params.seed, 'buildings'))
+  const neighbourhood = fractalNoise2D(hashSeed(params.seed, 'neighbourhood'), 2)
   const districtById = new Map(districts.map((d) => [d.id, d]))
   const noBuildPolys = noBuild.map((nb) => [toRing(nb)])
   const noBuildBoxes = noBuild.map(boxOf)
@@ -321,11 +344,16 @@ export function fillLots(
   }
   const nearTie = makeNearTieCheck(noBuild.flat().map((p) => [p.x, p.y] as const))
   const buildings: Building[] = []
+  const outBlocks: Block[] = []
   let n = 0
 
   for (const block of blocks) {
     const district = districtById.get(block.districtId)
-    if (!district) continue
+    if (!district) { outBlocks.push(block); continue }
+    const cc = ringCentroid(block.footprint)
+    const chosen = forceStyle ?? chooseStyle(district.zone, params.density, neighbourhood(cc.x / 500, cc.y / 500))
+    let blockStyle: BlockStyle = 'rows'
+    const alleys: Array<[Pt, Pt]> = []
     const fast = insetRing(block.footprint, SIDEWALK)
     // edge-offset inset for the common case; concave blocks whose offset
     // self-intersects fall back to the clipping inset (possibly several pieces)
@@ -348,12 +376,41 @@ export function fillLots(
     // least ~2×2 lots, never below 18 m (the slum lot size)
     const zoneCell = profile.minCell * (1.25 - 0.5 * params.density)
     const cell = Math.min(zoneCell, Math.max(18, 0.45 * Math.min(bbox.w, bbox.h)))
-    const { cells } = bspSplit(bbox, { minCell: cell, gap: 3, jitter: 0.25, rng })
+    const style: BlockStyle = Math.abs(ringArea(inset)) < MIN_STYLED_AREA ? 'rows' : chosen
+    if (style !== 'rows') blockStyle = style
+    const short = Math.min(bbox.w, bbox.h)
+    const st = {
+      rows: { cell, gap: 3, fill },
+      courtyard: { cell, gap: 3, fill: 0.9 },
+      plaza: { cell: Math.max(profile.minCell * 1.6, 0.4 * short), gap: 12, fill: 0.6 },
+      sheds: { cell: profile.minCell, gap: 10, fill: 0.65 },
+    }[style]
+    // courtyard: only the band between the inset and a deeper inset is buildable
+    let inner: Pt[][] = []
+    if (style === 'courtyard') {
+      const depth = 18 + 8 * rng.next()
+      const deep = insetRing(inset, depth)
+      // a 3 m simplify keeps polygon-clipping from stalling on dense curved insets
+      inner = deep ? [deep] : insetByClipping(simplifyPolyline([...inset, inset[0]], 3).slice(0, -1), depth)
+    }
+    const bsp = bspSplit(bbox, { minCell: st.cell, gap: st.gap, jitter: 0.25, rng })
+    if (style === 'rows')
+      for (const { axis, strip } of bsp.cuts) {
+        const [a, b] = axis === 'x'
+          ? [{ x: strip.x + strip.w / 2, y: strip.y }, { x: strip.x + strip.w / 2, y: strip.y + strip.h }]
+          : [{ x: strip.x, y: strip.y + strip.h / 2 }, { x: strip.x + strip.w, y: strip.y + strip.h / 2 }]
+        const [wa, wb] = [rotatePt(a, theta, c), rotatePt(b, theta, c)]
+        if (pointInRings({ x: (wa.x + wb.x) / 2, y: (wa.y + wb.y) / 2 }, [inset])) alleys.push([wa, wb])
+      }
+    // BSP leftovers too thin to be a building
+    let cells = bsp.cells.filter((r) => r.w >= 0.5 * st.cell && r.h >= 0.5 * st.cell)
+    if (style === 'plaza') {
+      const max = district.zone === 'corp' ? rng.int(1, 2) : rng.int(1, 3)
+      cells = cells.sort((a, b) => b.w * b.h - a.w * a.h).slice(0, max)
+    }
 
     for (const r of cells) {
-        if (!rng.chance(fill)) continue
-        // BSP leftovers too thin to be a building
-        if (r.w < 0.5 * cell || r.h < 0.5 * cell) continue
+        if (!rng.chance(st.fill)) continue
         const corners: Pt[] = [
           { x: r.x, y: r.y }, { x: r.x + r.w, y: r.y },
           { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h },
@@ -374,7 +431,9 @@ export function fillLots(
         const clear = convex || touching === 0
         const lotNear = clear ? near(lb) : []
         const inInset = clear && lot.every((p) => pointInRings(p, [inset]))
+        // a strip can cross a lot without any corner inside it, so also demand no strip edge reaches the lot
         const allInside = inInset && lot.every((p) => lotNear.every((k) => !pointInRings(p, [noBuild[k]])))
+          && lotNear.every((k) => !boxesOverlap(noBuildBoxes[k], lb) || !noBuild[k].some((p, i) => segTouchesBox(p, noBuild[k][(i + 1) % noBuild[k].length], lb)))
 
         let pts: Pt[] | null
         if (allInside) {
@@ -385,6 +444,14 @@ export function fillLots(
             const clipped: MultiPolygon = inInset ? [[ring]] : cut ? (cut.length >= 3 ? [[toRing(cut)]] : []) : polygonClipping.intersection([ring], [toRing(inset)])
             return noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, near, convexNb, nearTie) : clipped
           }))
+        }
+        if (pts && inner.length) {
+          // lot minus the courtyard: a lot clear of every courtyard edge is wholly in or out
+          const lp = pts
+          const pb = boxOf(lp)
+          if (inner.some((r) => r.some((p, i) => segTouchesBox(p, r[(i + 1) % r.length], pb))))
+            pts = largestRing(safeClip(lp, (ring) => polygonClipping.difference([ring], ...inner.map((r) => [toRing(r)]))))
+          else if (inner.some((r) => pointInRings(lp[0], [r]))) pts = null
         }
         if (!pts || Math.abs(ringArea(pts)) < MIN_BUILDING_AREA) continue
         const cen = ringCentroid(pts)
@@ -399,7 +466,8 @@ export function fillLots(
         })
     }
     }
+    outBlocks.push({ ...block, style: blockStyle, alleys })
   }
 
-  return buildings
+  return { buildings, blocks: outBlocks }
 }

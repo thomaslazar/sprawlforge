@@ -183,6 +183,14 @@ Each face carries `flags: Record<string, never>` today — an empty object
 reserved for the follow-up (`megablock`, `hub`) so per-face data has a home
 without a type change.
 
+**Block styles** (`fillLots`, `chooseStyle`): each block gets a `style`
+from zone, `params.density` and ~500 m neighbourhood noise, so density
+is uneven within a sector. `rows` = BSP lots plus alleys (the cut
+centrelines, `Block.alleys`); `courtyard` = lots only in a 18-26 m band
+along the block edge; `plaza` = 1-3 large buildings in open space;
+`sheds` = big spaced rectangles (industrial, some docks). Blocks under
+3 000 m² of inset area are always `rows`.
+
 ## 8. Water
 
 - Streamlines stop at water (§6 rule 2). No road ever enters the sea.

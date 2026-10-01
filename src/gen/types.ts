@@ -113,6 +113,8 @@ export interface District {
   flags: Record<string, never>
 }
 
+export type BlockStyle = 'rows' | 'courtyard' | 'plaza' | 'sheds'
+
 export interface Block {
   id: string
   districtId: string
@@ -120,6 +122,10 @@ export interface Block {
   poly: Pt[]
   /** outer ring, meters; equals poly unless clipped by water */
   footprint: Pt[]
+  /** how the block is built up (set by fillLots) */
+  style: BlockStyle
+  /** alley centrelines through a `rows` block, meters */
+  alleys: Array<[Pt, Pt]>
   flags: Record<string, never>
 }
 
