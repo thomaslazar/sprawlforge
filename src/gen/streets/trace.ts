@@ -255,16 +255,21 @@ function traceHalf(
     // road, and the parent itself once far enough away, is still checked.
     const hitSame = index.nearest(next, 0.3 * sep, sameOrHigher)
     if (hitSame && !isSourceAt(hitSame.id, next)) {
-      // the walker overshot the target by < 1 step: backtrack (a few points) so the road ends on it without doubling back
+      // the walker overshot the target by < 1 step: backtrack (at most 2 points) so the road ends on it without doubling back.
+      // A foot still behind after that means the walker is leaving this road (e.g. its own parent), not hitting it: keep walking.
       const foot = hitSame.at
-      const ahead = () => {
-        const last = pts.length > 0 ? pts[pts.length - 1] : start
-        const prev = pts.length >= 2 ? pts[pts.length - 2] : pts.length === 1 ? start : { x: start.x - initDir.x, y: start.y - initDir.y }
+      const aheadAt = (n: number) => {
+        const last = n > 0 ? pts[n - 1] : start
+        const prev = n >= 2 ? pts[n - 2] : n === 1 ? start : { x: start.x - initDir.x, y: start.y - initDir.y }
         return (foot.x - last.x) * (last.x - prev.x) + (foot.y - last.y) * (last.y - prev.y) >= 0
       }
-      for (let k = 0; k < 3 && pts.length > 0 && !ahead(); k++) pts.pop()
-      if (ahead()) pts.push(foot)
-      break
+      let keep = -1
+      for (let k = 0; k <= 2 && k <= pts.length && keep < 0; k++) if (aheadAt(pts.length - k)) keep = pts.length - k
+      if (keep >= 0) {
+        pts.length = keep
+        pts.push(foot)
+        break
+      }
     }
 
     // nearestMatching, not nearest: a closer but merely-CROSSING road (angle

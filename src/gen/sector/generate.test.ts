@@ -441,3 +441,25 @@ describe('no hairpins', () => {
     })
   }
 })
+
+describe('coast-aligned streets', () => {
+  it('coast-aligned streets survive', () => {
+    const m = generateSector({
+      ...base, seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25,
+      irregularity: 0.15, landform: 'bay', river: true,
+    })
+    const len = [0, 0, 0, 0] // cells (0,0) (1,0) (0,1) (1,1) of 500 m
+    for (const r of m.roads) {
+      if (r.class !== 'street') continue
+      for (let i = 1; i < r.points.length; i++) {
+        const a = r.points[i - 1], b = r.points[i]
+        const x = Math.floor((a.x + b.x) / 1000), y = Math.floor((a.y + b.y) / 1000)
+        if (x <= 1 && y <= 1) len[y * 2 + x] += Math.hypot(b.x - a.x, b.y - a.y)
+      }
+    }
+    // baseline f3d4114 (NW lost almost everything: 0 240 169 320 m) -> 1142 1237 169 320 m after this fix, floors = measured - 10 %.
+    // The older a154b6a 1354/1041/729/483 is NOT the target: that NW network was one arterial hairpinning back
+    // onto its own parent highway (>= 124 deg turn), which the no-hairpin rule forbids.
+    ;[1028, 1113, 152, 288].forEach((floor, k) => expect(len[k]).toBeGreaterThanOrEqual(floor))
+  })
+})
