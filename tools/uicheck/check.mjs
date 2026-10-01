@@ -7,6 +7,10 @@ mkdirSync(OUT, { recursive: true })
 
 const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+// generation of a 6 km sector takes 13-23 s in a throttled devcontainer; the
+// Playwright default of 30 s is too tight for the first paint. Perf lives in
+// perf.test.ts, this is only a wait cap.
+page.setDefaultTimeout(90000)
 // sum data-count over matching elements (batched svg geometry)
 const countAttr = (pg, sel) =>
   pg.$$eval(sel, (els) => els.reduce((a, e) => a + Number(e.getAttribute('data-count') ?? 0), 0))
@@ -32,7 +36,9 @@ const ALL_TAGS = [
 // stale "after" baseline that the still-in-flight reply then mutates later,
 // which surfaces as an unrelated *next* assertion falsely accusing that
 // step of an unwanted regenerate.
-const waitForSvgChange = (prevHtml, timeout = 15000) =>
+// 60 s: a wait cap, not a perf assertion (perf.test.ts owns the budget) — a
+// 6 km sector takes 13-23 s in a throttled devcontainer
+const waitForSvgChange = (prevHtml, timeout = 60000) =>
   page.waitForFunction(
     (prev) => document.querySelector('svg')?.innerHTML !== prev,
     prevHtml,
