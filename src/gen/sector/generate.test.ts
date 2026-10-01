@@ -284,7 +284,7 @@ describe('arterial connectivity', () => {
       landform: 'bay', river: false, lakes: false },
   ] as const
   for (const c of cases) {
-    it(`arterials rarely dangle (seed ${c.seed})`, () => {
+    it(`no arterial dangles (seed ${c.seed})`, () => {
       const m = generateSector({ ...c, islands: false, piers: false, pack: 'generic', theme: 'neon' })
       const roads = m.roads.filter((r) => r.class !== 'ramp')
       const idx = new RoadIndex(200)
@@ -302,7 +302,7 @@ describe('arterial connectivity', () => {
         }
       }
       console.log('arterial dangling', c.seed, dangling, 'of', ends)
-      expect(dangling / ends).toBeLessThanOrEqual(0.05)
+      expect(dangling).toBe(0)
     })
   }
 })
@@ -326,7 +326,8 @@ describe('arterial bridges', () => {
     console.log('arterial bridges', bridges.length, 'crossing seeds', seeds)
     // was 1.5 x seeds (6): highway seeds now cross the highway instead of running
     // along it, which reshuffled this seed's layout to exactly the 4 seeded bridges
-    expect(bridges.length).toBeGreaterThanOrEqual(seeds)
+    // prune-dangling cut one bridge whose far bank had no junction (B018): 3 of 4 seeded
+    expect(bridges.length).toBeGreaterThanOrEqual(seeds - 1)
     for (const b of bridges) expect(polylineLength(b.points)).toBeLessThan(600) // 579 m: pre-existing B004, a seeded crossing that doubles back in the channel
   })
 })
@@ -338,12 +339,10 @@ describe('no doubled arterials', () => {
       irregularity: 0.85, landform: 'bay',
     })
     const arts = m.roads.filter((r) => r.class === 'arterial')
-    // oblique children must survive: 74 streets / 13 arterials measured after the
-    // Y-merge fixes (sliver twins hugging their parent are killed; 81 / 22 before)
-    // (earlier: 81 streets / 22 arterials measured
-    // (116 / 16 before a2ebfa4, 50 / 12 after it); bounds = measured - 10 %
-    expect(m.roads.filter((r) => r.class === 'street').length).toBeGreaterThanOrEqual(66)
-    expect(arts.length).toBeGreaterThanOrEqual(11)
+    // 66 streets / 9 arterials measured after prune-dangling (74 / 13 before;
+    // the prune drops roads that cannot end on a junction); bounds = measured - 10 %
+    expect(m.roads.filter((r) => r.class === 'street').length).toBeGreaterThanOrEqual(59)
+    expect(arts.length).toBeGreaterThanOrEqual(8)
     let worst = 0
     for (let i = 0; i < arts.length; i++) {
       for (let j = i + 1; j < arts.length; j++) {

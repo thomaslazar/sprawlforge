@@ -3,7 +3,7 @@ import { hashSeed, mulberry32 } from '../rng'
 import { buildRoadField, type RoadField } from '../streets/field'
 import { traceHighway } from '../streets/highway'
 import {
-  MAJOR, MINOR, RoadIndex, extendToJunction, poissonSeeds, riverCrossingSeeds, seedsAlong, traceLayer, trimStubs, type Seed,
+  MAJOR, MINOR, RoadIndex, endKey, poissonSeeds, pruneDangling, riverCrossingSeeds, seedsAlong, traceLayer, trimStubs, type Seed,
 } from '../streets/trace'
 import type { Road, SectorParams, Terrain } from '../types'
 import { inWater, truncateUnlandableRoads } from './bridges'
@@ -59,34 +59,36 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   )
   // truncate before seeding so S/L seeds come from the final arterials
   let arterials = finalize([...arterialsRaw, ...crossRaw], terrain, index, ARTERIAL_STUB_M)
-  // an arterial must end on an arterial / the highway (not a street): extend before streets exist
-  const artIndex = new RoadIndex(200)
-  if (highway) artIndex.add(highway.id, highway.points, 'highway')
-  arterials.forEach((r) => artIndex.add(r.id, r.points, r.class))
-  arterials = extendToJunction(arterials, artIndex, terrain, sizeM, 600, 10, (c) => c === 'arterial' || c === 'highway', 300)
-  index = new RoadIndex(200)
-  if (highway) index.add(highway.id, highway.points, 'highway')
-  arterials.forEach((r) => index.add(r.id, r.points, r.class))
+  const indexOf = (rs: Road[]) => {
+    const idx = new RoadIndex(200)
+    if (highway) idx.add(highway.id, highway.points, 'highway')
+    rs.forEach((r) => idx.add(r.id, r.points, r.class))
+    return idx
+  }
+  // prune, never invent: an arterial ends on an arterial / the highway / water / the edge, or the tail is cut
+  arterials = pruneDangling(arterials, indexOf(arterials), terrain, sizeM, {
+    accept: (c) => c === 'arterial' || c === 'highway', minLength: 300,
+  })
+  index = indexOf(arterials)
+  const decayEnds: Pt[] = []
   const pass1Raw = traceLayer(
     field, 'minor', arterials.flatMap((a) => seedsAlong(a.points, 100, true)),
-    terrain, sizeM, index, MINOR, mulberry32(hashSeed(params.seed, 'streets')), irregularityAt, 'S', 'street',
+    terrain, sizeM, index, MINOR, mulberry32(hashSeed(params.seed, 'streets')), irregularityAt, 'S', 'street', decayEnds,
   )
   const pass1 = finalize(pass1Raw, terrain, index)
   const pass2Raw = traceLayer(
     field, 'major', pass1.flatMap((s) => seedsAlong(s.points, 100, true)),
-    terrain, sizeM, index, MINOR, mulberry32(hashSeed(params.seed, 'streets-2')), irregularityAt, 'L', 'street',
+    terrain, sizeM, index, MINOR, mulberry32(hashSeed(params.seed, 'streets-2')), irregularityAt, 'L', 'street', decayEnds,
   )
-  let pass2 = finalize(pass2Raw, terrain, index)
-  // the tracer only joins roads indexed at its own time: sweep dangling ends onto the final network
-  const idx = new RoadIndex(200)
-  const addAll = (rs: Road[]) => rs.forEach((r) => idx.add(r.id, r.points, r.class))
-  if (highway) idx.add(highway.id, highway.points, 'highway')
-  addAll(arterials); addAll(pass1); addAll(pass2)
-  const pass1Ext = extendToJunction(pass1, idx, terrain, sizeM, 120)
-  pass2 = extendToJunction(pass2, idx, terrain, sizeM, 120)
+  const pass2 = finalize(pass2Raw, terrain, index)
+  // streets may keep genuine decay cul-de-sacs; every other dangling end is pruned
+  const all = indexOf([...arterials, ...pass1, ...pass2])
+  const prune = { accept: () => true, minLength: 60, keep: new Set(decayEnds.map(endKey)) }
+  const pass1Pruned = pruneDangling(pass1, all, terrain, sizeM, prune)
+  const pass2Pruned = pruneDangling(pass2, all, terrain, sizeM, prune)
   return {
     highway: highway && simplify(highway),
     arterials,
-    streets: { pass1: pass1Ext, pass2 },
+    streets: { pass1: pass1Pruned, pass2: pass2Pruned },
   }
 }

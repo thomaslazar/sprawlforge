@@ -7,9 +7,9 @@ import { sampleTerrain } from '../terrain'
 import { nearestOnPolyline } from '../terrain/rivers'
 import type { Road, SectorParams, Terrain } from '../types'
 import { buildRoadField, type RoadField } from './field'
-import { bboxesFar, endMeetings, maxCloseRun } from './testutil'
+import { bboxesFar, maxCloseRun } from './testutil'
 import {
-  MAJOR, MINOR, RoadIndex, extendToJunction, poissonSeeds, riverCrossingSeeds, seedsAlong, traceLayer, traceStreamline,
+  MAJOR, MINOR, RoadIndex, endKey, poissonSeeds, pruneDangling, riverCrossingSeeds, seedsAlong, traceLayer, traceStreamline,
   type Seed, type TraceOpts,
 } from './trace'
 
@@ -416,60 +416,37 @@ describe('streets/trace', () => {
   }, 20000)
 })
 
-describe('extendToJunction', () => {
+describe('pruneDangling', () => {
   const dry = { water: [] } as unknown as Terrain
-  const road = (id: string, pts: Pt[]): Road => ({ id, class: 'arterial', points: pts, width: 12, name: null })
-  const A = road('A', [{ x: 0, y: 500 }, { x: 300, y: 500 }])
-  const mk = (x: number, terrain = dry, max = 300) => {
-    const B = road('B', [{ x, y: 0 }, { x, y: 1000 }])
+  const road = (id: string, pts: Pt[], cls: Road['class'] = 'arterial'): Road => ({ id, class: cls, points: pts, width: 12, name: null })
+  const opts = { accept: (c: Road['class']) => c === 'arterial' || c === 'highway', minLength: 100 }
+  const run = (roads: Road[], terrain: Terrain = dry, o: Parameters<typeof pruneDangling>[4] = opts) => {
     const idx = new RoadIndex(200)
-    idx.add('A', A.points, 'arterial'); idx.add('B', B.points, 'arterial')
-    return extendToJunction([A], idx, terrain, 1000, max)[0]
+    for (const r of roads) idx.add(r.id, r.points, r.class)
+    return pruneDangling(roads, idx, terrain, 1000, o)
   }
-  it('connects a dangling end to the road ahead', () => {
-    const out = mk(400)
+  const B = road('B', [{ x: 300, y: 0 }, { x: 300, y: 1000 }])
+  it('pruneDangling cuts an unanchored arterial tail back to its junction', () => {
+    const A = road('A', [{ x: 0, y: 500 }, { x: 600, y: 500 }])
+    const out = run([A, B]).find((r) => r.id === 'A')!
     const last = out.points[out.points.length - 1]
-    expect(Math.hypot(last.x - 400, last.y - 500)).toBeLessThan(1)
+    expect(out.points[0]).toEqual({ x: 0, y: 500 })
+    expect(Math.abs(last.x - 300)).toBeLessThan(1)
   })
-  it('leaves an end alone when nothing is within reach', () => {
-    expect(mk(900)).toBe(A)
+  it('pruneDangling drops a road left shorter than minLength', () => {
+    const A = road('A', [{ x: 200, y: 500 }, { x: 600, y: 500 }])
+    expect(run([A, B], dry, { ...opts, minLength: 150 }).map((r) => r.id)).toEqual(['B'])
   })
-  it('extendToJunction with a class filter ignores streets', () => {
-    const idx = new RoadIndex(200)
-    idx.add('A', A.points, 'arterial')
-    idx.add('B', [{ x: 400, y: 0 }, { x: 400, y: 1000 }], 'street')
-    idx.add('C', [{ x: 550, y: 0 }, { x: 550, y: 1000 }], 'arterial')
-    const out = extendToJunction([A], idx, dry, 1000, 600, 10, (c) => c === 'arterial')[0]
-    const last = out.points[out.points.length - 1]
-    expect(Math.hypot(last.x - 550, last.y - 500)).toBeLessThan(1)
+  it('pruneDangling keeps ends on the window edge and at water', () => {
+    const wet = { water: [[[[610, 400], [700, 400], [700, 600], [610, 600], [610, 400]]]] } as unknown as Terrain
+    const A = road('A', [{ x: 0, y: 500 }, { x: 600, y: 500 }])
+    const E = road('E', [{ x: 0, y: 200 }, { x: 1000, y: 200 }])
+    const out = run([A, E], wet)
+    expect(out.every((r, i) => r === [A, E][i])).toBe(true)
   })
-  it('extendToJunction bends to a nearby arterial when nothing is straight ahead', () => {
-    const idx = new RoadIndex(200)
-    idx.add('A', A.points, 'arterial')
-    const C = [{ x: 100, y: 700 }, { x: 350, y: 700 }]
-    idx.add('C', C, 'arterial')
-    const out = extendToJunction([A], idx, dry, 1000, 600, 10, (c) => c === 'arterial', 300)[0]
-    const first = out.points[0]
-    const last = out.points[out.points.length - 1]
-    expect(Math.abs(last.y - 700) < 1 || Math.abs(first.y - 700) < 1).toBe(true)
-  })
-  it('stops at water', () => {
-    const wet = { water: [[[[340, 400], [360, 400], [360, 600], [340, 600], [340, 400]]]] } as unknown as Terrain
-    expect(mk(400, wet)).toBe(A)
-  })
-})
-
-describe('join quality', () => {
-  const { roads, index, terrain, sizeM } = traceArterials()
-  const ext = extendToJunction(roads, index, terrain, sizeM, 600, 10, (c) => c === 'arterial', 300)
-  const ms = endMeetings(ext)
-  it('joins meet the target at 30° or more', () => {
-    console.log('meetings', ms.length, 'min deg', Math.min(...ms.map((m) => m.deg)))
-    expect(ms.length).toBeGreaterThan(0)
-    expect(ms.filter((m) => m.deg < 25)).toEqual([])
-  })
-  it('joins never land within 30 m of a target\'s end', () => {
-    // perpendicular-ish snaps (rule 3) may land anywhere; any oblique meeting is a join
-    expect(ms.filter((m) => m.deg < 60 && !(m.edge >= 30))).toEqual([])
+  it('pruneDangling keeps a decay cul-de-sac', () => {
+    const A = road('A', [{ x: 0, y: 500 }, { x: 600, y: 500 }])
+    const out = run([A, B], dry, { ...opts, keep: new Set([endKey({ x: 600, y: 500 })]) })
+    expect(out.find((r) => r.id === 'A')).toBe(A)
   })
 })

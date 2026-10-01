@@ -153,6 +153,13 @@ processed in queue order for determinism; the queue is capped at
 A streamline is traced in both directions from its seed and joined. A
 result shorter than 60 m is discarded.
 
+**Prune, never invent.** Geometry comes only from field tracing plus rule 3;
+nothing is bent or extended to a junction. After tracing, `pruneDangling`
+cuts any end that is not on the window edge, near water, or welded (6 m) to
+an acceptable road (arterials: arterial/highway; streets: any) back to its
+last junction, and drops a road left under its minimum length (300 m
+arterial, 60 m street). Street ends from a decay stop (rule 5) may dangle.
+
 Tracing never touches `polygon-clipping`.
 
 ## 7. Graph and faces (`src/gen/streets/graph.ts`)
