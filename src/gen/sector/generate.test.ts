@@ -465,11 +465,11 @@ describe('coast-aligned streets', () => {
   })
 
   it('no road runs through a block', () => {
-    // slivers are dropped, not merged. Residual (3 on seed 3017268931, 43 on seed 42) (B1412:S024 B1412:L008 B1109:L006) = faces with a
+    // slivers are dropped, not merged. Residual (2 on seed 3017268931, 18 on seed 42) (B1412:S024 B1412:L008 B1109:L006) = faces with a
     // hole / pruned dead ends; buildings still never sit on them (second assertion). Ratchet down, never up.
     const cases: Array<[SectorParams, number]> = [
-      [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'print' }, 3],
-      [{ ...base, seed: 42, landform: 'coastal', river: true }, 43],
+      [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'print' }, 2],
+      [{ ...base, seed: 42, landform: 'coastal', river: true }, 18],
     ]
     for (const [params, max] of cases) {
       const m = generateSector(params)

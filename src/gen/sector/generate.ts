@@ -83,9 +83,7 @@ export function generateSector(params: SectorParams): SectorModel {
   // highway levels decide where streets stop at the ground-level highway
   const levelRng = mulberry32(hashSeed(params.seed, 'highway-levels'))
   const segments = highway ? assignHighwayLevels(highway, districts, terrain, levelRng) : []
-  const pass1 = highway ? cutStreetsAtGround(streets.pass1, highway, segments) : streets.pass1
-  const pass2 = highway ? cutStreetsAtGround(streets.pass2, highway, segments) : streets.pass2
-  const minor = [...pass1, ...pass2]
+  const minor = highway ? cutStreetsAtGround(streets, highway, segments) : streets
   const crossings = highway ? highwayCrossings(highway, [...arterials, ...minor], segments, levelRng) : []
   const { crossings: finalCrossings, ramps } = highway
     ? buildInterchanges(highway, crossings, arterials, segments, terrain, sizeM)

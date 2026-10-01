@@ -468,18 +468,22 @@ export function riverCrossingSeeds(terrain: Terrain, rng: Rng): Seed[] {
 // that near-zero-distance case, not a general nearby-road search.
 const SEED_SOURCE_RADIUS = 1
 
-/** trace every seed in order, indexing successes as it goes; caps the queue at 4×(sizeM/separation)² */
+/**
+ * trace every seed in order, indexing successes as it goes; caps the queue at 4×(sizeM/separation)².
+ * With `expand`, `seeds` is a FIFO work queue: each kept road pushes its own child seeds,
+ * and the cap counts kept roads instead of processed seeds.
+ */
 export function traceLayer(
   field: RoadField, axis: 'major' | 'minor', seeds: Seed[], terrain: Terrain, sizeM: number,
   index: RoadIndex, opts: TraceOpts, rng: Rng, irregularityAt: (p: Pt) => number,
-  idPrefix: string, cls: RoadClass, decayEnds?: Pt[],
+  idPrefix: string, cls: RoadClass, decayEnds?: Pt[], expand?: (road: Road) => Seed[],
 ): Road[] {
   const ownRank = CLASS_RANK[cls]
   const sameOrHigher = (c: RoadClass) => CLASS_RANK[c] >= ownRank
   const cap = 4 * (sizeM / opts.separation) ** 2
   const roads: Road[] = []
   let n = 0
-  for (let i = 0; i < seeds.length && i < cap; i++) {
+  for (let i = 0; i < seeds.length && (expand ? n < cap : i < cap); i++) {
     const seed = seeds[i]
     // R14: a seed forked from an already-indexed road (seedsAlong places it
     // exactly on its parent) must not be rejected for sitting on that road —
@@ -494,7 +498,9 @@ export function traceLayer(
     n += 1
     const id = idPrefix + String(n).padStart(3, '0')
     index.add(id, points, cls)
-    roads.push({ id, class: cls, points, width: cls === 'arterial' ? 18 : 9, name: null })
+    const road: Road = { id, class: cls, points, width: cls === 'arterial' ? 18 : 9, name: null }
+    roads.push(road)
+    if (expand) seeds.push(...expand(road))
   }
   return roads
 }

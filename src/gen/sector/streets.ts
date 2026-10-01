@@ -13,8 +13,8 @@ export interface TracedRoads {
   /** undefined when every window edge is sea */
   highway: Road | undefined
   arterials: Road[]
-  /** both minor passes (S and L prefixes), all class 'street' */
-  streets: { pass1: Road[]; pass2: Road[] }
+  /** one queue-grown street set (S prefix), all class 'street' */
+  streets: Road[]
 }
 
 const SIMPLIFY_M = 1
@@ -24,12 +24,15 @@ const finalize = (roads: Road[], terrain: Terrain, index: RoadIndex, maxStub = 4
   truncateUnlandableRoads(trimStubs(roads, index, maxStub).map(simplify), terrain)
 const ARTERIAL_STUB_M = 0.3 * MAJOR.separation
 
-/** field → highway → arterials → two street passes, in spec §4 order; every polyline simplified */
+/** field → highway → arterials → queue-grown streets, in spec §4 order; every polyline simplified */
 /** field axis closest to the seed's (highway-normal) direction: a highway seed must cross it, not run along it */
 function crossingAxis(field: RoadField, s: Seed): 'major' | 'minor' {
   const m = field.sample(s.at).major
   return Math.abs(m.x * s.dir!.x + m.y * s.dir!.y) >= Math.SQRT1_2 ? 'major' : 'minor'
 }
+
+/** every seed forked off a parent road takes the axis that crosses it */
+const crossing = (field: RoadField, seeds: Seed[]): Seed[] => seeds.map((x) => ({ ...x, axis: crossingAxis(field, x) }))
 
 export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number): TracedRoads {
   const field = buildRoadField(params, terrain, sizeM)
@@ -44,7 +47,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   const arterialsRaw = traceLayer(
     field, 'major',
     [
-      ...(highway ? seedsAlong(highway.points, 400, false).map((s) => ({ ...s, axis: crossingAxis(field, s) })) : []),
+      ...(highway ? crossing(field, seedsAlong(highway.points, 400, false)) : []),
       ...riverCrossingSeeds(terrain, arterialRng),
       ...poissonSeeds(sizeM, 400, arterialRng, (p: Pt) => !inWater(terrain, p)),
     ],
@@ -54,7 +57,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   // this pass a flat inland grid gets only parallel arterials that never meet
   // (they stop on rule 4 instead of snapping onto a crossing road)
   const crossRaw = traceLayer(
-    field, 'minor', finalize(arterialsRaw, terrain, index, ARTERIAL_STUB_M).flatMap((a) => seedsAlong(a.points, 400, true)),
+    field, 'minor', finalize(arterialsRaw, terrain, index, ARTERIAL_STUB_M).flatMap((a) => crossing(field, seedsAlong(a.points, 400, true))),
     terrain, sizeM, index, MAJOR, mulberry32(hashSeed(params.seed, 'arterials-2')), irregularityAt, 'B', 'arterial',
   )
   // truncate before seeding so S/L seeds come from the final arterials
@@ -71,24 +74,20 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   })
   index = indexOf(arterials)
   const decayEnds: Pt[] = []
-  const pass1Raw = traceLayer(
-    field, 'minor', arterials.flatMap((a) => seedsAlong(a.points, 100, true)),
-    terrain, sizeM, index, MINOR, mulberry32(hashSeed(params.seed, 'streets')), irregularityAt, 'S', 'street', decayEnds,
+  // FIFO seed queue: arterial seeds first, then every kept street seeds its own
+  // children (crossing it), so the fabric grows outward until nothing is left
+  const queue = arterials.flatMap((a) => crossing(field, seedsAlong(a.points, 100, true)))
+  const raw = traceLayer(
+    field, 'minor', queue, terrain, sizeM, index, MINOR, mulberry32(hashSeed(params.seed, 'streets')), irregularityAt, 'S', 'street', decayEnds,
+    (r) => crossing(field, seedsAlong(r.points, 100, true)),
   )
-  const pass1 = finalize(pass1Raw, terrain, index)
-  const pass2Raw = traceLayer(
-    field, 'major', pass1.flatMap((s) => seedsAlong(s.points, 100, true)),
-    terrain, sizeM, index, MINOR, mulberry32(hashSeed(params.seed, 'streets-2')), irregularityAt, 'L', 'street', decayEnds,
-  )
-  const pass2 = finalize(pass2Raw, terrain, index)
+  const streets = finalize(raw, terrain, index)
   // streets may keep genuine decay cul-de-sacs; every other dangling end is pruned
-  const all = indexOf([...arterials, ...pass1, ...pass2])
-  const prune = { accept: () => true, minLength: 60, keep: new Set(decayEnds.map(endKey)) }
-  const pass1Pruned = pruneDangling(pass1, all, terrain, sizeM, prune)
-  const pass2Pruned = pruneDangling(pass2, all, terrain, sizeM, prune)
+  const all = indexOf([...arterials, ...streets])
+  const pruned = pruneDangling(streets, all, terrain, sizeM, { accept: () => true, minLength: 60, keep: new Set(decayEnds.map(endKey)) })
   return {
     highway: highway && simplify(highway),
     arterials,
-    streets: { pass1: pass1Pruned, pass2: pass2Pruned },
+    streets: pruned,
   }
 }
