@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { pointAtT, pointInRings, polylineLength, ringCentroid, type Pt } from '../geometry'
+import { pointAtT, pointInRings, polylineLength, ringArea, ringCentroid, type Pt } from '../geometry'
 import { ISLET_MOAT_OUTER_FACTOR, ISLET_RADIUS_MAX } from '../terrain/field'
 import { GENERATOR_VERSION, type Block, type District, type SectorParams, type Terrain } from '../types'
 import { hashSeed, mulberry32 } from '../rng'
@@ -468,11 +468,11 @@ describe('coast-aligned streets', () => {
   })
 
   it('no road runs through a block', () => {
-    // slivers are dropped, not merged. Residual (2 on seed 3017268931, 18 on seed 42) (B1412:S024 B1412:L008 B1109:L006) = faces with a
+    // slivers are dropped, not merged. Residual (2 on seed 3017268931, 10 on seed 42) (B1412:S024 B1412:L008 B1109:L006) = faces with a
     // hole / pruned dead ends; buildings still never sit on them (second assertion). Ratchet down, never up.
     const cases: Array<[SectorParams, number]> = [
       [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'print' }, 2],
-      [{ ...base, seed: 42, landform: 'coastal', river: true }, 18],
+      [{ ...base, seed: 42, landform: 'coastal', river: true }, 10],
     ]
     for (const [params, max] of cases) {
       const m = generateSector(params)
@@ -493,6 +493,26 @@ describe('coast-aligned streets', () => {
       // whatever the face graph did, no building vertex sits on a road's paved width
       const under = m.buildings.filter((bl) => bl.footprint.some((p) => m.roads.some((r) => r.class !== 'highway' && distToPolyline(p, r.points) < r.width / 2 - 0.5)))
       expect(under.map((bl) => bl.id), `seed ${params.seed}`).toEqual([])
+    }
+  })
+})
+
+describe('block size', () => {
+  const cases: SectorParams[] = [
+    { ...base, seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, irregularity: 0.85, landform: 'bay', pack: 'generic', theme: 'print' },
+    { ...base, seed: 4280430344, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15, landform: 'coastal', river: true, lakes: true },
+    base,
+  ]
+  it('every land block is street-sized', () => {
+    for (const params of cases) {
+      const m = generateSector(params)
+      const s = params.size * 1000
+      const wet = (p: Pt) => inWater(m.terrain, p) || [0, 1, 2, 3, 4, 5, 6, 7].some((k) => inWater(m.terrain, { x: p.x + 150 * Math.cos((k * Math.PI) / 4), y: p.y + 150 * Math.sin((k * Math.PI) / 4) }))
+      const big = m.blocks.filter((b) => {
+        const c = ringCentroid(b.footprint)
+        return Math.abs(ringArea(b.footprint)) > 60000 && Math.min(c.x, c.y, s - c.x, s - c.y) >= 150 && !wet(c)
+      })
+      expect(big.map((b) => `${b.id} ${Math.round(Math.abs(ringArea(b.footprint)))}`), `seed ${params.seed}`).toEqual([])
     }
   })
 })

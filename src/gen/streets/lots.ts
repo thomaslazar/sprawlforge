@@ -125,7 +125,7 @@ function isConvex(ring: Pt[]): boolean {
 }
 
 /** angle of a polygon's longest edge — the lot grid inherits this orientation */
-function longestEdgeAngle(poly: Pt[]): number {
+export function longestEdgeAngle(poly: Pt[]): number {
   let best = 0
   let angle = 0
   for (let i = 0; i < poly.length; i++) {
@@ -337,7 +337,7 @@ export function chooseStyle(zone: ZoneType, density: number, neighbourhood: numb
  * block's whole bbox, so without this an alley pokes out of a rotated or
  * concave block (and over the water next to it).
  */
-function clipSegmentToRing(a: Pt, b: Pt, ring: Pt[]): Array<[Pt, Pt]> {
+export function clipSegmentToRing(a: Pt, b: Pt, ring: Pt[]): Array<[Pt, Pt]> {
   const ts = [0, 1]
   const dx = b.x - a.x, dy = b.y - a.y
   for (let i = 0; i < ring.length; i++) {
@@ -441,9 +441,10 @@ export function fillLots(
     let inner: Pt[][] = []
     if (style === 'courtyard') {
       const depth = 18 + 8 * rng.next()
-      const deep = insetRing(inset, depth)
-      // a 3 m simplify keeps polygon-clipping from stalling on dense curved insets
-      inner = deep ? [deep] : insetByClipping(simplifyPolyline([...inset, inset[0]], 3).slice(0, -1), depth)
+      // a concave inset whose offset self-intersects gets a thinner band, never the clipping inset:
+      // polygon-clipping can burn 80 s throwing on such a ring (seed 42 block B1391)
+      const deep = [1, 0.7, 0.45].map((f) => insetRing(inset, depth * f)).find((r) => r !== null)
+      inner = deep ? [deep] : []
     }
     const bsp = bspSplit(bbox, { minCell: st.cell, gap: st.gap, jitter: 0.25, rng })
     if (style === 'rows')
