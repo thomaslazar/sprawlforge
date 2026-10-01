@@ -202,6 +202,8 @@ function clampToWindow(p: Pt, sizeM: number): Pt {
 const CROSSING_MAX_REACH = 450
 const CROSSING_SAMPLE_STEP = 10
 const PARALLEL_ANGLE = (25 * Math.PI) / 180
+/** a raw direction flip beyond this between two steps is a field singularity: stop, never clamp (a clamped hairpin is a U-loop) */
+const SINGULARITY_TURN = (60 * Math.PI) / 180
 
 function traceHalf(
   field: RoadField, axis: 'major' | 'minor', start: Pt, initDir: Pt,
@@ -221,7 +223,10 @@ function traceHalf(
   const isSourceAt = (id: string, at: Pt) =>
     id === sourceId && Math.hypot(at.x - seedAt.x, at.y - seedAt.y) < 0.35 * opts.separation
   for (let i = 0; i < opts.maxSteps; i++) {
-    const newDir = clampTurn(dir, rk4Dir(field, axis, p, dir, opts.step), maxTurn)
+    const rawDir = rk4Dir(field, axis, p, dir, opts.step)
+    // the highway (maxTurn set) is smoothed by its clamp instead
+    if (opts.maxTurn === undefined && Math.acos(clamp(-1, 1, dir.x * rawDir.x + dir.y * rawDir.y)) > SINGULARITY_TURN) break
+    const newDir = clampTurn(dir, rawDir, maxTurn)
     const next = { x: p.x + newDir.x * opts.step, y: p.y + newDir.y * opts.step }
 
     if (next.x < 0 || next.x > sizeM || next.y < 0 || next.y > sizeM) {
@@ -250,7 +255,10 @@ function traceHalf(
     // road, and the parent itself once far enough away, is still checked.
     const hitSame = index.nearest(next, 0.3 * sep, sameOrHigher)
     if (hitSame && !isSourceAt(hitSame.id, next)) {
-      pts.push(hitSame.at); break
+      // a join behind the walker would be a hairpin: end dangling, prune cleans up
+      const jx = hitSame.at.x - p.x, jy = hitSame.at.y - p.y
+      if (jx * dir.x + jy * dir.y >= 0) pts.push(hitSame.at)
+      break
     }
 
     // nearestMatching, not nearest: a closer but merely-CROSSING road (angle

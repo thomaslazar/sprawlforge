@@ -450,3 +450,29 @@ describe('pruneDangling', () => {
     expect(out.find((r) => r.id === 'A')).toBe(A)
   })
 })
+
+describe('field singularity', () => {
+  it('a streamline stops at a field singularity instead of doubling back', () => {
+    const a = (85 * Math.PI) / 180
+    const flip = { x: Math.cos(a), y: Math.sin(a) }
+    const field = {
+      sizeM: 2000, patches: [],
+      sample: (p: Pt) => {
+        const major = p.x < 500 ? { x: 1, y: 0 } : flip
+        return { major, minor: { x: -major.y, y: major.x } }
+      },
+    } as unknown as RoadField
+    const { terrain, irregularityAt } = setup({ landform: 'inland', river: false, lakes: false, irregularity: 0.05 })
+    const pts = traceStreamline(
+      field, 'major', { at: { x: 100, y: 500 }, dir: { x: 1, y: 0 } }, terrain, 2000, new RoadIndex(200), MAJOR, mulberry32(1), irregularityAt,
+    )!
+    expect(pts).not.toBeNull()
+    const fwd = pts.filter((q) => q.x >= 100)
+    expect(Math.max(...pts.map((q) => q.x))).toBeLessThanOrEqual(510)
+    for (let i = 2; i < pts.length; i++) {
+      const t = Math.atan2(pts[i].y - pts[i - 1].y, pts[i].x - pts[i - 1].x) - Math.atan2(pts[i - 1].y - pts[i - 2].y, pts[i - 1].x - pts[i - 2].x)
+      expect(Math.abs(Math.atan2(Math.sin(t), Math.cos(t)))).toBeLessThanOrEqual((60 * Math.PI) / 180 + 1e-9)
+    }
+    expect(fwd.length).toBeGreaterThan(2)
+  })
+})

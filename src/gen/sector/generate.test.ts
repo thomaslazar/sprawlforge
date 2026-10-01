@@ -339,9 +339,9 @@ describe('no doubled arterials', () => {
       irregularity: 0.85, landform: 'bay',
     })
     const arts = m.roads.filter((r) => r.class === 'arterial')
-    // 66 streets / 9 arterials measured after prune-dangling (74 / 13 before;
-    // the prune drops roads that cannot end on a junction); bounds = measured - 10 %
-    expect(m.roads.filter((r) => r.class === 'street').length).toBeGreaterThanOrEqual(59)
+    // 41 streets / 9 arterials measured after the singularity stop (66 / 9 before it;
+    // 74 / 13 before prune-dangling); bounds = measured - 10 %
+    expect(m.roads.filter((r) => r.class === 'street').length).toBeGreaterThanOrEqual(37)
     expect(arts.length).toBeGreaterThanOrEqual(8)
     let worst = 0
     for (let i = 0; i < arts.length; i++) {
@@ -413,4 +413,31 @@ describe('reference seed road quality', () => {
     }
     expect(bad).toEqual([])
   })
+})
+
+describe('no hairpins', () => {
+  const sp = (seed: number, density: number, corpDominance: number, poiDensity: number, irregularity: number, landform: SectorParams['landform'], river: boolean): SectorParams => ({
+    ...base, seed, size: 2, density, corpDominance, poiDensity, irregularity, landform, river, pack: 'generic', theme: 'print',
+  })
+  const cases: [number, SectorParams][] = [
+    [3017268931, sp(3017268931, 0.9, 0.85, 0.25, 0.15, 'bay', true)],
+    [2982258224, sp(2982258224, 0.25, 0.15, 0.5, 0.85, 'bay', false)],
+  ]
+  for (const [seed, params] of cases) {
+    it(`arterials and streets turn <= 100 deg per segment (seed ${seed})`, () => {
+      const m = generateSector(params)
+      let max = 0
+      for (const r of m.roads) {
+        if (r.class !== 'arterial' && r.class !== 'street') continue
+        for (let i = 2; i < r.points.length; i++) {
+          const a = r.points[i - 2], b = r.points[i - 1], c = r.points[i]
+          // sub-metre weld slivers have no meaningful heading
+          if (Math.hypot(b.x - a.x, b.y - a.y) < 1 || Math.hypot(c.x - b.x, c.y - b.y) < 1) continue
+          const t = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(b.y - a.y, b.x - a.x)
+          max = Math.max(max, Math.abs(Math.atan2(Math.sin(t), Math.cos(t))))
+        }
+      }
+      expect(max).toBeLessThanOrEqual((100 * Math.PI) / 180)
+    })
+  }
 })
