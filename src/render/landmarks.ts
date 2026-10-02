@@ -17,10 +17,16 @@ export function renderLandmarks(model: SectorModel, theme: Theme, out: string[],
   for (const a of model.arcologies) {
     // ponytail: plaza uses arcology.fill at low opacity rather than a lightened districtFill.corp
     out.push(`<polygon points="${pts(a.plaza)}" fill="${theme.arcology.fill}" fill-opacity="0.35"/>`)
-    out.push(`<polygon data-arcology="${a.id}" data-design="${a.design}" points="${pts(a.footprint)}" fill="${theme.arcology.fill}" stroke="${theme.arcology.stroke}" stroke-width="2"/>`)
+    const { fill, stroke, ring } = theme.arcology
     const s = designShape(a.design, a.center, a.radius, a.angle)
-    for (const p of s.polys) out.push(`<polygon points="${pts(p)}" fill="${theme.arcology.fill}" stroke="${theme.arcology.ring}" stroke-width="1"/>`)
-    for (const [p, q] of s.lines) out.push(`<line x1="${n(p.x)}" y1="${n(p.y)}" x2="${n(q.x)}" y2="${n(q.y)}" stroke="${theme.arcology.ring}" stroke-width="1"/>`)
+    const poly = (p: Pt[], f: string, st: string, w: number) => out.push(`<polygon points="${pts(p)}" fill="${f}" stroke="${st}" stroke-width="${w}"/>`)
+    const line = ([p, q]: [Pt, Pt]) => out.push(`<line x1="${n(p.x)}" y1="${n(p.y)}" x2="${n(q.x)}" y2="${n(q.y)}" stroke="${ring}" stroke-width="1"/>`)
+    const rings = a.design === 'rings'
+    // the hull outline is the footprint for hit-testing; only rings fills it, the other designs let their structures carry the fill
+    out.push(`<polygon data-arcology="${a.id}" data-design="${a.design}" points="${pts(a.footprint)}" fill="${rings ? fill : 'none'}" stroke="${rings ? stroke : ring}" stroke-width="${rings ? 2 : 1}"/>`)
+    if (rings) s.polys.forEach((p) => poly(p, 'none', ring, 1))
+    else if (a.design === 'ziggurat') { poly(s.outline, fill, stroke, 2); s.polys.forEach((p) => poly(p, 'none', ring, 1)); s.lines.forEach(line) }
+    else { s.lines.forEach(line); s.polys.forEach((p) => poly(p, fill, stroke, 2)) }
   }
   for (const m of model.megablocks) {
     const blockIds = new Set(model.blocks.filter((b) => b.flags.megablock === m.id).map((b) => b.id))

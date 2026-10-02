@@ -348,7 +348,7 @@ describe('landmarks', () => {
     }
     for (const d of designs) expect(svg).toContain(`data-design="${d}"`)
     // slice starts inside the outline tag; a non-last slice also holds the next plaza and the next outline tag (2 extra polygons)
-    expect(count('ziggurat', 'polygon') - 2).toBe(3)
+    expect(count('ziggurat', 'polygon') - 2).toBe(4)
     expect(count('ziggurat', 'line')).toBe(4)
     expect(count('cluster', 'polygon') - 2).toBe(7)
     expect(count('satellites', 'polygon')).toBe(6)
