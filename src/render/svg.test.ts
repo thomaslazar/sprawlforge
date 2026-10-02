@@ -325,6 +325,12 @@ describe('alleys', () => {
 describe('landmarks', () => {
   const corp = generateSector({ ...base, landform: 'inland', corpDominance: 0.85 })
   const fringe = generateSector({ ...base, seed: 7, landform: 'bay', corpDominance: 0.15 })
+  it('landmark names print once as text (no duplicate POI label)', { timeout: 90000 }, () => {
+    const a = renderSector(corp, getTheme('neon'), { interactive: false })
+    const k = corp.arcologies[0]
+    const esc = k.name.replace(/&/g, '&amp;')
+    expect(a.split(`>${esc}</text>`).length - 1).toBe(1)
+  })
   it('renders arcology and megablock marks', { timeout: 90000 }, () => {
     expect(corp.arcologies.length).toBeGreaterThan(0)
     expect(fringe.megablocks.length).toBeGreaterThan(0)
@@ -339,7 +345,9 @@ describe('landmarks', () => {
       const m = renderSector(fringe, getTheme('neon'), { interactive })
       for (const k of fringe.megablocks) expect(m).toContain(`data-megablock="${k.id}"`)
       expect(m).toMatch(/<polygon data-megablock="MEG\d+"[^>]*stroke-width="2"/)
-      const generic = m.match(/<path data-alleys[^>]*>/g)?.join('') ?? ''
+      const alleyPaths = m.match(/<path data-alleys[^>]*>/g) ?? []
+      expect(alleyPaths.length).toBeGreaterThan(0)
+      const generic = alleyPaths.join('')
       expect(generic).not.toContain(getTheme('neon').megablock.alley)
       expect(m).toContain('data-landmark-label=""') // valueless attrs are invalid XML, which breaks PNG export
     }

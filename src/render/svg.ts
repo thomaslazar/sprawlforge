@@ -328,6 +328,8 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   )
   const off = (S * 0.006) / labelZoom
   for (const p of byRank) {
+    // landmark label already prints this name at the same spot
+    if (p.type === 'arcology' || p.type === 'megablock') continue
     const candidates: Array<{ x: number; y: number; anchor: Anchor }> = [
       { x: p.at.x + off, y: p.at.y - markerR, anchor: 'start' },
       { x: p.at.x - off, y: p.at.y - markerR, anchor: 'end' },
