@@ -559,7 +559,7 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
     for (const r of cur) {
       // a closed ring has no ends to prune
       if (Math.hypot(r.points[0].x - r.points.at(-1)!.x, r.points[0].y - r.points.at(-1)!.y) < 1) { next.push(r); continue }
-      const near = (p: Pt) => index.nearestMatching(p, weld, (h) => h.id !== r.id && opts.accept(h.cls) && (!opts.interiorOnly || h.edge >= weld))
+      const near = (p: Pt, anyEnd = false) => index.nearestMatching(p, weld, (h) => h.id !== r.id && opts.accept(h.cls) && (anyEnd || !opts.interiorOnly || h.edge >= weld))
       let pts = r.points
       let dead = false
       for (const fromEnd of [false, true]) {
@@ -578,7 +578,8 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
           const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 5))
           for (let k = 1; k <= n; k++) {
             const q = { x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n }
-            const hit = near(q)
+            // any end counts here: a trunk cut back to the foot of a side street it carries keeps that street; interiorOnly would drop the whole trunk and cascade
+            const hit = near(q, true)
             if (hit) { kept = [hit.at, ...seq.slice(k === n ? i + 1 : i)]; break }
           }
         }

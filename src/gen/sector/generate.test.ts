@@ -607,6 +607,26 @@ describe('streets at the highway', () => {
 })
 
 describe('landmarks in road tracing', () => {
+  // street km per km2 of a district (all of its polygon), streets counted by segment midpoint
+  const streetDensity = (m: ReturnType<typeof generateSector>, d: District) => {
+    let len = 0
+    for (const r of m.roads) if (r.class === 'street') for (let i = 1; i < r.points.length; i++) {
+      const a = r.points[i - 1], b = r.points[i]
+      if (pointInRings({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, [d.poly])) len += Math.hypot(b.x - a.x, b.y - a.y)
+    }
+    return len / 1000 / (Math.abs(ringArea(d.poly)) / 1e6)
+  }
+  // land districts > 10 ha (water sampled out on a 20 m grid; docks and landmark districts exempt) under 3 km/km2
+  const emptyDistricts = (m: ReturnType<typeof generateSector>) => m.districts.filter((d) => {
+    if (d.zone === 'docks' || d.flags.arcology || d.flags.megablock) return false
+    const xs = d.poly.map((p) => p.x), ys = d.poly.map((p) => p.y)
+    let land = 0
+    for (let x = Math.min(...xs); x < Math.max(...xs); x += 20) for (let y = Math.min(...ys); y < Math.max(...ys); y += 20) {
+      const q = { x: x + 10, y: y + 10 }
+      if (pointInRings(q, [d.poly]) && !inWater(m.terrain, q)) land += 400
+    }
+    return land > 1e5 && streetDensity(m, d) < 3
+  }).map((d) => d.id)
   const seeds: [string, SectorParams][] = [
     ['seed 42 inland corp 0.85', { ...base, corpDominance: 0.85 }],
     ['seed 7 bay corp 0.15', { ...base, seed: 7, landform: 'bay', corpDominance: 0.15 }],
@@ -667,6 +687,14 @@ describe('landmarks in road tracing', () => {
           expect(spokes.length).toBeGreaterThanOrEqual(3)
         }
       })
+      it('no sizeable land district is left without streets', () => {
+        expect(emptyDistricts(m)).toEqual([])
+      })
     })
   }
+  it('seed 7 bay 2 km: the district north of the arcology keeps its streets', () => {
+    const m = generateSector({ ...base, seed: 7, size: 2, landform: 'bay', density: 0.25, corpDominance: 0.15, poiDensity: 0.7 })
+    const d = m.districts.find((x) => pointInRings({ x: 1297, y: 950 }, [x.poly]))!
+    expect(streetDensity(m, d)).toBeGreaterThanOrEqual(8)
+  })
 })
