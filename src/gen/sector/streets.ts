@@ -1,4 +1,4 @@
-import { pointInRings, simplifyPolyline, type Pt } from '../geometry'
+import { pointInRings, polylineLength, simplifyPolyline, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import { placeLandmarks, ringRoad } from '../landmarks/place'
 import { buildRoadField, radialBasis, type RoadField } from '../streets/field'
@@ -8,6 +8,7 @@ import {
 } from '../streets/trace'
 import type { Arcology, Megablock, Road, SectorParams, Terrain } from '../types'
 import { inWater, truncateUnlandableRoads } from './bridges'
+import { distToPolyline } from '../terrain/rivers'
 import { effectiveIrregularity } from './zoning'
 
 export interface TracedRoads {
@@ -29,6 +30,10 @@ const finalize = (roads: Road[], terrain: Terrain, index: RoadIndex, maxStub = 4
   truncateUnlandableRoads(trimStubs(roads, index, maxStub).map(simplify), terrain)
 /** a ~1 km ring gets only 2 seeds at the 400 m arterial spacing, and some die on neighbours: 200 m keeps >= 4 spokes */
 const RING_SEED_M = 200
+/** a spoke that leaves its ring and snaps back onto it (both ends within 6 m, shorter than half a lap) is a hairpin: drop it; zero-length ones too */
+const dropHairpins = (roads: Road[], rings: Road[], arcologies: Arcology[]) => roads.filter((r) => !rings.some((k, i) =>
+  r.points.length === 0 || (distToPolyline(r.points[0], k.points) <= 6 && distToPolyline(r.points[r.points.length - 1], k.points) <= 6
+    && polylineLength(r.points) < Math.PI * (arcologies[i].radius + 60))))
 const ARTERIAL_STUB_M = 0.3 * MAJOR.separation
 
 /** field → highway → arterials → queue-grown streets, in spec §4 order; every polyline simplified */
@@ -85,7 +90,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     terrain, sizeM, index, MAJOR_OPTS, mulberry32(hashSeed(params.seed, 'arterials-2')), irregularityAt, 'B', 'arterial',
   )
   // truncate before seeding so S/L seeds come from the final arterials
-  let arterials = [...ringRoads, ...finalize([...arterialsRaw, ...crossRaw], terrain, index, ARTERIAL_STUB_M)]
+  let arterials = [...ringRoads, ...dropHairpins(finalize([...arterialsRaw, ...crossRaw], terrain, index, ARTERIAL_STUB_M), ringRoads, arcologies)]
   const indexOf = (rs: Road[]) => {
     const idx = new RoadIndex(200)
     if (highway) idx.add(highway.id, highway.points, 'highway')

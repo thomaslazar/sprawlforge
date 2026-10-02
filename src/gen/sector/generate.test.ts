@@ -698,3 +698,28 @@ describe('landmarks in road tracing', () => {
     expect(streetDensity(m, d)).toBeGreaterThanOrEqual(8)
   })
 })
+
+describe('no hairpin spokes', () => {
+  const models: [string, SectorParams][] = [
+    ['seed 782008753 inland 6 km', { ...base, seed: 782008753, size: 6, landform: 'inland', density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, river: true, lakes: true, islands: true, piers: true, pack: 'generic', theme: 'print' }],
+    ['seed 42 inland corp 0.85', { ...base, corpDominance: 0.85 }],
+    ['seed 7 bay corp 0.15', { ...base, seed: 7, landform: 'bay', corpDominance: 0.15 }],
+  ]
+  for (const [label, params] of models) {
+    it(`no arterial loops back onto its own ring (${label})`, () => {
+      const m = generateSector(params)
+      const bad: string[] = []
+      for (const a of m.arcologies) {
+        const ring = m.roads.filter((r) => r.id === a.ringRoadId || r.id.startsWith(`${a.ringRoadId}-`))
+        const pts = ring.flatMap((r) => r.points)
+        const closed = [...pts, pts[0]]
+        for (const r of m.roads) {
+          if (r.class !== 'arterial' || ring.includes(r) || r.points.length === 0) continue
+          const ends = [r.points[0], r.points[r.points.length - 1]]
+          if (ends.every((e) => distToPolyline(e, closed) <= 6) && polylineLength(r.points) < Math.PI * (a.radius + 60)) bad.push(`${r.id} ${a.ringRoadId}`)
+        }
+      }
+      expect(bad).toEqual([])
+    })
+  }
+})
