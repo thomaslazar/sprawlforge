@@ -308,6 +308,7 @@ describe('landmark blocks', () => {
       expect(block.alleys.length).toBeGreaterThanOrEqual(1)
       const inCore = mega.buildings.filter((x) => x.blockId === block.id && x.footprint.every((p) => pointInRings(p, [m.core])))
       expect(inCore).toHaveLength(1)
+      for (const p of [...inCore[0].footprint, ...block.alleys.flat()]) expect(insideOrOnEdge(p, block.footprint)).toBe(true)
     }
   })
   it('lots around a megablock never overlap the core', () => {

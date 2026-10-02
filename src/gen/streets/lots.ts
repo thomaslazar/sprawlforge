@@ -363,7 +363,10 @@ export function clipSegmentToRing(a: Pt, b: Pt, ring: Pt[]): Array<[Pt, Pt]> {
 }
 
 /** a megablock core's single building (core inset 3 m, concave allowed) and its BSP alleys clipped to the core */
-function megablockCore(core: Pt[], rng: ReturnType<typeof mulberry32>): { footprint: Pt[] | null; alleys: Array<[Pt, Pt]> } {
+function megablockCore(fullCore: Pt[], clip: (ring: [number, number][]) => MultiPolygon, rng: ReturnType<typeof mulberry32>): { footprint: Pt[] | null; alleys: Array<[Pt, Pt]> } {
+  // an arterial may cross the core: `clip` keeps only the part inside the block and off the road strips (water is already clear: placement keeps cores >= outer + 40 m from it)
+  const core = largestRing(safeClip(fullCore, clip))
+  if (!core) return { footprint: null, alleys: [] }
   const footprint = insetRing(core, 3) ?? insetByClipping(core, 3).sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)))[0] ?? null
   const alleys: Array<[Pt, Pt]> = []
   for (const { axis, strip } of bspSplit(bboxOf(core), { minCell: 60, gap: 3, jitter: 0.25, rng }).cuts) {
@@ -426,7 +429,12 @@ export function fillLots(
     const mega = landmarks?.megablocks.find((m) => pointInRings(m.center, [block.footprint]))
     let coreAlleys: Array<[Pt, Pt]> = []
     if (mega) {
-      const core = megablockCore(mega.core, megaRng)
+      const core = megablockCore(mega.core, (ring) => {
+        let cur = polygonClipping.intersection([ring], [toRing(block.footprint)])
+        // only the real road strips (the first noBuildIn.length), never the cores themselves
+        for (const k of near(boxOf(mega.core))) if (k < noBuildIn.length && cur.length) cur = polygonClipping.difference(cur, noBuildPolys[k])
+        return cur
+      }, megaRng)
       coreAlleys = core.alleys
       if (core.footprint) {
         n += 1
@@ -557,7 +565,7 @@ export function fillLots(
     }
     }
     outBlocks.push(mega
-      ? { ...block, style: 'megablock', alleys: coreAlleys, flags: { ...block.flags, megablock: mega.id } }
+      ? { ...block, style: 'megablock', alleys: [...alleys, ...coreAlleys], flags: { ...block.flags, megablock: mega.id } }
       : { ...block, style: blockStyle, alleys })
   }
 
