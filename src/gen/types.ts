@@ -97,8 +97,9 @@ export interface Road {
   crossings?: HighwayCrossing[]
 }
 
+export type ArcologyDesign = 'rings' | 'ziggurat' | 'cluster' | 'satellites'
 export interface Arcology {
-  id: string; name: string; center: Pt; radius: number
+  id: string; name: string; design: ArcologyDesign; angle: number; center: Pt; radius: number
   footprint: Pt[]; plaza: Pt[]; ringRoadId: string
 }
 export interface Megablock { id: string; name: string; center: Pt; core: Pt[]; footprint: Pt[] }

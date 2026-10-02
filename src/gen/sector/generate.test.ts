@@ -222,6 +222,18 @@ describe('landmark names and POIs', () => {
   }
 })
 
+describe('arcology names', () => {
+  it('names follow the design pool', () => {
+    const words: Record<string, RegExp> = { ziggurat: /Ziggurat|Pyramid/, cluster: /Towers|Complex/, satellites: /Campus|Spire/ }
+    let seen = 0
+    for (const seed of [42, 7, 11, 5]) for (const pack of ['generic', 'shadowrunish']) {
+      const m = generateSector({ ...base, seed, corpDominance: 0.9, pack })
+      for (const a of m.arcologies) if (words[a.design]) { seen++; expect(a.name).toMatch(words[a.design]) }
+    }
+    expect(seen).toBeGreaterThan(0)
+  })
+})
+
 describe('deriveDistricts', () => {
   it('drops a district whose blocks all drowned', () => {
     const drowned = district('D01', { x: 0, y: 0, w: 600, h: 600 })

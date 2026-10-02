@@ -4,10 +4,12 @@ import { effectiveIrregularity } from '../sector/zoning'
 import { inWater } from '../sector/bridges'
 import type { RoadField } from '../streets/field'
 import { distToPolyline } from '../terrain/rivers'
-import type { Arcology, Megablock, Road, SectorParams, Terrain } from '../types'
+import { designShape } from './designs'
+import type { Arcology, ArcologyDesign, Megablock, Road, SectorParams, Terrain } from '../types'
 
 export interface Landmarks { arcologies: Arcology[]; megablocks: Megablock[] }
 
+const DESIGNS: ArcologyDesign[] = ['rings', 'ziggurat', 'cluster', 'satellites']
 const LATTICE = 300
 const JITTER = 90
 const EDGE_MARGIN = 350
@@ -95,13 +97,17 @@ export function placeLandmarks(
     const score = (c: Pt) => (k === 0 ? -dist(c, centre) : Math.min(...arcCentres.map((a) => dist(a, c))))
     arcCentres.push(pool.reduce((b, c) => (score(c) > score(b) ? c : b)))
   }
+  // designs: drawn after every other draw so existing placements stay identical; shuffled once, a fifth arcology restarts the list
+  const order = [...DESIGNS]
+  for (let i = order.length - 1; i > 0; i--) { const j = rng.int(0, i); [order[i], order[j]] = [order[j], order[i]] }
   const arcologies: Arcology[] = arcCentres.map((center, i) => {
     const radius = radii[i]
     const m = field.sample(center).major
     const angle = Math.atan2(m.y, m.x)
+    const design = order[i % order.length]
     return {
-      id: `ARC${i + 1}`, name: '', center, radius,
-      footprint: octagon(center, radius, angle),
+      id: `ARC${i + 1}`, name: '', design, angle, center, radius,
+      footprint: designShape(design, center, radius, angle).outline,
       plaza: octagon(center, radius + 40, angle),
       ringRoadId: `${RING_ID_PREFIX}${i + 1}`,
     }

@@ -323,7 +323,7 @@ export function generateSector(params: SectorParams): SectorModel {
   })
 
   // last draws on the names stream, so district and street names stay as they were
-  const namedArcologies = arcologies.map((a) => ({ ...a, name: generateName(nameRng.pick(pack.arcologyPatterns), pack.tables, nameRng) }))
+  const namedArcologies = arcologies.map((a) => ({ ...a, name: generateName(nameRng.pick(pack.arcologyPatternsByDesign[a.design] ?? pack.arcologyPatterns), pack.tables, nameRng) }))
   const namedMegablocks = megablocks.map((m) => ({ ...m, name: generateName(nameRng.pick(pack.megablockPatterns), pack.tables, nameRng) }))
 
   const { buildings, blocks, megablockFootprints } = fillLots(namedDistricts, rawBlocks, params, terrain, [

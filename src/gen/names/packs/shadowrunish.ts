@@ -12,6 +12,11 @@ export const shadowrunish: FlavorPack = {
     venue: ['The Daze', 'Matchsticks', 'Banshee', 'The Big Rhino', 'Underworld', 'Penumbra', 'Dante\'s', 'The Skeleton'],
   },
   arcologyPatterns: ['{corpA} Arcology Complex', '{corpA} Corporate Court', '{corpA} Spire', 'The {corpA} Tower'],
+  arcologyPatternsByDesign: {
+    ziggurat: ['The {corpA} Ziggurat', '{corpA} Pyramid', '{corpA} Step Pyramid'],
+    cluster: ['{corpA} Towers', '{corpA} Corporate Complex', 'The {corpA} Complex'],
+    satellites: ['{corpA} Campus', '{corpA} Spire Campus', 'The {corpA} Spire Annex'],
+  },
   megablockPatterns: ['{adj} Sprawl Block', 'The {adj} Warrens', '{adj} Housing Stack', '{adj} Barrens Tower'],
   poiTypes: [
     ...generic.poiTypes.filter((p) => p.type !== 'arcology' && p.type !== 'megablock'),

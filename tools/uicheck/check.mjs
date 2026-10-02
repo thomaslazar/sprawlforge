@@ -359,6 +359,7 @@ await page.goto(`${BASE}/?seed=42&tags=inland,corp-run`)
 await page.waitForSelector('svg')
 await page.screenshot({ path: `${OUT}/landmarks-arcology.png` })
 if ((await page.locator('svg [data-arcology]').count()) < 1) fail('corp-run: no arcology rendered')
+if ((await page.locator('svg [data-design]').count()) < 1) fail('corp-run: no arcology design attribute')
 
 await page.goto(`${BASE}/?seed=7&tags=bay,fringe`)
 await page.waitForSelector('svg')

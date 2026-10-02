@@ -25,6 +25,14 @@ describe('placeLandmarks', () => {
   it('is deterministic', () => {
     expect(run(mk()).out).toEqual(run(mk()).out)
   })
+  it('designs do not repeat within a sector', () => {
+    // ponytail: seed 42 inland 4 km corp 0.85 yields 2 arcologies; 3+ needs a larger sector, asserted on whatever count the seeds give
+    for (const o of [{ seed: 42, corpDominance: 0.85 }, { seed: 7, corpDominance: 0.9, size: 6 }, { seed: 11, corpDominance: 0.9, size: 6 }]) {
+      const ds = run(mk(o)).out.arcologies.map((a) => a.design)
+      expect(new Set(ds).size).toBe(ds.length)
+    }
+    expect(run(mk({ seed: 42, corpDominance: 0.85 })).out.arcologies.length).toBeGreaterThanOrEqual(2)
+  })
   it('counts follow the power tag', () => {
     const hi = run(mk({ corpDominance: 0.85 })).out
     expect(hi.arcologies.length).toBeGreaterThanOrEqual(2)

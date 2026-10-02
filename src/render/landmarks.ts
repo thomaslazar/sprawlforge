@@ -1,4 +1,5 @@
 import type { Pt } from '../gen/geometry'
+import { designShape } from '../gen/landmarks/designs'
 import type { SectorModel } from '../gen/types'
 import type { Theme } from './theme'
 
@@ -16,9 +17,10 @@ export function renderLandmarks(model: SectorModel, theme: Theme, out: string[],
   for (const a of model.arcologies) {
     // ponytail: plaza uses arcology.fill at low opacity rather than a lightened districtFill.corp
     out.push(`<polygon points="${pts(a.plaza)}" fill="${theme.arcology.fill}" fill-opacity="0.35"/>`)
-    out.push(`<polygon data-arcology="${a.id}" points="${pts(a.footprint)}" fill="${theme.arcology.fill}" stroke="${theme.arcology.stroke}" stroke-width="2"/>`)
-    for (const k of [0.66, 0.33])
-      out.push(`<polygon points="${pts(a.footprint.map((p) => ({ x: a.center.x + (p.x - a.center.x) * k, y: a.center.y + (p.y - a.center.y) * k })))}" fill="none" stroke="${theme.arcology.ring}" stroke-width="1"/>`)
+    out.push(`<polygon data-arcology="${a.id}" data-design="${a.design}" points="${pts(a.footprint)}" fill="${theme.arcology.fill}" stroke="${theme.arcology.stroke}" stroke-width="2"/>`)
+    const s = designShape(a.design, a.center, a.radius, a.angle)
+    for (const p of s.polys) out.push(`<polygon points="${pts(p)}" fill="${theme.arcology.fill}" stroke="${theme.arcology.ring}" stroke-width="1"/>`)
+    for (const [p, q] of s.lines) out.push(`<line x1="${n(p.x)}" y1="${n(p.y)}" x2="${n(q.x)}" y2="${n(q.y)}" stroke="${theme.arcology.ring}" stroke-width="1"/>`)
   }
   for (const m of model.megablocks) {
     const blockIds = new Set(model.blocks.filter((b) => b.flags.megablock === m.id).map((b) => b.id))

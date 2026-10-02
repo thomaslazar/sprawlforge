@@ -15,6 +15,11 @@ export const generic: FlavorPack = {
   districtPatterns: ['{adj} {place}', '{street} {place}'],
   streetPatterns: ['{street} {streetType}', '{adj} {streetType}'],
   arcologyPatterns: ['{corpA} Arcology', '{corpA}-{corpB} Spire', '{corpA} Hive', 'The {corpB} Ziggurat'],
+  arcologyPatternsByDesign: {
+    ziggurat: ['The {corpA} Ziggurat', '{corpA} Pyramid', '{corpA}-{corpB} Step Pyramid'],
+    cluster: ['{corpA} Towers', '{corpA}-{corpB} Complex', 'The {corpB} Towers'],
+    satellites: ['{corpA} Campus', '{corpA}-{corpB} Spire Campus', 'The {corpB} Spire'],
+  },
   megablockPatterns: ['{place} Block', 'The {adj} Hive', '{place} Stacks', '{adj} Warren'],
   poiTypes: [
     { type: 'corp_hq', label: 'Corporate HQ', zones: ['corp'], namePatterns: ['{corpA} {corpB} HQ'] },

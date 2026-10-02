@@ -9,6 +9,7 @@
    styles. Open follow-ups below.
 2c. **Cyberpunk layer, part 1** (arcologies, megablocks) ✅ —
    `docs/specs/2026-10-02-cyberpunk-layer-design.md`.
+   Arcology designs: rings, ziggurat, cluster, satellites; more designs welcome.
    Known limitations / follow-ups:
    - obstacle and plaza/core tests check road vertices only (10 m step); a segment can clip a corner
    - two megablocks centred in one block face: only the first gets a core building

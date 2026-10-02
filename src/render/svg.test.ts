@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { generateSector } from '../gen/sector/generate'
 import type { Pt, Rect } from '../gen/geometry'
 import { GENERATOR_VERSION, type SectorModel, type SectorParams } from '../gen/types'
+import { designShape } from '../gen/landmarks/designs'
 import { renderSector } from './svg'
 import { getTheme, themes } from './theme'
 
@@ -330,6 +331,29 @@ describe('landmarks', () => {
     const k = corp.arcologies[0]
     const esc = k.name.replace(/&/g, '&amp;')
     expect(a.split(`>${esc}</text>`).length - 1).toBe(1)
+  })
+  it('every design renders', () => {
+    const designs = ['rings', 'ziggurat', 'cluster', 'satellites'] as const
+    const arcologies = designs.map((design, i) => {
+      const center = { x: 200 + i * 200, y: 500 }
+      const s = designShape(design, center, 100, 0.3)
+      return { id: `ARC${i + 1}`, name: design, design, angle: 0.3, center, radius: 100, footprint: s.outline, plaza: s.outline, ringRoadId: `K${i + 1}` }
+    })
+    const withArc = { ...model, arcologies, megablocks: [] }
+    const svg = renderSector(withArc, getTheme('neon'))
+    const count = (d: string, tag: string) => {
+      const start = svg.indexOf(`data-arcology="ARC${designs.indexOf(d as never) + 1}"`)
+      const end = designs.indexOf(d as never) === 3 ? start + svg.slice(start).search(/<(path|polyline|text)/) : svg.indexOf(`data-arcology="ARC${designs.indexOf(d as never) + 2}"`)
+      return (svg.slice(start, end).match(new RegExp(`<${tag} `, 'g')) ?? []).length
+    }
+    for (const d of designs) expect(svg).toContain(`data-design="${d}"`)
+    // slice starts inside the outline tag; a non-last slice also holds the next plaza and the next outline tag (2 extra polygons)
+    expect(count('ziggurat', 'polygon') - 2).toBe(3)
+    expect(count('ziggurat', 'line')).toBe(4)
+    expect(count('cluster', 'polygon') - 2).toBe(7)
+    expect(count('satellites', 'polygon')).toBe(6)
+    expect(count('satellites', 'line')).toBe(5)
+    expect(count('rings', 'polygon') - 2).toBe(2)
   })
   it('renders arcology and megablock marks', { timeout: 90000 }, () => {
     expect(corp.arcologies.length).toBeGreaterThan(0)
