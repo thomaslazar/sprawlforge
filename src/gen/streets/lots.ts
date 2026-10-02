@@ -362,20 +362,28 @@ export function clipSegmentToRing(a: Pt, b: Pt, ring: Pt[]): Array<[Pt, Pt]> {
   return out
 }
 
-/** a megablock core's single building (core inset 3 m, concave allowed) and its BSP alleys clipped to the core */
-function megablockCore(fullCore: Pt[], clip: (ring: [number, number][]) => MultiPolygon, rng: ReturnType<typeof mulberry32>): { footprint: Pt[] | null; alleys: Array<[Pt, Pt]> } {
-  // an arterial may cross the core: `clip` keeps only the part inside the block and off the road strips (water is already clear: placement keeps cores >= outer + 40 m from it)
-  const core = largestRing(safeClip(fullCore, clip))
-  if (!core) return { footprint: null, alleys: [] }
-  const footprint = insetRing(core, 3) ?? insetByClipping(core, 3).sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)))[0] ?? null
-  const alleys: Array<[Pt, Pt]> = []
-  for (const { axis, strip } of bspSplit(bboxOf(core), { minCell: 60, gap: 3, jitter: 0.25, rng }).cuts) {
+/** a megablock's hive: the block footprint inset by the sidewalk, packed BSP cells clipped to it, and its three longest BSP cuts as alleys */
+function megablockHive(blockFootprint: Pt[], rng: ReturnType<typeof mulberry32>, subtract: (clipped: MultiPolygon) => MultiPolygon): { footprint: Pt[] | null; cells: Pt[][]; alleys: Array<[Pt, Pt]> } {
+  const hive = insetRing(blockFootprint, SIDEWALK) ?? insetByClipping(blockFootprint, SIDEWALK).sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)))[0] ?? null
+  if (!hive) return { footprint: null, cells: [], alleys: [] }
+  const theta = longestEdgeAngle(hive)
+  const c = ringCentroid(hive)
+  const bsp = bspSplit(bboxOf(hive.map((p) => rotatePt(p, -theta, c))), { minCell: 30, gap: 2, jitter: 0.3, rng })
+  const cells: Pt[][] = []
+  for (const r of bsp.cells) {
+    const lot = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }].map((p) => rotatePt(p, theta, c))
+    const pts = largestRing(safeClip(lot, (ring) => subtract(polygonClipping.intersection([ring], [toRing(hive)]))))
+    if (pts && Math.abs(ringArea(pts)) >= MIN_BUILDING_AREA) cells.push(pts)
+  }
+  const cuts = bsp.cuts.map(({ axis, strip }) => {
     const [a, b] = axis === 'x'
       ? [{ x: strip.x + strip.w / 2, y: strip.y }, { x: strip.x + strip.w / 2, y: strip.y + strip.h }]
       : [{ x: strip.x, y: strip.y + strip.h / 2 }, { x: strip.x + strip.w, y: strip.y + strip.h / 2 }]
-    alleys.push(...clipSegmentToRing(a, b, core))
-  }
-  return { footprint, alleys }
+    const segs = clipSegmentToRing(rotatePt(a, theta, c), rotatePt(b, theta, c), hive)
+    return { segs, len: segs.reduce((t, [p, q]) => t + Math.hypot(q.x - p.x, q.y - p.y), 0) }
+  })
+  const alleys = cuts.sort((x, y) => y.len - x.len).slice(0, 3).flatMap((k) => k.segs)
+  return { footprint: hive, cells, alleys }
 }
 
 export function fillLots(
@@ -386,14 +394,13 @@ export function fillLots(
   noBuildIn: Pt[][],
   forceStyle?: BlockStyle,
   landmarks?: Landmarks,
-): { buildings: Building[]; blocks: Block[] } {
+): { buildings: Building[]; blocks: Block[]; megablockFootprints: Map<string, Pt[]> } {
   const rng = mulberry32(hashSeed(params.seed, 'buildings'))
   // own stream: notches must not reshuffle the lots the main stream lays out
   const notchRng = mulberry32(hashSeed(params.seed, 'notches'))
   const neighbourhood = fractalNoise2D(hashSeed(params.seed, 'neighbourhood'), 2)
   const districtById = new Map(districts.map((d) => [d.id, d]))
-  // megablock cores are no-build strips for the surrounding lots (few, so global)
-  const noBuild = [...noBuildIn, ...(landmarks?.megablocks.map((m) => m.core) ?? [])]
+  const noBuild = noBuildIn
   const megaRng = mulberry32(hashSeed(params.seed, 'megablocks'))
   const noBuildPolys = noBuild.map((nb) => [toRing(nb)])
   const noBuildBoxes = noBuild.map(boxOf)
@@ -418,6 +425,7 @@ export function fillLots(
   const nearTie = makeNearTieCheck(noBuild.flat().map((p) => [p.x, p.y] as const))
   const buildings: Building[] = []
   const outBlocks: Block[] = []
+  const megablockFootprints = new Map<string, Pt[]>()
   let n = 0
 
   for (const block of blocks) {
@@ -427,19 +435,15 @@ export function fillLots(
     const arc = landmarks?.arcologies.find((a) => pointInRings(cc, [a.plaza]))
     if (arc) { outBlocks.push({ ...block, style: 'plaza', alleys: [], flags: { ...block.flags, arcology: arc.id } }); continue }
     const mega = landmarks?.megablocks.find((m) => pointInRings(m.center, [block.footprint]))
-    let coreAlleys: Array<[Pt, Pt]> = []
     if (mega) {
-      const core = megablockCore(mega.core, (ring) => {
-        let cur = polygonClipping.intersection([ring], [toRing(block.footprint)])
-        // only the real road strips (the first noBuildIn.length), never the cores themselves
-        for (const k of near(boxOf(mega.core))) if (k < noBuildIn.length && cur.length) cur = polygonClipping.difference(cur, noBuildPolys[k])
-        return cur
-      }, megaRng)
-      coreAlleys = core.alleys
-      if (core.footprint) {
+      const hive = megablockHive(block.footprint, megaRng, (clipped) => (noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, near, convexNb, nearTie) : clipped))
+      for (const footprint of hive.cells) {
         n += 1
-        buildings.push({ id: `BLD${String(n).padStart(4, '0')}`, blockId: block.id, districtId: district.id, footprint: core.footprint })
+        buildings.push({ id: `BLD${String(n).padStart(4, '0')}`, blockId: block.id, districtId: district.id, footprint })
       }
+      if (hive.footprint) megablockFootprints.set(mega.id, hive.footprint)
+      outBlocks.push({ ...block, style: 'megablock', alleys: hive.alleys, flags: { ...block.flags, megablock: mega.id } })
+      continue
     }
     const chosen = forceStyle ?? chooseStyle(district.zone, params.density, neighbourhood(cc.x / 500, cc.y / 500))
     let blockStyle: BlockStyle = 'rows'
@@ -564,10 +568,8 @@ export function fillLots(
         })
     }
     }
-    outBlocks.push(mega
-      ? { ...block, style: 'megablock', alleys: [...alleys, ...coreAlleys], flags: { ...block.flags, megablock: mega.id } }
-      : { ...block, style: blockStyle, alleys })
+    outBlocks.push({ ...block, style: blockStyle, alleys })
   }
 
-  return { buildings, blocks: outBlocks }
+  return { buildings, blocks: outBlocks, megablockFootprints }
 }

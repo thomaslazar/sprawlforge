@@ -120,6 +120,7 @@ export function placeLandmarks(
     return {
       id: `MEG${i + 1}`, name: '', center,
       core: octagon(center, megaRadii[i], Math.atan2(m.y, m.x), (v) => jitters[i][v]),
+      footprint: [],
     }
   })
   return { arcologies, megablocks }

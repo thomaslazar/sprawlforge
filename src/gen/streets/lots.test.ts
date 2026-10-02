@@ -1,9 +1,9 @@
 import polygonClipping from 'polygon-clipping'
 import { describe, expect, it, vi } from 'vitest'
-import { pointInRings, ringArea, type Pt } from '../geometry'
+import { pointInRings, ringArea, ringCentroid, type Pt } from '../geometry'
 import type { Block, District, SectorParams, Terrain } from '../types'
 import { generateSector } from '../sector/generate'
-import { corridorRects, fillLots as fillLotsFull, insetByClipping, insetRing } from './lots'
+import { SIDEWALK, corridorRects, fillLots as fillLotsFull, insetByClipping, insetRing } from './lots'
 
 // pre-style tests assumed BSP rows everywhere, so the shared helper forces 'rows'
 const fillLots = (...a: Parameters<typeof fillLotsFull>) => fillLotsFull(a[0], a[1], a[2], a[3], a[4], 'rows').buildings
@@ -300,23 +300,27 @@ describe('landmark blocks', () => {
       expect(arc.buildings.filter((x) => x.blockId === b.id)).toEqual([])
     }
   })
-  it('a megablock core is exactly one building with alleys', () => {
+  it('a megablock block is one hive of packed cells', () => {
     expect(mega.megablocks.length).toBeGreaterThan(0)
     for (const m of mega.megablocks) {
       const block = mega.blocks.find((b) => b.flags.megablock === m.id)!
       expect(block.style).toBe('megablock')
+      expect(m.footprint.length).toBeGreaterThanOrEqual(3)
       expect(block.alleys.length).toBeGreaterThanOrEqual(1)
-      const inCore = mega.buildings.filter((x) => x.blockId === block.id && x.footprint.every((p) => pointInRings(p, [m.core])))
-      expect(inCore).toHaveLength(1)
-      for (const p of [...inCore[0].footprint, ...block.alleys.flat()]) expect(insideOrOnEdge(p, block.footprint)).toBe(true)
+      const hive = mega.buildings.filter((x) => x.blockId === block.id)
+      expect(hive.length).toBeGreaterThanOrEqual(6)
+      for (const b of hive) {
+        expect(pointInRings(ringCentroid(b.footprint), [m.footprint])).toBe(true)
+        const a = Math.abs(ringArea(b.footprint))
+        expect(a).toBeGreaterThanOrEqual(40)
+        expect(a).toBeLessThanOrEqual(4000) // BSP bound (2 * minCell + gap)^2 = 3844
+      }
     }
   })
-  it('lots around a megablock never overlap the core', () => {
+  it('megablock footprint hugs its streets', () => {
     for (const m of mega.megablocks) {
       const block = mega.blocks.find((b) => b.flags.megablock === m.id)!
-      const others = mega.buildings.filter((x) => x.blockId === block.id).filter((x) => !x.footprint.every((p) => pointInRings(p, [m.core])))
-      expect(others.length).toBeGreaterThan(0)
-      for (const b of others) expect(b.footprint.some((p) => strictlyInside(p, m.core))).toBe(false)
+      for (const p of m.footprint) expect(insideOrOnEdge(p, block.footprint, SIDEWALK + 2)).toBe(true)
     }
   })
 })

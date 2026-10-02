@@ -101,7 +101,7 @@ export interface Arcology {
   id: string; name: string; center: Pt; radius: number
   footprint: Pt[]; plaza: Pt[]; ringRoadId: string
 }
-export interface Megablock { id: string; name: string; center: Pt; core: Pt[] }
+export interface Megablock { id: string; name: string; center: Pt; core: Pt[]; footprint: Pt[] }
 export type LandmarkFlags = Partial<{ arcology: string; megablock: string }>
 
 export interface District {

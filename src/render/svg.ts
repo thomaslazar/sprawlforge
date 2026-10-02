@@ -1,7 +1,7 @@
 import type { SectorModel } from '../gen/types'
 import type { Theme } from './theme'
 import { renderHighway, renderJunctionMarkers } from './highway'
-import { megablockCores, renderLandmarks } from './landmarks'
+import { hiveBuildingIds, renderLandmarks } from './landmarks'
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -177,10 +177,11 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   }
   out.push('</g>')
 
-  const cores = megablockCores(model)
+  const hive = hiveBuildingIds(model)
+  const generic = hive.size ? model.buildings.filter((b) => !hive.has(b.id)) : model.buildings
   if (interactive) {
     const byDistrict = new Map<string, string[]>()
-    for (const b of model.buildings) {
+    for (const b of generic) {
       const ring = `M${b.footprint.map((p) => `${n(p.x)},${n(p.y)}`).join('L')}Z`
       const l = byDistrict.get(b.districtId)
       if (l) l.push(ring)
@@ -191,7 +192,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
         `<path data-buildings data-count="${rings.length}" d="${rings.join(' ')}" fill="${theme.building.fill}" stroke="${theme.building.stroke}" stroke-width="1"/>`,
       )
   } else {
-    for (const b of model.buildings) {
+    for (const b of generic) {
       const pts = b.footprint.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
       out.push(
         `<polygon data-id="${b.id}" points="${pts}" fill="${theme.building.fill}" stroke="${theme.building.stroke}" stroke-width="1"/>`,
@@ -199,7 +200,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     }
   }
 
-  renderLandmarks(model, theme, out, cores)
+  renderLandmarks(model, theme, out, interactive)
 
   // alleys: thin translucent strokes between buildings, under the streets
   const alleyPath = (blocks: typeof model.blocks) => {

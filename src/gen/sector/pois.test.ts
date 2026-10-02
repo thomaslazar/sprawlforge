@@ -87,7 +87,7 @@ describe('placePois', () => {
     const sq = (x: number, y: number, r: number): Pt[] => rectPoly({ x: x - r, y: y - r, w: 2 * r, h: 2 * r })
     const landmarks = {
       arcologies: [{ id: 'A01', name: 'Aegis Spire', center: { x: 100, y: 300 }, radius: 80, footprint: sq(100, 300, 60), plaza: sq(100, 300, 80), ringRoadId: 'R1' }],
-      megablocks: [{ id: 'M01', name: 'Hive Nine', center: { x: 400, y: 300 }, core: sq(400, 300, 40) }],
+      megablocks: [{ id: 'M01', name: 'Hive Nine', center: { x: 400, y: 300 }, core: sq(400, 300, 40), footprint: [] }],
     }
     it('one POI per landmark with its name', () => {
       const pois = placePois(districts, buildings, pack, base, landmarks)

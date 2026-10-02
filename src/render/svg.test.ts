@@ -290,7 +290,7 @@ describe('renderSector', () => {
     expect(ia).not.toContain('<filter id="glow"')
     expect(ia).not.toContain('<polygon data-id="BLD')
     const sum = (re: RegExp) => [...ia.matchAll(re)].reduce((a, x) => a + Number(x[1]), 0)
-    expect(sum(/<path data-buildings data-count="(\d+)"/g)).toBe(m.buildings.length)
+    expect(sum(/<path data-buildings data-count="(\d+)"/g) + (ia.match(/<polygon points=[^>]*stroke-width="0.5"/g) ?? []).length).toBe(m.buildings.length)
     expect(cnt(ia, 'data-streets')).toBe(m.roads.filter((r) => r.class === 'street' && !r.bridge).length)
     expect(cnt(ia, 'data-ramps')).toBe(m.roads.filter((r) => r.class === 'ramp' && !r.bridge).length)
     expect(cnt(ia, 'data-junctions')).toBe(junctions)
@@ -345,6 +345,16 @@ describe('landmarks', () => {
       const m = renderSector(fringe, getTheme('neon'), { interactive })
       for (const k of fringe.megablocks) expect(m).toContain(`data-megablock="${k.id}"`)
       expect(m).toMatch(/<polygon data-megablock="MEG\d+"[^>]*stroke-width="2"/)
+      // hive cells are drawn by the landmark pass, not the generic building draw
+      const hiveIds = new Set(fringe.blocks.filter((b) => b.flags.megablock).map((b) => b.id))
+      const hive = fringe.buildings.filter((b) => hiveIds.has(b.blockId))
+      expect(hive.length).toBeGreaterThan(0)
+      if (!interactive) expect(m.match(/<polygon data-id="BLD/g)!.length).toBe(fringe.buildings.length) // each once: hive cells only in the landmark draw
+      else {
+        const generic = m.match(/<path data-buildings[^>]*>/g)!.join('')
+        expect(generic.split('M').length - 1).toBe(fringe.buildings.length - hive.length)
+        expect(m).not.toContain('<polygon data-id="BLD')
+      }
       const alleyPaths = m.match(/<path data-alleys[^>]*>/g) ?? []
       expect(alleyPaths.length).toBeGreaterThan(0)
       const generic = alleyPaths.join('')
