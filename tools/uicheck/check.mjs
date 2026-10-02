@@ -300,7 +300,8 @@ const TERRAIN_SWEEP = [
   { tags: 'coastal', shot: 'coastal', wet: true, bridge: false },
   { tags: 'bay', shot: 'bay', wet: true, bridge: false },
   { tags: 'coastal,islands', shot: 'coastal-islands', wet: true, bridge: false },
-  { tags: 'coastal,river', shot: 'coastal-river', wet: true, bridge: true },
+  // seed 42 coastal only ever had artefact street decks (no arterials, so no real bridge); seed 20 has a real arterial span
+  { tags: 'coastal,river', shot: 'coastal-river', wet: true, bridge: true, seed: 20 },
   { tags: 'inland,lakes', shot: 'inland-lakes', wet: true, bridge: false },
   // honest bridge geometry (no sideways "pull onto network" hack — see
   // bridges.ts) means not every river/coast crossing is bridgeable; seed 42
