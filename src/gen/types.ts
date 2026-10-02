@@ -1,6 +1,6 @@
 import type { Pt, Rect } from './geometry'
 
-export const GENERATOR_VERSION = 5
+export const GENERATOR_VERSION = 6
 
 export const ZONE_TYPES = [
   'corp', 'residential', 'slum', 'industrial', 'entertainment', 'docks',
@@ -97,6 +97,13 @@ export interface Road {
   crossings?: HighwayCrossing[]
 }
 
+export interface Arcology {
+  id: string; name: string; center: Pt; radius: number
+  footprint: Pt[]; plaza: Pt[]; ringRoadId: string
+}
+export interface Megablock { id: string; name: string; center: Pt; core: Pt[] }
+export type LandmarkFlags = Partial<{ arcology: string; megablock: string }>
+
 export interface District {
   id: string
   zone: ZoneType
@@ -110,10 +117,10 @@ export interface District {
   /** area-weighted centroid of the district's surviving blocks — where the
    * label anchors; unlike bounds' center, never falls in open water. */
   labelAt: Pt
-  flags: Record<string, never>
+  flags: LandmarkFlags
 }
 
-export type BlockStyle = 'rows' | 'courtyard' | 'plaza' | 'sheds'
+export type BlockStyle = 'rows' | 'courtyard' | 'plaza' | 'sheds' | 'megablock'
 
 export interface Block {
   id: string
@@ -126,7 +133,7 @@ export interface Block {
   style: BlockStyle
   /** alley centrelines through a `rows` block, meters */
   alleys: Array<[Pt, Pt]>
-  flags: Record<string, never>
+  flags: LandmarkFlags
 }
 
 export interface Building {
@@ -171,4 +178,6 @@ export interface SectorModel {
   buildings: Building[]
   pois: Poi[]
   piers: Pier[]
+  arcologies: Arcology[]
+  megablocks: Megablock[]
 }

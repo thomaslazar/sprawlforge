@@ -74,6 +74,7 @@ describe('renderSector', () => {
     buildings: [],
     pois,
     piers: [],
+    arcologies: [], megablocks: [],
   })
   const poi = (id: string, name: string, x: number, y: number, type = 'x') => ({
     id, buildingId: `BLD${id}`, districtId: 'D01', type, name, at: { x, y },
@@ -112,6 +113,7 @@ describe('renderSector', () => {
     buildings: [],
     pois: [],
     piers: [{ id: 'PR01', points: [{ x: 700, y: 500 }, { x: 760, y: 500 }], width: 6 }],
+    arcologies: [], megablocks: [],
   }
 
   it('scopes the glow filter to highway/arterial road strokes only, never labels or poi markers', () => {
@@ -132,6 +134,7 @@ describe('renderSector', () => {
       buildings: [],
       pois: [poi('P01', 'Alpha Tower', 500, 600)],
       piers: [],
+      arcologies: [], megablocks: [],
     }
     const svg = renderSector(glowModel, theme)
     // highway and arterial polylines carry the glow filter

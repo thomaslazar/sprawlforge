@@ -18,7 +18,7 @@ const road = (id: string, cls: Road['class'], pts: Array<[number, number]>, extr
 const model = (roads: Road[]): SectorModel => ({
   meta: { seed: 1, generatorVersion: GENERATOR_VERSION, params: {} as never, sizeM: 4000, metroSeed: 1 },
   terrain: { landform: 'inland', river: false, lakes: false, islands: false, metroSeed: 1, water: [], land: [], riverSlice: null },
-  roads, districts: [], blocks: [], buildings: [], pois: [], piers: [],
+  roads, districts: [], blocks: [], buildings: [], pois: [], piers: [], arcologies: [], megablocks: [],
 })
 const hw = [
   road('H1-1', 'highway', [[2000, 0], [2000, 1500]], { width: 32, segments, crossings }),

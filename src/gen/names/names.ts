@@ -14,6 +14,8 @@ export interface FlavorPack {
   tables: Record<string, string[]>
   districtPatterns: string[]
   streetPatterns: string[]
+  arcologyPatterns: string[]
+  megablockPatterns: string[]
   poiTypes: PoiTypeDef[]
 }
 

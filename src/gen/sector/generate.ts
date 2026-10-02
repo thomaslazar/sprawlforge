@@ -315,5 +315,7 @@ export function generateSector(params: SectorParams): SectorModel {
     buildings,
     pois,
     piers,
+    arcologies: [],
+    megablocks: [],
   }
 }
