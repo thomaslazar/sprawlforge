@@ -2,7 +2,7 @@ import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
 import { BOX_MARGIN, boxOf, bboxOf, bspSplit, makeNearTieCheck, pointInRings, segTouchesBox, simplifyPolyline, type Box, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import { fractalNoise2D } from '../terrain/noise'
-import { inWater } from '../sector/bridges'
+import { dryRuns, inWater } from '../sector/bridges'
 import type { Block, BlockStyle, Building, District, SectorParams, Terrain, ZoneType } from '../types'
 import type { Landmarks } from '../landmarks/place'
 
@@ -497,7 +497,7 @@ export function fillLots(
           ? [{ x: strip.x + strip.w / 2, y: strip.y }, { x: strip.x + strip.w / 2, y: strip.y + strip.h }]
           : [{ x: strip.x, y: strip.y + strip.h / 2 }, { x: strip.x + strip.w, y: strip.y + strip.h / 2 }]
         const [wa, wb] = [rotatePt(a, theta, c), rotatePt(b, theta, c)]
-        for (const piece of clipSegmentToRing(wa, wb, inset)) alleys.push(piece)
+        for (const piece of clipSegmentToRing(wa, wb, inset)) alleys.push(...dryRuns(terrain, piece[0], piece[1]))
       }
     // BSP leftovers too thin to be a building
     let cells = bsp.cells.filter((r) => r.w >= 0.5 * st.cell && r.h >= 0.5 * st.cell)

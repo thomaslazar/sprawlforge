@@ -23,6 +23,23 @@ export const inWater = (terrain: Terrain, p: Pt): boolean => {
 }
 
 /**
+ * The dry runs of segment p-q, sampled every 10 m: a run ends at its last dry sample, so a cut stops up to
+ * 10 m short of the shore. ponytail: 10 m sampling, a pond narrower than that is missed.
+ */
+export function dryRuns(terrain: Terrain, p: Pt, q: Pt): Array<[Pt, Pt]> {
+  const n = Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) / 10))
+  const at = (i: number) => ({ x: p.x + ((q.x - p.x) * i) / n, y: p.y + ((q.y - p.y) * i) / n })
+  const out: Array<[Pt, Pt]> = []
+  let start = -1
+  for (let i = 0; i <= n + 1; i++) {
+    const dry = i <= n && !inWater(terrain, at(i))
+    if (dry && start < 0) start = i
+    if (!dry && start >= 0) { if (i - 1 > start) out.push([at(start), at(i - 1)]); start = -1 }
+  }
+  return out
+}
+
+/**
  * Walk a polyline (arc-length parameterized), returning [t0,t1] water
  * intervals (0..1). Interval bounds always land on a *dry* sample (the last
  * dry step before wet, and the first dry step after) so land pieces built

@@ -723,3 +723,31 @@ describe('no hairpin spokes', () => {
     })
   }
 })
+
+describe('lakes bound blocks', () => {
+  const models: [string, SectorParams][] = [
+    ['seed 782008753 inland 6 km', { ...base, seed: 782008753, size: 6, landform: 'inland', density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, river: true, lakes: true, islands: true, piers: true, pack: 'generic', theme: 'print' }],
+    ['seed 42 inland corp 0.85', { ...base, corpDominance: 0.85 }],
+    ['seed 7 bay corp 0.15', { ...base, seed: 7, landform: 'bay', corpDominance: 0.15 }],
+  ]
+  for (const [label, params] of models) {
+    const m = generateSector(params)
+    it(`no alley point lies in water (${label})`, () => {
+      const bad = m.blocks.filter((b) => b.alleys.some(([p, q]) => [p, q, { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }].some((s) => inWater(m.terrain, s)))).map((b) => b.id)
+      expect(bad).toEqual([])
+    })
+    it(`no big block has its centroid in a lake (${label})`, () => {
+      const bad = m.blocks.filter((b) => {
+        if (!inWater(m.terrain, ringCentroid(b.footprint))) return false
+        const xs = b.footprint.map((p) => p.x), ys = b.footprint.map((p) => p.y)
+        let land = 0
+        for (let x = Math.min(...xs); x < Math.max(...xs); x += 20) for (let y = Math.min(...ys); y < Math.max(...ys); y += 20) {
+          const s = { x: x + 10, y: y + 10 }
+          if (pointInRings(s, [b.footprint]) && !inWater(m.terrain, s)) land += 400
+        }
+        return land > 60000
+      }).map((b) => b.id)
+      expect(bad).toEqual([])
+    })
+  }
+})
