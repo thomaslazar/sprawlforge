@@ -226,6 +226,8 @@ function traceHalf(
   let bridges = 0
   // parent exclusion (rules 3 and 4): only while the trace is
   // still within 0.35 × sep of the seed; beyond that the parent is ordinary
+  // an arcology ring (id K<n>) is a closed circle: a spoke leaving it is never a twin of the far side
+  const isRing = (id: string) => id.startsWith('K')
   const isSourceAt = (id: string, at: Pt) =>
     id === sourceId && Math.hypot(at.x - seedAt.x, at.y - seedAt.y) < 0.35 * opts.separation
   for (let i = 0; i < opts.maxSteps; i++) {
@@ -290,7 +292,7 @@ function traceHalf(
       next, 25, (hit) => hit.id === sourceId && angleGapLines(Math.atan2(newDir.y, newDir.x), hit.segAngle) < PARALLEL_ANGLE,
     )) return []
     const hitPar = index.nearestMatching(
-      next, 0.7 * sep, (hit) => !isSourceAt(hit.id, next) && angleGapLines(dirAngle, hit.segAngle) < PARALLEL_ANGLE,
+      next, 0.7 * sep, (hit) => !isSourceAt(hit.id, next) && !isRing(hit.id) && angleGapLines(dirAngle, hit.segAngle) < PARALLEL_ANGLE,
     )
     if (hitPar) {
       // a street stopped by a near-parallel road would end free and the prune would drop it (and the
@@ -555,6 +557,8 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
     let changed = false
     const next: Road[] = []
     for (const r of cur) {
+      // a closed ring has no ends to prune
+      if (Math.hypot(r.points[0].x - r.points.at(-1)!.x, r.points[0].y - r.points.at(-1)!.y) < 1) { next.push(r); continue }
       const near = (p: Pt) => index.nearestMatching(p, weld, (h) => h.id !== r.id && opts.accept(h.cls) && (!opts.interiorOnly || h.edge >= weld))
       let pts = r.points
       let dead = false

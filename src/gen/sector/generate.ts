@@ -95,13 +95,15 @@ const INFILL_PASSES = 3
  * A cut ending on the highway is dropped (a street never ends there). Only the split face is re-faced (its own ring is the boundary), and a piece still too big goes
  * round again, so the cost stays local instead of re-running the whole planar graph.
  */
-function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road | undefined, terrain: Terrain, sizeM: number): { faces: Face[]; infill: Road[]; dropped: Set<string> } {
+function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road | undefined, terrain: Terrain, sizeM: number, centres: Pt[], cores: Pt[][]): { faces: Face[]; infill: Road[]; dropped: Set<string> } {
   const dropped = new Set<string>()
   let next = Math.max(0, ...roads.map((r) => Number(/^S(\d+)/.exec(r.id)?.[1] ?? 0)))
   const rng = mulberry32(hashSeed(terrain.metroSeed, 'infill'))
   const infill: Road[] = []
   const tooBig = (f: Face) => {
     if (Math.abs(ringArea(f.footprint)) <= MAX_BLOCK_M2) return false
+    // a face holding an arcology centre, or touched by a megablock core, is the landmark's ground: nothing is split there
+    if (centres.some((c) => pointInRings(c, [f.footprint])) || cores.some((core) => core.some((p) => pointInRings(p, [f.footprint])))) return false
     const c = ringCentroid(f.footprint)
     return !(Math.min(c.x, c.y, sizeM - c.x, sizeM - c.y) < INFILL_NEAR_M
       || inWater(terrain, c)
@@ -256,7 +258,7 @@ export function generateSector(params: SectorParams): SectorModel {
   const pack = getPack(params.pack)
 
   const terrain = sampleTerrain(params, sizeM)
-  const { highway, arterials, streets } = traceRoads(params, terrain, sizeM)
+  const { highway, arterials, streets, arcologies, megablocks } = traceRoads(params, terrain, sizeM)
   const boundaries = [windowRing(sizeM), ...terrain.land.map((poly) => poly[0].map(([x, y]) => ({ x, y })))]
 
   const districtFaces = facesFor([...(highway ? [highway] : []), ...arterials], boundaries, terrain)
@@ -272,7 +274,7 @@ export function generateSector(params: SectorParams): SectorModel {
     : { crossings, ramps: [] as Road[] }
   const hw = highway ? [{ ...highway, segments, crossings: finalCrossings }] : []
 
-  const { faces, infill, dropped } = infillFaces(facesFor([...hw, ...arterials, ...minorAll], boundaries, terrain), minorAll, arterials, highway, terrain, sizeM)
+  const { faces, infill, dropped } = infillFaces(facesFor([...hw, ...arterials, ...minorAll], boundaries, terrain), minorAll, arterials, highway, terrain, sizeM, [...arcologies, ...megablocks].map((l) => l.center), megablocks.map((k) => k.core))
   const minor = minorAll.filter((r) => !dropped.has(r.id))
   const rawBlocks = toBlocks(faces, districts)
 
@@ -315,7 +317,7 @@ export function generateSector(params: SectorParams): SectorModel {
     buildings,
     pois,
     piers,
-    arcologies: [],
-    megablocks: [],
+    arcologies,
+    megablocks,
   }
 }

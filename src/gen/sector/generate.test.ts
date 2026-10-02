@@ -583,3 +583,39 @@ describe('streets at the highway', () => {
     })
   }
 })
+
+describe('landmarks in road tracing', () => {
+  const seeds: [string, SectorParams][] = [
+    ['seed 42 inland corp 0.85', { ...base, corpDominance: 0.85 }],
+    ['seed 7 bay corp 0.15', { ...base, seed: 7, landform: 'bay', corpDominance: 0.15 }],
+  ]
+  for (const [label, params] of seeds) {
+    describe(label, () => {
+      const m = generateSector(params)
+      const plazas = m.arcologies.map((a) => a.plaza)
+      const cores = m.megablocks.map((k) => k.core)
+      const inside = (r: { points: Pt[] }, rings: Pt[][]) => r.points.some((p) => rings.some((ring) => pointInRings(p, [ring])))
+      it('places landmarks', () => {
+        expect(m.arcologies.length + m.megablocks.length).toBeGreaterThan(0)
+      })
+      // m.roads includes infill, so these two also prove landmark faces are not infilled
+      it('no road enters an arcology plaza', () => {
+        expect(m.roads.filter((r) => inside(r, plazas)).map((r) => r.id)).toEqual([])
+      })
+      it('no street enters a megablock core', () => {
+        expect(m.roads.filter((r) => r.class === 'street' && inside(r, cores)).map((r) => r.id)).toEqual([])
+      })
+      it('ring roads are closed and spoked', () => {
+        for (const a of m.arcologies) {
+          const ring = m.roads.filter((r) => r.id === a.ringRoadId || r.id.startsWith(`${a.ringRoadId}-`))
+          expect(ring.length).toBeGreaterThan(0)
+          const pts = ring.flatMap((r) => r.points)
+          const closed = [...pts, pts[0]]
+          const spokes = m.roads.filter((r) => r.class === 'arterial' && !ring.includes(r)).flatMap((r) => [r.points[0], r.points[r.points.length - 1]])
+            .filter((e) => distToPolyline(e, closed) <= 6)
+          expect(spokes.length).toBeGreaterThanOrEqual(4)
+        }
+      })
+    })
+  }
+})

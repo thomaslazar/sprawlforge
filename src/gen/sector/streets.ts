@@ -1,11 +1,13 @@
 import { simplifyPolyline, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
-import { buildRoadField, type RoadField } from '../streets/field'
+import { pointInRings } from '../geometry'
+import { placeLandmarks, ringRoad } from '../landmarks/place'
+import { buildRoadField, radialBasis, type RoadField } from '../streets/field'
 import { traceHighway } from '../streets/highway'
 import {
   MAJOR, MINOR, RoadIndex, endKey, poissonSeeds, pruneDangling, riverCrossingSeeds, seedsAlong, traceLayer, trimStubs, type Seed,
 } from '../streets/trace'
-import type { Road, SectorParams, Terrain } from '../types'
+import type { Arcology, Megablock, Road, SectorParams, Terrain } from '../types'
 import { inWater, truncateUnlandableRoads } from './bridges'
 import { effectiveIrregularity } from './zoning'
 
@@ -13,6 +15,10 @@ export interface TracedRoads {
   /** undefined when every window edge is sea */
   highway: Road | undefined
   arterials: Road[]
+  /** closed arcology rings; also present in `arterials` */
+  ringRoads: Road[]
+  arcologies: Arcology[]
+  megablocks: Megablock[]
   /** one queue-grown street set (S prefix), all class 'street' */
   streets: Road[]
 }
@@ -22,6 +28,8 @@ const simplify = (r: Road): Road => ({ ...r, points: simplifyPolyline(r.points, 
 // streets are skipped by truncateUnlandableRoads' own contract; only arterials can be cut
 const finalize = (roads: Road[], terrain: Terrain, index: RoadIndex, maxStub = 40) =>
   truncateUnlandableRoads(trimStubs(roads, index, maxStub).map(simplify), terrain)
+/** a ~1 km ring gets only 2 seeds at the 400 m arterial spacing, and some die on neighbours: 200 m keeps >= 4 spokes */
+const RING_SEED_M = 200
 const ARTERIAL_STUB_M = 0.3 * MAJOR.separation
 
 /** field → highway → arterials → queue-grown streets, in spec §4 order; every polyline simplified */
@@ -35,33 +43,45 @@ function crossingAxis(field: RoadField, s: Seed): 'major' | 'minor' {
 const crossing = (field: RoadField, seeds: Seed[]): Seed[] => seeds.map((x) => ({ ...x, axis: crossingAxis(field, x) }))
 
 export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number): TracedRoads {
-  const field = buildRoadField(params, terrain, sizeM)
+  const baseField = buildRoadField(params, terrain, sizeM)
   const irregularityAt = effectiveIrregularity(params)
   const traced = traceHighway(params, terrain, sizeM).road
   const highway = traced.points.length > 0 ? traced : undefined
 
+  const { arcologies, megablocks } = placeLandmarks(params, terrain, sizeM, traced.points.length > 0 ? traced : undefined, baseField)
+  // arterials and streets bend toward each arcology, outside its ring road
+  const field = arcologies.length
+    ? buildRoadField(params, terrain, sizeM, arcologies.map((a) => radialBasis(a.center, a.radius + 60, 800)))
+    : baseField
+  const ringRoads = arcologies.map(ringRoad)
+  const plazas = arcologies.map((a) => a.plaza)
+  const cores = megablocks.map((k) => k.core)
+
   let index = new RoadIndex(200)
   if (highway) index.add(highway.id, highway.points, 'highway')
+  ringRoads.forEach((r) => index.add(r.id, r.points, r.class))
 
   const arterialRng = mulberry32(hashSeed(params.seed, 'arterials'))
+  const MAJOR_OPTS = { ...MAJOR, obstacles: plazas }
   const arterialsRaw = traceLayer(
     field, 'major',
     [
       ...(highway ? crossing(field, seedsAlong(highway.points, 400, false)) : []),
+      ...ringRoads.flatMap((r) => crossing(field, seedsAlong(r.points, RING_SEED_M, false))),
       ...riverCrossingSeeds(terrain, arterialRng),
-      ...poissonSeeds(sizeM, 400, arterialRng, (p: Pt) => !inWater(terrain, p)),
+      ...poissonSeeds(sizeM, 400, arterialRng, (p: Pt) => !inWater(terrain, p) && !pointInRings(p, plazas)),
     ],
-    terrain, sizeM, index, MAJOR, arterialRng, irregularityAt, 'A', 'arterial',
+    terrain, sizeM, index, MAJOR_OPTS, arterialRng, irregularityAt, 'A', 'arterial',
   )
   // cross arterials on the minor axis, seeded from the major-axis ones — without
   // this pass a flat inland grid gets only parallel arterials that never meet
   // (they stop on rule 4 instead of snapping onto a crossing road)
   const crossRaw = traceLayer(
     field, 'minor', finalize(arterialsRaw, terrain, index, ARTERIAL_STUB_M).flatMap((a) => crossing(field, seedsAlong(a.points, 400, true))),
-    terrain, sizeM, index, MAJOR, mulberry32(hashSeed(params.seed, 'arterials-2')), irregularityAt, 'B', 'arterial',
+    terrain, sizeM, index, MAJOR_OPTS, mulberry32(hashSeed(params.seed, 'arterials-2')), irregularityAt, 'B', 'arterial',
   )
   // truncate before seeding so S/L seeds come from the final arterials
-  let arterials = finalize([...arterialsRaw, ...crossRaw], terrain, index, ARTERIAL_STUB_M)
+  let arterials = [...ringRoads, ...finalize([...arterialsRaw, ...crossRaw], terrain, index, ARTERIAL_STUB_M)]
   const indexOf = (rs: Road[]) => {
     const idx = new RoadIndex(200)
     if (highway) idx.add(highway.id, highway.points, 'highway')
@@ -78,7 +98,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   // children (crossing it), so the fabric grows outward until nothing is left
   const queue = arterials.flatMap((a) => crossing(field, seedsAlong(a.points, 100, true)))
   const raw = traceLayer(
-    field, 'minor', queue, terrain, sizeM, index, MINOR, mulberry32(hashSeed(params.seed, 'streets')), irregularityAt, 'S', 'street', decayEnds,
+    field, 'minor', queue, terrain, sizeM, index, { ...MINOR, obstacles: [...plazas, ...cores] }, mulberry32(hashSeed(params.seed, 'streets')), irregularityAt, 'S', 'street', decayEnds,
     (r) => crossing(field, seedsAlong(r.points, 100, true)),
   )
   const streets = finalize(raw, terrain, index)
@@ -88,6 +108,9 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   return {
     highway: highway && simplify(highway),
     arterials,
+    ringRoads,
+    arcologies,
+    megablocks,
     streets: pruned,
   }
 }
