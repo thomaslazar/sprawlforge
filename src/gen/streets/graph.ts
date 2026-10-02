@@ -208,7 +208,9 @@ export function buildPlanarGraph(roads: Road[], boundaries: Pt[][], snapTol = 5)
     }
     if (bestId < 0 || !bestPt) continue
     const e = removeEdge(bestId)!
-    if (free) {
+    // a free end lying exactly on the edge (a spoke starting on a ring road laid down after it) splits the edge
+    // at itself: linking it to a coincident new vertex made a zero-length edge, which has no angle for the face walk
+    if (free && bestD >= 1e-3) {
       const end = [e.a, e.b].find((i) => Math.hypot(vertices[i].x - bestPt!.x, vertices[i].y - bestPt!.y) < 1)
       const w = end ?? vAdd(bestPt)
       addEdge(e.a, w, e.roadId)

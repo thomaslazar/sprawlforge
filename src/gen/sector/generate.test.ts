@@ -470,10 +470,10 @@ describe('coast-aligned streets', () => {
 
   it('no road runs through a block', () => {
     // slivers are dropped, not merged. Residual (2 on seed 3017268931, 10 on seed 42) (B1412:S024 B1412:L008 B1109:L006) = faces with a
-    // hole / pruned dead ends; buildings still never sit on them (second assertion). Ratchet down, never up (3017268931: 2 -> 3 authorised; seed 42: 10 -> 19 after landmarks moved the map, 2 of them (B0428:K1, B0428:A003) are ours: arcology ring within 400 m, reported).
+    // hole / pruned dead ends; buildings still never sit on them (second assertion). Ratchet down, never up (3017268931: 2 -> 3 authorised; seed 42: 10 -> 15 after landmarks moved the map; the ring-in-block offenders were fixed in graph.ts).
     const cases: Array<[SectorParams, number]> = [
       [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'print' }, 3],
-      [{ ...base, seed: 42, landform: 'coastal', river: true }, 19],
+      [{ ...base, seed: 42, landform: 'coastal', river: true }, 15],
     ]
     for (const [params, max] of cases) {
       const m = generateSector(params)
@@ -607,6 +607,21 @@ describe('landmarks in road tracing', () => {
       })
       it('no street enters a megablock core', () => {
         expect(m.roads.filter((r) => r.class === 'street' && inside(r, cores)).map((r) => r.id)).toEqual([])
+      })
+      it('ring roads are block boundaries', () => {
+        for (const a of m.arcologies) {
+          const ring = m.roads.filter((r) => r.id === a.ringRoadId || r.id.startsWith(`${a.ringRoadId}-`))
+          const closed = ring.flatMap((r) => r.points)
+          for (const b of m.blocks) {
+            const edge = [...b.footprint, b.footprint[0]]
+            const deep = closed.filter((p) => pointInRings(p, [b.footprint]) && distToPolyline(p, edge) > ring[0].width / 2 + 1)
+            expect(deep.length, `${b.id} holds ring ${a.ringRoadId}`).toBe(0)
+          }
+          const plaza = m.blocks.filter((b) => pointInRings(a.center, [b.footprint]))
+          expect(plaza.length).toBe(1)
+          for (const p of plaza[0].footprint) // 8 m, not 6: seed 42 keeps one 7.2 m spoke stub inside its ring
+          expect(distToPolyline(p, [...closed, closed[0]])).toBeLessThanOrEqual(8)
+        }
       })
       it('ring roads are closed and spoked', () => {
         for (const a of m.arcologies) {
