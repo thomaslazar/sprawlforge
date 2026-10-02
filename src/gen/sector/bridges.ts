@@ -1,9 +1,8 @@
-import { pointAtT, pointInRings, polylineLength, slicePolyline, type Pt } from '../geometry'
+import { pointAtT, polylineLength, ringsContainsFn, slicePolyline, type Pt } from '../geometry'
 import { distToPolyline } from '../terrain/rivers'
 import type { Road, Terrain } from '../types'
 
 const SAMPLE = 10
-const MAX_SPAN: Record<'highway' | 'arterial', number> = { highway: 900, arterial: 450 }
 const LANDING = 15
 const MIN_STREET_PIECE = 40
 // minimum angle (radians) between a sea bridge and the local shoreline
@@ -11,8 +10,17 @@ const MIN_STREET_PIECE = 40
 // rather than crossing it, so it gets truncated instead of bridged.
 const MIN_SHORE_ANGLE = Math.PI / 4 // 45°
 
-export const inWater = (terrain: Terrain, p: Pt): boolean =>
-  terrain.water.some((poly) => pointInRings(p, poly.map((ring) => ring.map(([x, y]) => ({ x, y })))))
+// terrain is immutable during a generation; index its water polygons once
+const waterIndexCache = new WeakMap<Terrain, Array<(p: Pt) => boolean>>()
+
+export const inWater = (terrain: Terrain, p: Pt): boolean => {
+  let fns = waterIndexCache.get(terrain)
+  if (!fns) {
+    fns = terrain.water.map((poly) => ringsContainsFn(poly))
+    waterIndexCache.set(terrain, fns)
+  }
+  return fns.some((f) => f(p))
+}
 
 /**
  * Walk a polyline (arc-length parameterized), returning [t0,t1] water
@@ -21,7 +29,7 @@ export const inWater = (terrain: Terrain, p: Pt): boolean =>
  * from these bounds never carry a wet endpoint — sampling resolution rounds
  * intervals slightly wide into the water, never short into it.
  */
-function waterIntervals(terrain: Terrain, pts: Pt[]): Array<[number, number]> {
+export function waterIntervals(terrain: Terrain, pts: Pt[]): Array<[number, number]> {
   const len = polylineLength(pts)
   const steps = Math.max(2, Math.ceil(len / SAMPLE))
   const spans: Array<[number, number]> = []
@@ -70,55 +78,6 @@ function splitRoad(
   return pieces
 }
 
-/** split every road matching `include` at every water interval it crosses */
-function splitAllWater(roads: Road[], terrain: Terrain, include: (r: Road) => boolean): Road[] {
-  if (terrain.water.length === 0) return roads
-  const out: Road[] = []
-  for (const road of roads) {
-    if (!include(road)) {
-      out.push(road)
-      continue
-    }
-    const pieces = splitRoad(road.points, terrain, () => true, MIN_STREET_PIECE)
-    if (!pieces) {
-      out.push(road)
-      continue
-    }
-    pieces.forEach((points, i) => out.push({ ...road, id: `${road.id}-${i + 1}`, points }))
-  }
-  return out
-}
-
-export function clipRoadsToLand(roads: Road[], terrain: Terrain): Road[] {
-  return splitAllWater(roads, terrain, (r) => r.class === 'street')
-}
-
-/**
- * Highways/arterials keep their line through water (a bridge floats over a
- * crossing within MAX_SPAN) — but a crossing *longer* than MAX_SPAN has no
- * bridge and must not render as a road over open water: truncate the host
- * at the water's edge, same mechanism as `clipRoadsToLand`, but only for the
- * over-span intervals (a shorter, bridgeable crossing on the same road is
- * left untouched).
- */
-export function truncateOverSpanRoads(roads: Road[], terrain: Terrain): Road[] {
-  if (terrain.water.length === 0) return roads
-  const out: Road[] = []
-  for (const road of roads) {
-    if (road.class === 'street' || road.bridge) {
-      out.push(road)
-      continue
-    }
-    const maxSpan = MAX_SPAN[road.class as 'highway' | 'arterial']
-    const pieces = splitRoad(road.points, terrain, (span) => span > maxSpan, MIN_STREET_PIECE)
-    if (!pieces) {
-      out.push(road)
-      continue
-    }
-    pieces.forEach((points, i) => out.push({ ...road, id: `${road.id}-${i + 1}`, points }))
-  }
-  return out
-}
 
 function nearestOnSegment(p: Pt, a: Pt, b: Pt): { pt: Pt; d: number } {
   const abx = b.x - a.x
@@ -239,10 +198,8 @@ function crossingBridgeable(pts: Pt[], t0: number, t1: number, len: number, terr
 /**
  * A crossing that can't be bridged (landing still in water, or — for a sea
  * crossing — running too near-parallel to the shoreline) truncates the host
- * at the waterline for that crossing instead. Same splitRoad mechanism
- * truncateOverSpanRoads uses for over-span crossings. Run this after
- * truncateOverSpanRoads and before planBridges so the crossings planBridges
- * sees are only ever the landable, properly-angled ones.
+ * at the waterline for that crossing instead. Meant for sea/lake-touching
+ * endpoints after snapping.
  */
 export function truncateUnlandableRoads(roads: Road[], terrain: Terrain): Road[] {
   if (terrain.water.length === 0) return roads
@@ -253,11 +210,8 @@ export function truncateUnlandableRoads(roads: Road[], terrain: Terrain): Road[]
       continue
     }
     const len = polylineLength(road.points)
-    const maxSpan = MAX_SPAN[road.class as 'highway' | 'arterial']
     const unbridgeable: Array<[number, number]> = []
     for (const [t0, t1] of waterIntervals(terrain, road.points)) {
-      const span = (t1 - t0) * len
-      if (span > maxSpan) continue // already excised by truncateOverSpanRoads
       if (!crossingBridgeable(road.points, t0, t1, len, terrain)) unbridgeable.push([t0, t1])
     }
     if (unbridgeable.length === 0) {
@@ -279,66 +233,47 @@ export function truncateUnlandableRoads(roads: Road[], terrain: Terrain): Road[]
 }
 
 /**
- * Split the host road at every crossing it still spans (after
- * truncateOverSpanRoads + truncateUnlandableRoads, everything remaining on a
- * highway/arterial is a crossing planBridges will bridge) so the road itself
- * stops at the banks — only the bridge deck spans the water. Cuts land
- * exactly on the bridge's own landing points (landingFor's p/q), not the
- * raw waterline: a river crossing's landing is perpendicular-shifted off the
- * road's straight line, so cutting at the raw waterline would leave a gap
- * between the host stub and the bridge deck instead of a clean join.
+ * Mark wet spans of traced roads as bridges. A road with no wet interval is
+ * returned as-is. Otherwise it is split into dry pieces (ids `<id>-<n>`,
+ * dropped if shorter than MIN_STREET_PIECE) and wet pieces (`<id>-b<n>`,
+ * bridge: true, widened by LANDING metres of dry road each side, clamped to
+ * the polyline, never dropped). segments/crossings are copied to every piece.
  */
-export function splitHostAtBridges(roads: Road[], terrain: Terrain): Road[] {
+export function markWetSpans(roads: Road[], terrain: Terrain): Road[] {
   if (terrain.water.length === 0) return roads
   const out: Road[] = []
   for (const road of roads) {
-    if (road.class === 'street' || road.bridge) {
-      out.push(road)
-      continue
-    }
     const len = polylineLength(road.points)
-    const intervals = waterIntervals(terrain, road.points)
-    if (intervals.length === 0) {
+    const wet = waterIntervals(terrain, road.points)
+    if (wet.length === 0 || len === 0) {
       out.push(road)
       continue
     }
-    let tCursor = 0
-    const pieces: Pt[][] = []
-    for (const [t0, t1] of intervals) {
-      const { tp, tq } = landingFor(road.points, t0, t1, len, terrain)
-      pieces.push(slicePolyline(road.points, tCursor, tp))
-      tCursor = tq
+    const pad = LANDING / len
+    const merged: Array<[number, number]> = []
+    for (const [t0, t1] of wet) {
+      const a = Math.max(0, t0 - pad)
+      const b = Math.min(1, t1 + pad)
+      const last = merged[merged.length - 1]
+      if (last && a <= last[1]) last[1] = Math.max(last[1], b)
+      else merged.push([a, b])
     }
-    pieces.push(slicePolyline(road.points, tCursor, 1))
-    pieces.forEach((points, i) => out.push({ ...road, id: `${road.id}-${i + 1}`, points }))
+    let dry = 0
+    let br = 0
+    let cursor = 0
+    const dryPiece = (t0: number, t1: number) => {
+      if ((t1 - t0) * len >= MIN_STREET_PIECE) {
+        dry += 1
+        out.push({ ...road, id: `${road.id}-${dry}`, points: slicePolyline(road.points, t0, t1) })
+      }
+    }
+    for (const [a, b] of merged) {
+      dryPiece(cursor, a)
+      br += 1
+      out.push({ ...road, id: `${road.id}-b${br}`, bridge: true, points: slicePolyline(road.points, a, b) })
+      cursor = b
+    }
+    dryPiece(cursor, 1)
   }
   return out
-}
-
-export function planBridges(roads: Road[], terrain: Terrain): Road[] {
-  if (terrain.water.length === 0) return []
-  const bridges: Road[] = []
-  let n = 0
-  for (const road of roads) {
-    if (road.class === 'street' || road.bridge) continue
-    const len = polylineLength(road.points)
-    for (const [t0, t1] of waterIntervals(terrain, road.points)) {
-      const span = (t1 - t0) * len
-      if (span > MAX_SPAN[road.class as 'highway' | 'arterial']) continue
-      // a crossing that isn't bridgeable isn't bridged — the host road gets
-      // truncated at the waterline instead (truncateUnlandableRoads)
-      if (!crossingBridgeable(road.points, t0, t1, len, terrain)) continue
-      const { p, q } = landingFor(road.points, t0, t1, len, terrain)
-      n += 1
-      bridges.push({
-        id: `BR${String(n).padStart(2, '0')}`,
-        class: road.class,
-        points: [p, q],
-        width: road.width,
-        name: null,
-        bridge: true,
-      })
-    }
-  }
-  return bridges
 }

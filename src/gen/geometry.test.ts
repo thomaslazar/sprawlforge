@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bboxOf, bspSplit, insetRect, pointAtT, pointInRings, polylineLength, ringArea, ringCentroid, rotatePt, slicePolyline, type Rect } from './geometry'
+import { bboxOf, bspSplit, insetRect, pointAtT, pointInRings, polylineLength, ringArea, ringCentroid, rotatePt, simplifyPolyline, slicePolyline, type Rect } from './geometry'
 import { mulberry32 } from './rng'
 
 const within = (inner: Rect, outer: Rect) =>
@@ -131,5 +131,16 @@ describe('polyline helpers', () => {
     const c = ringCentroid(L)
     // vertex mean would be (10, 10) — outside the L; shoelace stays inside
     expect(c.x < 10 || c.y < 10).toBe(true)
+  })
+})
+
+describe('simplifyPolyline', () => {
+  it('drops near-collinear points, keeps corners and endpoints', () => {
+    const pts = [{ x: 0, y: 0 }, { x: 50, y: 0.5 }, { x: 100, y: 0 }, { x: 100, y: 100 }]
+    expect(simplifyPolyline(pts, 1)).toEqual([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }])
+  })
+  it('leaves two-point lines alone', () => {
+    const pts = [{ x: 0, y: 0 }, { x: 5, y: 5 }]
+    expect(simplifyPolyline(pts, 1)).toEqual(pts)
   })
 })

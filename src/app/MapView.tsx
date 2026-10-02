@@ -25,6 +25,13 @@ export function MapView({
   // callback is delayed.
   const zoomDebounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => clearTimeout(zoomDebounce.current), [])
+  // "Baked" zoom: during a wheel gesture the map scales via CSS transform
+  // (cheap, but the compositor just upscales its cached raster, so Safari
+  // shows a blurry map until… never — it does not re-rasterize a will-change
+  // layer). Once the gesture settles (same debounce as the label re-render)
+  // the zoom is baked into the viewport's real size and the transform scale
+  // drops back to ~1, so the SVG is laid out and painted at full resolution.
+  const [baked, setBaked] = useState(1)
 
   return (
     <div
@@ -47,7 +54,10 @@ export function MapView({
         const ratio = zoom / oldZoom
         setView((v) => ({ x: cx - (cx - v.x) * ratio, y: cy - (cy - v.y) * ratio, zoom }))
         clearTimeout(zoomDebounce.current)
-        zoomDebounce.current = setTimeout(() => onZoom?.(zoom), 150)
+        zoomDebounce.current = setTimeout(() => {
+          setBaked(zoom)
+          onZoom?.(zoom)
+        }, 150)
       }}
       onPointerDown={(e) => {
         drag.current = { x: e.clientX - view.x, y: e.clientY - view.y }
@@ -74,10 +84,10 @@ export function MapView({
       <div
         className="map-viewport"
         style={{
-          transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})`,
+          transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom / baked})`,
           transformOrigin: '0 0',
-          width: '100%',
-          height: '100%',
+          width: `${baked * 100}%`,
+          height: `${baked * 100}%`,
           willChange: 'transform',
         }}
         dangerouslySetInnerHTML={{ __html: svg }}

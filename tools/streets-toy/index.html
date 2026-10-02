@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>streets toy</title>
+    <style>
+      body { background: #111; color: #ddd; font-family: system-ui, sans-serif; margin: 16px; }
+      .grid { display: grid; grid-template-columns: repeat(2, 480px); gap: 8px; }
+      figure { margin: 0; }
+      figcaption { font-size: 12px; opacity: 0.7; }
+      svg { background: #14202c; width: 480px; height: 480px; }
+      label { margin-right: 16px; }
+      #stats { white-space: pre-wrap; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <div>
+      <label>seed <input id="seed" type="number" value="1443928265" /></label>
+      <label>size (km) <input id="size" type="number" value="4" /></label>
+      <label>tag
+        <select id="tag">
+          <option value="planned">planned</option>
+          <option value="mixed" selected>mixed</option>
+          <option value="sprawl">sprawl</option>
+        </select>
+      </label>
+    </div>
+    <pre id="stats"></pre>
+    <div id="out" class="grid"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

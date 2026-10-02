@@ -1,6 +1,6 @@
 import type { Pt } from '../geometry'
 import { bboxOf, pointInRings, ringCentroid } from '../geometry'
-import { irregularityField } from '../partition/irregularity'
+import { irregularityField } from '../streets/irregularity'
 import { distToPolyline } from '../terrain/rivers'
 import { hashSeed, mulberry32 } from '../rng'
 import type { District, SectorParams, Terrain, ZoneType } from '../types'
@@ -88,6 +88,7 @@ export function assignZones(districtPolys: Pt[][], params: SectorParams, terrain
       id: `D${String(i + 1).padStart(2, '0')}`,
       zone, name: '', bounds, poly, shore, irregularity,
       labelAt: { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 },
+      flags: {},
     }
   })
 }

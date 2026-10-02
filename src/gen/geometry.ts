@@ -35,6 +35,85 @@ export function pointInRings(p: Pt, rings: Pt[][]): boolean {
   return inside
 }
 
+/**
+ * Exact, y-bucketed equivalent of `pointInRings(p, rings)` for many queries
+ * against the same rings: same edge order, same crossing formula, but only
+ * the edges whose y-range touches the query's row are tested.
+ */
+export function ringsContainsFn(rings: ReadonlyArray<ReadonlyArray<readonly [number, number]>>): (p: Pt) => boolean {
+  const ax: number[] = [], ay: number[] = [], bx: number[] = [], by: number[] = []
+  for (const ring of rings) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      ax.push(ring[i][0]); ay.push(ring[i][1]); bx.push(ring[j][0]); by.push(ring[j][1])
+    }
+  }
+  let lo = Infinity, hi = -Infinity
+  for (let k = 0; k < ay.length; k++) {
+    lo = Math.min(lo, ay[k], by[k])
+    hi = Math.max(hi, ay[k], by[k])
+  }
+  const ROW = 10
+  const nRows = Number.isFinite(lo) ? Math.floor((hi - lo) / ROW) + 1 : 0
+  const rows: number[][] = Array.from({ length: nRows }, () => [])
+  for (let k = 0; k < ay.length; k++) {
+    const r0 = Math.floor((Math.min(ay[k], by[k]) - lo) / ROW)
+    const r1 = Math.floor((Math.max(ay[k], by[k]) - lo) / ROW)
+    for (let r = r0; r <= r1; r++) rows[r].push(k)
+  }
+  return (p) => {
+    const r = Math.floor((p.y - lo) / ROW)
+    if (!(r >= 0 && r < nRows)) return false
+    let inside = false
+    for (const k of rows[r]) {
+      if (ay[k] > p.y !== by[k] > p.y && p.x < ((bx[k] - ax[k]) * (p.y - ay[k])) / (by[k] - ay[k]) + ax[k])
+        inside = !inside
+    }
+    return inside
+  }
+}
+
+export type Box = { x0: number; y0: number; x1: number; y1: number }
+export const boxOf = (pts: Pt[]): Box => {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity
+  for (const p of pts) { x0 = Math.min(x0, p.x); y0 = Math.min(y0, p.y); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y) }
+  return { x0, y0, x1, y1 }
+}
+/** m — anything closer than this to a box goes through the real clipper */
+export const BOX_MARGIN = 0.01
+
+/** does segment a-b touch the margin-inflated box? slab test */
+export function segTouchesBox(a: Pt, b: Pt, bx: Box): boolean {
+  let t0 = 0, t1 = 1
+  for (const [p, d, lo, hi] of [
+    [a.x, b.x - a.x, bx.x0 - BOX_MARGIN, bx.x1 + BOX_MARGIN],
+    [a.y, b.y - a.y, bx.y0 - BOX_MARGIN, bx.y1 + BOX_MARGIN],
+  ]) {
+    if (d === 0) { if (p < lo || p > hi) return false; continue }
+    let u = (lo - p) / d, v = (hi - p) / d
+    if (u > v) [u, v] = [v, u]
+    t0 = Math.max(t0, u); t1 = Math.min(t1, v)
+    if (t0 > t1) return false
+  }
+  return true
+}
+
+/**
+ * polygon-clipping snaps any coordinate within ~1 ulp of one it has already
+ * seen (per axis, whatever the y of the other point). Returns a test for "does
+ * a coordinate of these points sit within `tol` of any x or y of `others`":
+ * when it does not, leaving `others` out of a clip cannot change the result.
+ */
+export function makeNearTieCheck(others: Array<readonly [number, number]>, tol = 1e-9): (pts: Array<readonly [number, number]>) => boolean {
+  const xs = Float64Array.from(others, (p) => p[0]).sort()
+  const ys = Float64Array.from(others, (p) => p[1]).sort()
+  const near = (sorted: Float64Array, v: number): boolean => {
+    let lo = 0, hi = sorted.length
+    while (lo < hi) { const m = (lo + hi) >> 1; if (sorted[m] < v - tol) lo = m + 1; else hi = m }
+    return lo < sorted.length && sorted[lo] <= v + tol
+  }
+  return (pts) => pts.some((p) => near(xs, p[0]) || near(ys, p[1]))
+}
+
 export interface Cut { axis: 'x' | 'y'; strip: Rect }
 
 export interface BspOpts { minCell: number; gap: number; jitter: number; rng: Rng }
@@ -150,4 +229,25 @@ export function ringCentroid(pts: Pt[]): Pt {
     }
   }
   return { x: cx / (3 * area), y: cy / (3 * area) }
+}
+
+/** Douglas-Peucker: drop points within `tolerance` metres of the chord; endpoints always kept */
+export function simplifyPolyline(points: Pt[], tolerance: number): Pt[] {
+  if (points.length < 3) return points
+  const a = points[0]
+  const b = points[points.length - 1]
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const len = Math.hypot(dx, dy)
+  let worst = -1
+  let at = 0
+  for (let i = 1; i < points.length - 1; i++) {
+    const p = points[i]
+    const d = len === 0
+      ? Math.hypot(p.x - a.x, p.y - a.y)
+      : Math.abs((p.x - a.x) * dy - (p.y - a.y) * dx) / len
+    if (d > worst) { worst = d; at = i }
+  }
+  if (worst <= tolerance) return [a, b]
+  return [...simplifyPolyline(points.slice(0, at + 1), tolerance).slice(0, -1), ...simplifyPolyline(points.slice(at), tolerance)]
 }

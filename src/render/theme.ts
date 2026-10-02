@@ -13,6 +13,7 @@ export interface Theme {
   building: { fill: string; stroke: string }
   poi: { marker: string; label: string }
   bridge: { deck: string; shadow: string }
+  highway: { trench: string; column: string; hatch: string }
   scaleBar: string
   glow: boolean
 }
@@ -37,10 +38,11 @@ const neon: Theme = {
     docks: '#12262a',
   },
   districtLabel: '#9fb8c8',
-  road: { highway: '#e8577f', arterial: '#4fc9d9', street: '#3a4560' },
+  road: { highway: '#e8577f', arterial: '#4fc9d9', street: '#3a4560', ramp: '#44879c' },
   building: { fill: '#202840', stroke: '#4a5a7a' },
   poi: { marker: '#ffb454', label: '#ffdca8' },
   bridge: { deck: '#8a93a6', shadow: '#04060a' },
+  highway: { trench: '#080a0f', column: '#04060a', hatch: '#8a93a6' },
   scaleBar: '#9fb8c8',
   glow: true,
 }
@@ -61,10 +63,11 @@ const print: Theme = {
     docks: '#e9f2f4',
   },
   districtLabel: '#333333',
-  road: { highway: '#222222', arterial: '#555555', street: '#bbbbbb' },
+  road: { highway: '#222222', arterial: '#555555', street: '#bbbbbb', ramp: '#888888' },
   building: { fill: '#e2e2dc', stroke: '#88888a' },
   poi: { marker: '#b03030', label: '#222222' },
   bridge: { deck: '#e8e8e2', shadow: '#b5b5b0' },
+  highway: { trench: '#d9d9d9', column: '#b5b5b0', hatch: '#e8e8e2' },
   scaleBar: '#222222',
   glow: false,
 }
@@ -89,10 +92,11 @@ const blueprint: Theme = {
     docks: '#0c305d',
   },
   districtLabel: '#dff3ff',
-  road: { highway: '#ffffff', arterial: '#f1fbff', street: '#9dc4e0' },
+  road: { highway: '#ffffff', arterial: '#f1fbff', street: '#9dc4e0', ramp: '#c7e0f0' },
   building: { fill: '#0e335f', stroke: '#e4f4ff' },
   poi: { marker: '#eaf7ff', label: '#dff3ff' },
   bridge: { deck: '#e4f4ff', shadow: '#071c38' },
+  highway: { trench: '#09274c', column: '#071c38', hatch: '#e4f4ff' },
   scaleBar: '#dff3ff',
   glow: false,
 }
@@ -113,10 +117,11 @@ const synthwave: Theme = {
     docks: '#12203a',
   },
   districtLabel: '#d9b8ff',
-  road: { highway: '#ff3fa4', arterial: '#33c2e6', street: '#4a3a66' },
+  road: { highway: '#ff3fa4', arterial: '#33c2e6', street: '#4a3a66', ramp: '#3e7ea6' },
   building: { fill: '#251a3a', stroke: '#6b4f99' },
   poi: { marker: '#ffe14d', label: '#fff2cc' },
   bridge: { deck: '#a893c9', shadow: '#0c0616' },
+  highway: { trench: '#11081a', column: '#0c0616', hatch: '#a893c9' },
   scaleBar: '#d9b8ff',
   glow: true,
 }
@@ -137,10 +142,11 @@ const tokyoNight: Theme = {
     docks: '#1c2735',
   },
   districtLabel: '#c0caf5',
-  road: { highway: '#f7768e', arterial: '#7dcfff', street: '#414868' },
+  road: { highway: '#f7768e', arterial: '#7dcfff', street: '#414868', ramp: '#5f8cb4' },
   building: { fill: '#24283b', stroke: '#565f89' },
   poi: { marker: '#e0af68', label: '#f0c894' },
   bridge: { deck: '#a9b1d6', shadow: '#0d0e14' },
+  highway: { trench: '#161720', column: '#0d0e14', hatch: '#a9b1d6' },
   scaleBar: '#c0caf5',
   glow: false,
 }

@@ -7,6 +7,13 @@ mkdirSync(OUT, { recursive: true })
 
 const browser = await chromium.launch()
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
+// generation of a 6 km sector takes 13-23 s in a throttled devcontainer; the
+// Playwright default of 30 s is too tight for the first paint. Perf lives in
+// perf.test.ts, this is only a wait cap.
+page.setDefaultTimeout(90000)
+// sum data-count over matching elements (batched svg geometry)
+const countAttr = (pg, sel) =>
+  pg.$$eval(sel, (els) => els.reduce((a, e) => a + Number(e.getAttribute('data-count') ?? 0), 0))
 const fail = (msg) => {
   console.error(`FAIL: ${msg}`)
   process.exitCode = 1
@@ -29,7 +36,9 @@ const ALL_TAGS = [
 // stale "after" baseline that the still-in-flight reply then mutates later,
 // which surfaces as an unrelated *next* assertion falsely accusing that
 // step of an unwanted regenerate.
-const waitForSvgChange = (prevHtml, timeout = 15000) =>
+// 60 s: a wait cap, not a perf assertion (perf.test.ts owns the budget) — a
+// 6 km sector takes 13-23 s in a throttled devcontainer
+const waitForSvgChange = (prevHtml, timeout = 60000) =>
   page.waitForFunction(
     (prev) => document.querySelector('svg')?.innerHTML !== prev,
     prevHtml,
@@ -45,8 +54,10 @@ const initialBox = await page.locator('svg').boundingBox()
 if (initialBox.height > 901 || initialBox.width > 1401)
   fail(`map does not fit viewport on load: ${initialBox.width}x${initialBox.height}`)
 
-const buildings = await page.locator('svg polygon[data-id^="BLD"]').count()
+const buildings = await countAttr(page, 'svg [data-buildings]')
 if (buildings < 50) fail(`expected a dense map, got ${buildings} buildings`)
+
+if ((await page.locator('svg path[data-alleys]').count()) !== 1) fail('expected exactly one alleys path')
 
 const pois = await page.locator('svg circle[data-id^="P"]').count()
 if (pois < 1) fail('no POIs rendered')
@@ -59,7 +70,9 @@ if (pois < 1) fail('no POIs rendered')
 const readTransform = () =>
   page.locator('.map-viewport').evaluate((el) => {
     const m = el.style.transform.match(/translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([-\d.]+)\)/)
-    return { x: Number(m[1]), y: Number(m[2]), zoom: Number(m[3]) }
+    // effective zoom: once a gesture settles the zoom is baked into the width
+    // (scale back to 1), so it may be read on either side of the bake
+    return { x: Number(m[1]), y: Number(m[2]), zoom: Number(m[3]) * (parseFloat(el.style.width) || 100) / 100 }
   })
 const mapContainerBox = await page.locator('.map-viewport').locator('xpath=..').boundingBox()
 const zx = mapContainerBox.x + 200
@@ -80,6 +93,17 @@ if (Math.abs(afterZoom.x - expectedX) > 1 || Math.abs(afterZoom.y - expectedY) >
     `wheel zoom is not cursor-anchored: got (${afterZoom.x}, ${afterZoom.y}), ` +
       `expected (${expectedX}, ${expectedY})`,
   )
+// baked zoom: once the gesture settles the zoom moves from the CSS scale
+// into the viewport's real size (scale back to ~1, width = zoom × 100 %) so
+// the SVG is painted at full resolution instead of an upscaled raster
+await page.waitForTimeout(400)
+const baked = await page.locator('.map-viewport').evaluate((el) => {
+  const m = el.style.transform.match(/scale\(([-\d.]+)\)/)
+  return { scale: Number(m[1]), width: el.style.width }
+})
+if (Math.abs(baked.scale - 1) > 0.01) fail(`zoom not baked into the viewport after settling: scale ${baked.scale}`)
+if (Math.abs(parseFloat(baked.width) - afterZoom.zoom * 100) > 0.01)
+  fail(`baked viewport width ${baked.width} != ${afterZoom.zoom * 100}%`)
 // reset pan/zoom for the rest of the checks below (which assume load defaults)
 await page.goto(`${BASE}/?seed=42&tags=coastal,large&pack=generic&theme=neon`)
 await page.waitForSelector('svg')
@@ -285,7 +309,7 @@ for (const { tags, shot, wet, bridge, seed = 42 } of TERRAIN_SWEEP) {
   await page.waitForSelector('svg')
   await page.screenshot({ path: `${OUT}/terrain-${shot}.png` })
 
-  const bld = await page.locator('svg polygon[data-id^="BLD"]').count()
+  const bld = await countAttr(page, 'svg [data-buildings]')
   if (bld < 1) fail(`terrain ${tags}: no buildings rendered`)
 
   if (wet) {
@@ -310,15 +334,17 @@ await page.goto(`${BASE}/?seed=42&tags=coastal,planned`)
 await page.waitForSelector('svg')
 await page.screenshot({ path: `${OUT}/streets-planned.png` })
 const svgPlanned = await page.locator('svg').innerHTML()
-if ((await page.locator('svg polygon[data-id^="BLD"]').count()) < 50)
+if ((await countAttr(page, 'svg [data-buildings]')) < 50)
   fail('planned: too few buildings')
 if (!(await page.getByRole('button', { name: 'Planned', pressed: true }).isVisible()))
   fail('planned chip not pressed from URL tags')
+if ((await countAttr(page, 'svg [data-ramps]')) < 1) fail('planned: no ramps')
+if ((await countAttr(page, 'svg [data-junctions]')) < 20) fail('planned: too few crossroads')
 
 await page.goto(`${BASE}/?seed=42&tags=coastal,sprawl`)
 await page.waitForSelector('svg')
 await page.screenshot({ path: `${OUT}/streets-sprawl.png` })
-if ((await page.locator('svg polygon[data-id^="BLD"]').count()) < 50)
+if ((await countAttr(page, 'svg [data-buildings]')) < 50)
   fail('sprawl: too few buildings')
 if ((await page.locator('svg').innerHTML()) === svgPlanned)
   fail('planned and sprawl render identically')

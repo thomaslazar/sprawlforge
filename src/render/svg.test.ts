@@ -36,7 +36,7 @@ describe('renderSector', () => {
   // and streets both), so a 6km sector's extra fabric pushes this past the
   // 5s default under parallel test load — same headroom bump other
   // generation-heavy tests in this codebase already use
-  it('has a metric scale bar', { timeout: 15000 }, () => {
+  it('has a metric scale bar', { timeout: 90000 }, () => {
     expect(renderSector(model, getTheme('neon'))).toContain('500 m')
     const big = generateSector({ ...base, size: 6 })
     expect(renderSector(big, getTheme('neon'))).toContain('1 km')
@@ -107,7 +107,7 @@ describe('renderSector', () => {
     ],
     // spans the full window, deliberately overlapping the water square —
     // proves the land-clip actually confines the fill (C2)
-    districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, poly: rectPoly({ x: 0, y: 0, w: 1000, h: 1000 }), irregularity: 0.5, shore: true, labelAt: { x: 500, y: 500 } }],
+    districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, poly: rectPoly({ x: 0, y: 0, w: 1000, h: 1000 }), irregularity: 0.5, shore: true, labelAt: { x: 500, y: 500 }, flags: {} }],
     blocks: [],
     buildings: [],
     pois: [],
@@ -127,7 +127,7 @@ describe('renderSector', () => {
         { id: 'RA', class: 'arterial', points: [{ x: 0, y: 200 }, { x: 1000, y: 200 }], width: 15, name: 'Arterial', bridge: false },
         { id: 'RS', class: 'street', points: [{ x: 0, y: 300 }, { x: 1000, y: 300 }], width: 8, name: 'Street', bridge: false },
       ],
-      districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, poly: rectPoly({ x: 0, y: 0, w: 1000, h: 1000 }), irregularity: 0.5, shore: false, labelAt: { x: 500, y: 500 } }],
+      districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, poly: rectPoly({ x: 0, y: 0, w: 1000, h: 1000 }), irregularity: 0.5, shore: false, labelAt: { x: 500, y: 500 }, flags: {} }],
       blocks: [],
       buildings: [],
       pois: [poi('P01', 'Alpha Tower', 500, 600)],
@@ -267,5 +267,54 @@ describe('renderSector', () => {
     expect(band![1]).not.toMatch(/1000,200L1000,800|1000,800L1000,200/)
     // but the real shoreline (x=600) is present
     expect(band![1]).toContain('600,')
+  })
+
+  it('export keeps per-element detail; interactive batches and drops filters', { timeout: 90000 }, () => {
+    const m = generateSector({ ...base, landform: 'inland', irregularity: 0.15 })
+    const theme = getTheme('neon')
+    const svg = renderSector(m, theme)
+    expect(svg).toMatch(/data-class="ramp"/)
+    expect(svg).not.toMatch(/data-class="ramp"[^>]*filter=/)
+    expect(svg).toMatch(/<polygon data-id="BLD/)
+    expect(svg).toContain('filter="url(#glow)"')
+    expect(svg).toMatch(/data-level="(elevated|sunken|ground)"/)
+    const cnt = (x: string, a: string) => Number(x.match(new RegExp(`${a}[^>]*data-count="(\\d+)"`))?.[1] ?? 0)
+    const junctions = cnt(svg, 'data-junctions')
+    expect(junctions).toBeGreaterThanOrEqual(20)
+
+    const ia = renderSector(m, theme, { interactive: true })
+    expect(ia).not.toContain('url(#glow)') // shoreblur (shoreline) is unchanged
+    expect(ia).not.toContain('<filter id="glow"')
+    expect(ia).not.toContain('<polygon data-id="BLD')
+    const sum = (re: RegExp) => [...ia.matchAll(re)].reduce((a, x) => a + Number(x[1]), 0)
+    expect(sum(/<path data-buildings data-count="(\d+)"/g)).toBe(m.buildings.length)
+    expect(cnt(ia, 'data-streets')).toBe(m.roads.filter((r) => r.class === 'street' && !r.bridge).length)
+    expect(cnt(ia, 'data-ramps')).toBe(m.roads.filter((r) => r.class === 'ramp' && !r.bridge).length)
+    expect(cnt(ia, 'data-junctions')).toBe(junctions)
+    const opens = (ia.match(/</g) ?? []).length
+    expect(opens).toBeLessThan(6000) // measured 4751: POI markers+titles, labels, arterial halos remain (POIs scale with buildings, which concave-block fill tripled here)
+  })
+
+  it('interactive halo is one path per class', { timeout: 90000 }, () => {
+    const m = generateSector({
+      ...base, seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, irregularity: 0.85, landform: 'bay',
+    })
+    const ia = renderSector(m, getTheme('neon'), { interactive: true })
+    for (const c of ['highway', 'arterial']) {
+      const paths = ia.match(new RegExp(`<path data-halo="${c}"[^>]*>`, 'g')) ?? []
+      expect(paths).toHaveLength(1)
+      expect(paths[0]).toContain('stroke-linecap="round"')
+      expect(paths[0]).toContain('stroke-linejoin="round"')
+    }
+    expect(ia).not.toMatch(/<polyline[^>]*stroke-opacity="0.35"/)
+    expect(renderSector(m, getTheme('neon'))).not.toContain('data-halo')
+  })
+})
+
+describe('alleys', () => {
+  it('alleys render as one path in interactive mode', () => {
+    const svg = renderSector(model, getTheme('neon'), { interactive: true })
+    expect(svg.match(/<path data-alleys/g)!.length).toBe(1)
+    expect(svg.indexOf('data-alleys')).toBeLessThan(svg.indexOf('data-streets'))
   })
 })

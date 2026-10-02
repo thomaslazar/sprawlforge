@@ -1,6 +1,6 @@
 import type { Pt, Rect } from './geometry'
 
-export const GENERATOR_VERSION = 4
+export const GENERATOR_VERSION = 5
 
 export const ZONE_TYPES = [
   'corp', 'residential', 'slum', 'industrial', 'entertainment', 'docks',
@@ -12,7 +12,27 @@ export const LANDFORMS = ['inland', 'coastal', 'bay'] as const
 
 export type Landform = (typeof LANDFORMS)[number]
 
-export type RoadClass = 'highway' | 'arterial' | 'street'
+export type RoadClass = 'highway' | 'arterial' | 'street' | 'ramp'
+
+export type HighwayLevel = 'elevated' | 'sunken' | 'ground'
+
+export interface HighwaySegment {
+  /** arc-length t range on the highway polyline, 0..1 */
+  from: number
+  to: number
+  level: HighwayLevel
+  districtId: string
+  /** true for the 150 m slope at the start of this segment */
+  transition: boolean
+}
+
+export interface HighwayCrossing {
+  roadId: string
+  /** arc-length t on the highway */
+  at: number
+  kind: 'over' | 'under'
+  interchange: boolean
+}
 
 export interface SectorParams {
   seed: number
@@ -72,6 +92,9 @@ export interface Road {
   name: string | null
   /** true for a bridge span crossing water */
   bridge?: boolean
+  /** highway only */
+  segments?: HighwaySegment[]
+  crossings?: HighwayCrossing[]
 }
 
 export interface District {
@@ -87,7 +110,10 @@ export interface District {
   /** area-weighted centroid of the district's surviving blocks — where the
    * label anchors; unlike bounds' center, never falls in open water. */
   labelAt: Pt
+  flags: Record<string, never>
 }
+
+export type BlockStyle = 'rows' | 'courtyard' | 'plaza' | 'sheds'
 
 export interface Block {
   id: string
@@ -96,6 +122,11 @@ export interface Block {
   poly: Pt[]
   /** outer ring, meters; equals poly unless clipped by water */
   footprint: Pt[]
+  /** how the block is built up (set by fillLots) */
+  style: BlockStyle
+  /** alley centrelines through a `rows` block, meters */
+  alleys: Array<[Pt, Pt]>
+  flags: Record<string, never>
 }
 
 export interface Building {

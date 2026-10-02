@@ -1,5 +1,6 @@
 import type { SectorModel } from '../gen/types'
 import type { Theme } from './theme'
+import { renderHighway, renderJunctionMarkers } from './highway'
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -53,6 +54,9 @@ export interface RenderOpts {
   /** viewport zoom band (1|2|4|8): labels shrink in world units so they stay
    * constant on screen, freeing room — more labels appear as you zoom in */
   labelZoom?: number
+  /** on-screen view: batched paths and halo strokes instead of blur filters
+   * (cheap pan/zoom); export keeps full per-element detail */
+  interactive?: boolean
 }
 
 export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts = {}): string {
@@ -61,6 +65,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   const labelZoom = Math.min(8, Math.max(1, opts.labelZoom ?? 1))
   const fontD = (S * 0.018) / labelZoom
   const fontP = (S * 0.011) / labelZoom
+  const interactive = !!opts.interactive
 
   out.push(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${S} ${S}" font-family="system-ui, sans-serif">`,
@@ -115,7 +120,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   out.push(`<clipPath id="frame-clip"><rect x="0" y="0" width="${n(S)}" height="${n(S)}"/></clipPath>`)
   out.push(`<filter id="shoreblur"><feGaussianBlur stdDeviation="${n(S * 0.004)}"/></filter>`)
 
-  if (theme.glow) {
+  if (theme.glow && !interactive) {
     out.push(
       '<filter id="glow" x="-50%" y="-50%" width="200%" height="200%">',
       '<feGaussianBlur stdDeviation="8" result="b"/>',
@@ -128,7 +133,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   // glow is a hero accent for highway/arterial road strokes only — never on
   // labels or POI markers, which use plain fill/luminance contrast instead
   // (dense label text blooms into an indistinct mass under a blur filter)
-  const glowAttr = theme.glow ? ' filter="url(#glow)"' : ''
+  const glowAttr = theme.glow && !interactive ? ' filter="url(#glow)"' : ''
 
   out.push(`<rect x="0" y="0" width="${S}" height="${S}" fill="${theme.bg}"/>`)
 
@@ -160,8 +165,8 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     out.push('</g></g>')
   }
 
-  // district polys include filled lakes and the river corridor (twisted
-  // bisection carves districts straight from the land domain), so the land
+  // district polys include filled lakes and the river corridor (districts
+  // are faces cut from the land domain), so the land
   // clip still earns its keep against any straggling water sliver at the
   // shoreline (C2)
   out.push('<g clip-path="url(#land-clip)">')
@@ -171,23 +176,82 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   }
   out.push('</g>')
 
-  for (const b of model.buildings) {
-    const pts = b.footprint.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
-    out.push(
-      `<polygon data-id="${b.id}" points="${pts}" fill="${theme.building.fill}" stroke="${theme.building.stroke}" stroke-width="1"/>`,
-    )
+  if (interactive) {
+    const byDistrict = new Map<string, string[]>()
+    for (const b of model.buildings) {
+      const ring = `M${b.footprint.map((p) => `${n(p.x)},${n(p.y)}`).join('L')}Z`
+      const l = byDistrict.get(b.districtId)
+      if (l) l.push(ring)
+      else byDistrict.set(b.districtId, [ring])
+    }
+    for (const [, rings] of byDistrict)
+      out.push(
+        `<path data-buildings data-count="${rings.length}" d="${rings.join(' ')}" fill="${theme.building.fill}" stroke="${theme.building.stroke}" stroke-width="1"/>`,
+      )
+  } else {
+    for (const b of model.buildings) {
+      const pts = b.footprint.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
+      out.push(
+        `<polygon data-id="${b.id}" points="${pts}" fill="${theme.building.fill}" stroke="${theme.building.stroke}" stroke-width="1"/>`,
+      )
+    }
   }
 
-  for (const road of model.roads) {
+  // alleys: thin translucent strokes between buildings, under the streets
+  const alleyPath = (blocks: typeof model.blocks) => {
+    const d = blocks.flatMap((b) => b.alleys.map(([a, c]) => `M${n(a.x)},${n(a.y)}L${n(c.x)},${n(c.y)}`)).join(' ')
+    return d ? `<path data-alleys="1" d="${d}" fill="none" stroke="${theme.road.street}" stroke-width="2" stroke-opacity="0.5"/>` : ''
+  }
+  if (interactive) out.push(alleyPath(model.blocks))
+  else for (const b of model.blocks) out.push(alleyPath([b]))
+
+  // streets → arterials → ramps; the highway itself is drawn per level by
+  // renderHighway once it has segments
+  const hasLevels = model.roads.some((r) => r.class === 'highway' && r.segments?.length)
+  const rank = (c: string) => (c === 'ramp' ? 2 : c === 'street' ? 0 : 1)
+  const ordered = model.roads.map((r, i) => [r, i] as const).sort((a, b) => (rank(a[0].class) - rank(b[0].class)) || a[1] - b[1])
+  // interactive: streets and ramps (each one shared style) batch into a path
+  const batch: Record<'street' | 'ramp', string[]> = { street: [], ramp: [] }
+  const flush = (c: 'street' | 'ramp') => {
+    if (!batch[c].length) return
+    const w = c === 'street' ? ' data-streets' : ' data-ramps'
+    const width = ordered.find(([r]) => r.class === c)![0].width
+    out.push(
+      `<path${w} data-count="${batch[c].length}" d="${batch[c].join(' ')}" fill="none" stroke="${theme.road[c]}" stroke-width="${width}"/>`,
+    )
+    batch[c] = []
+  }
+  // one translucent path per class: overlapping round caps composite once, no blotches
+  const halo: Array<{ col: string; w: number | string; d: string }> = []
+  let haloAt = 0
+  for (const [road] of ordered) {
     // bridge decks are drawn in their own pass below (deck + shadow) — the
     // road-class color never renders for a bridge span, or it'd double-draw
     if (road.bridge) continue
+    if (hasLevels && road.class === 'highway') continue
     const pts = road.points.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
-    const glow = road.class === 'street' ? '' : glowAttr
+    if (interactive && (road.class === 'street' || road.class === 'ramp')) {
+      batch[road.class].push(`M${road.points.map((p) => `${n(p.x)},${n(p.y)}`).join('L')}`)
+      continue
+    }
+    flush('street')
+    const glows = road.class !== 'street' && road.class !== 'ramp'
+    const glow = glows ? glowAttr : ''
+    const cls = road.class === 'ramp' ? ' data-class="ramp"' : ''
+    const col = theme.road[road.class]
+    if (interactive && theme.glow && glows) {
+      if (!halo.length) haloAt = out.length
+      halo.push({ col, w: n(road.width * 2.2), d: `M${pts.replace(/ /g, 'L')}` })
+    }
     out.push(
-      `<polyline points="${pts}" fill="none" stroke="${theme.road[road.class]}" stroke-width="${road.width}"${glow}/>`,
+      `<polyline${cls} points="${pts}" fill="none" stroke="${col}" stroke-width="${road.width}"${glow}/>`,
     )
   }
+  flush('street')
+  flush('ramp')
+  if (halo.length)
+    out.splice(haloAt, 0, `<path data-halo="arterial" d="${halo.map((h) => h.d).join(' ')}" fill="none" stroke="${halo[0].col}" stroke-width="${halo[0].w}" stroke-opacity="0.35" stroke-linecap="round" stroke-linejoin="round"/>`)
+  renderHighway(model, theme, out, glowAttr, interactive && theme.glow)
 
   // Bridge decks above roads
   for (const road of model.roads) {
@@ -211,6 +275,8 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
       `<line data-id="${pier.id}" x1="${n(a.x)}" y1="${n(a.y)}" x2="${n(b.x)}" y2="${n(b.y)}" stroke="${theme.bridge.deck}" stroke-width="${n(pier.width)}"/>`,
     )
   }
+
+  renderJunctionMarkers(model, out)
 
   const placedLabels: Box[] = []
 

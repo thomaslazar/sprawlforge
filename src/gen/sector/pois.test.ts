@@ -14,7 +14,7 @@ const base: SectorParams = {
   landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
 }
 const districts: District[] = [
-  { id: 'D01', zone: 'corp', name: 'Test Heights', bounds: { x: 0, y: 0, w: 600, h: 600 }, poly: rectPoly({ x: 0, y: 0, w: 600, h: 600 }), irregularity: 0.5, shore: false, labelAt: { x: 300, y: 300 } },
+  { id: 'D01', zone: 'corp', name: 'Test Heights', bounds: { x: 0, y: 0, w: 600, h: 600 }, poly: rectPoly({ x: 0, y: 0, w: 600, h: 600 }), irregularity: 0.5, shore: false, labelAt: { x: 300, y: 300 }, flags: {} },
 ]
 const buildings: Building[] = Array.from({ length: 30 }, (_, i) => ({
   id: `BLD0101${String(i + 1).padStart(2, '0')}`,
