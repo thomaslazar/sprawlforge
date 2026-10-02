@@ -5,6 +5,7 @@ import { GENERATOR_VERSION, type Block, type District, type SectorParams, type T
 import { hashSeed, mulberry32 } from '../rng'
 import { distToPolyline } from '../terrain/rivers'
 import { RoadIndex, riverCrossingSeeds } from '../streets/trace'
+import { traceRoads } from './streets'
 import { HIGHWAY_WIDTH } from '../streets/highway'
 import { inWater, isLakeShore } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
@@ -739,11 +740,16 @@ describe('lakes bound blocks', () => {
     it(`no street point lies in water, no street end sits on a lake shore (${label})`, () => {
       const streets = m.roads.filter((r) => r.class === 'street')
       expect(streets.filter((r) => r.points.some((p) => inWater(m.terrain, p))).map((r) => r.id)).toEqual([])
-      const lakeShore = (e: Pt) => isLakeShore(m.terrain, e, params.size * 1000) &&
-        m.terrain.water.some((poly) => poly.some((ring) => distToPolyline(e, [...ring, ring[0]].map(([x, y]) => ({ x, y }))) < 6))
-      // ponytail: 2-point infill chords end on the lake ring on purpose (it is the block edge); only traced streets are checked
-      const bad = streets.filter((r) => r.points.length > 2).filter((r) => [r.points[0], r.points.at(-1)!].some(lakeShore))
-      expect(bad.map((r) => r.id)).toEqual([])
+      if (!params.lakes) return
+      const sizeM = params.size * 1000
+      const nearRing = (e: Pt) => m.terrain.water.some((poly) => poly.some((ring) => distToPolyline(e, [...ring, ring[0]].map(([x, y]) => ({ x, y }))) < 6))
+      // infill chords end on the lake ring on purpose (it is the block edge); only traced streets are checked. Exact: infill ids continue the traced counter
+      const traced = new Set(traceRoads(params, m.terrain, sizeM).streets.map((r) => r.id))
+      const ends = streets.filter((r) => traced.has(r.id.split('-')[0])).flatMap((r) => [r.points[0], r.points.at(-1)!]).filter(nearRing)
+      expect(m.terrain.water.length).toBeGreaterThan(1) // lakes exist, so the check below is not vacuous
+      expect(ends.filter((e) => isLakeShore(m.terrain, e, sizeM))).toEqual([])
+      // river/sea shore stubs of >= 150 m stay: some street end sits at a river/sea shore
+      expect(ends.filter((e) => !isLakeShore(m.terrain, e, sizeM)).length).toBeGreaterThan(0)
     })
     it(`no big block has its centroid in a lake (${label})`, () => {
       const bad = m.blocks.filter((b) => {

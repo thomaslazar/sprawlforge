@@ -577,17 +577,20 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
         // walk inward in ~5 m samples to the first junction
         let kept: Pt[] | null = null
         let stub = 0
+        let done = 0 // arc length of seq[0..i-1]
         for (let i = 1; i < seq.length && !kept; i++) {
           const a = seq[i - 1]
           const b = seq[i]
-          const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 5))
+          const seg = Math.hypot(b.x - a.x, b.y - a.y)
+          const n = Math.max(1, Math.ceil(seg / 5))
           for (let k = 1; k <= n; k++) {
             const q = { x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n }
-            stub = polylineLength(seq.slice(0, i)) + Math.hypot(q.x - a.x, q.y - a.y)
+            stub = done + Math.hypot(q.x - a.x, q.y - a.y)
             // any end counts here: a trunk cut back to the foot of a side street it carries keeps that street; interiorOnly would drop the whole trunk and cascade
             const hit = near(q, true)
             if (hit) { kept = [hit.at, ...seq.slice(k === n ? i + 1 : i)]; break }
           }
+          done += seg
         }
         if (wet && opts.waterAnchor!(end, kept ? stub : polylineLength(seq))) continue
         if (!kept) { dead = true; break }
