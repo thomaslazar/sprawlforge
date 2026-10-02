@@ -132,6 +132,44 @@ export function octagon(center: Pt, radius: number, angle: number, jitter?: (i: 
 
 ---
 
+### Task 8: Megablock as the whole block with packed cells
+
+**Files:**
+- Modify: `src/gen/types.ts` (`Megablock.footprint: Pt[]`), `src/gen/streets/lots.ts`, `lots.test.ts`, `src/gen/sector/generate.ts` (write `footprint` back onto the model's megablocks), `src/render/landmarks.ts`, `src/render/svg.test.ts`
+
+**Interfaces:** spec §11.1. In `fillLots` the megablock block takes an early branch (like arcology blocks): hive footprint = block footprint inset by `SIDEWALK` (`insetRing` → `insetByClipping` largest piece); cells = `bspSplit(bbox(hive), { minCell: 30, gap: 2, jitter: 0.3, rng: megaRng })` rotated to `longestEdgeAngle(hive)`, each cell clipped to the hive (`safeClip`/`clipSegmentToRing` helpers already in lots.ts), every piece ≥ 40 m² becomes a `Building`; alleys = the three longest cuts clipped to the hive; no other lots in that block; the core is no longer added to `noBuild`. Render: hive buildings drawn by `landmarks.ts` (not the batched building path) with `megablock.fill` + 0.5 px `megablock.alley`; outline 2 px; `data-megablock` on the outline.
+
+- [ ] Tests (RED first): `a megablock block is one hive of packed cells` (≥ 6 buildings, all centroids inside `footprint`, none elsewhere in the block, cell areas 40–3000 m²); `megablock footprint hugs its streets` (every footprint vertex within SIDEWALK + 2 m of the block footprint); render: `data-megablock` on the outline, hive cells not in `[data-buildings]`.
+- [ ] `npx tsc -b --noEmit && npx vitest run src/gen/streets src/gen/sector/generate.test.ts src/render` → PASS. Commit `feat: megablocks fill their block with packed hive cells`.
+
+### Task 9: Drop hairpin spokes
+
+**Files:** `src/gen/sector/streets.ts`, `src/gen/sector/generate.test.ts`
+
+- [ ] Test (RED): on seed 782008753, size 6, inland, density 0.6, corpDominance 0.5, poiDensity 0.5, irregularity 0.5, river+lakes+islands+piers, pack generic: no arterial has both ends within 6 m of the same ring road while being shorter than π(r + 60) (today A006, 168 m, and a zero-length A003). Same invariant on the two landmark seeds.
+- [ ] Implement spec §11.2 after the arterial `finalize`, before `pruneDangling`. Commit `fix: drop arterial spokes that loop back onto their ring`.
+
+### Task 10: Lakes bound blocks
+
+**Files:** `src/gen/streets/lots.ts` (alleys clipped to land), `src/gen/sector/generate.ts` (`infillFaces` land-area rule), `generate.test.ts`
+
+- [ ] Tests (RED): on the Task 9 seed: `no alley point lies in water`; `no block over 60 000 m² of land area has its centroid in a lake` (today B3001, 73 ha, 365 alleys across the lake).
+- [ ] Implement spec §11.3. Keep `landmark faces are skipped` behaviour. Commit `fix: lakes bound blocks; alleys clipped to land`.
+
+### Task 11: Street ends in water
+
+**Files:** `src/gen/streets/trace.ts` (`pruneDangling` options), `src/gen/sector/streets.ts`, `trace.test.ts`, `generate.test.ts`
+
+- [ ] Tests (RED): unit — a street ending inside water is cut back to the bank; a 100 m stub to a lake shore is pruned, a 200 m stub to the river shore is kept; generate — on the Task 9 seed no street point lies in water outside `wet` bridge spans and no street end lies within 6 m of a lake shore.
+- [ ] Implement spec §11.4: `PruneOpts.waterAnchor?: (p: Pt, stubLength: number) => boolean`; streets pass a predicate that accepts only river/sea shores (`terrain.water[0]`-style rings: the ones the river slice / coast produced — derive from `terrain.riverSlice` and the land outer ring, lakes are land-polygon holes) and stubs ≥ 150 m. Commit `fix: streets end on land; lake shores never anchor a stub`.
+
+### Task 12: Arcology designs
+
+**Files:** `src/gen/types.ts` (`ArcologyDesign`, `Arcology.design`), `src/gen/landmarks/place.ts` + test, `src/gen/names/names.ts`, both packs, `src/gen/sector/generate.ts` (name pool by design), `src/render/landmarks.ts`, `svg.test.ts`, `tools/uicheck/check.mjs` (re-take the two landmark shots; assert `[data-design]` present), `docs/ROADMAP.md`
+
+- [ ] Tests (RED): `designs do not repeat within a sector` (first four distinct, seed with ≥ 2 arcologies); `every design renders` (fixture model with one arcology per design → `data-design="…"` present, ziggurat has 4 nested squares + 4 diagonals, cluster 6 rectangles + octagon, satellites 5 satellites + 5 walkways); `names follow the design pool` (a ziggurat name comes from the Ziggurat/Pyramid pool).
+- [ ] Implement spec §11.5; pools: 3+ patterns per design in both packs. Run `tools/uicheck/run.sh`, look at the shots. Commit `feat: four arcology designs with matching name pools`.
+
 ## Plan self-review notes
 
 - Spec coverage: §3→T1, §4→T2+T3, §5→T4+T5, §6→T1 (patterns/types)+T6, §7→T7, §8→T1, §9 spread over tasks, §10 docs→T7.

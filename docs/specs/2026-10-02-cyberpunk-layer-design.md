@@ -165,3 +165,72 @@ renders a different map).
 - Highway frontage strips (C) and walled corporate compounds (D).
 - Arcology interiors, bridges between arcologies, skyway layer.
 - Megablock internal courtyards; megablocks spanning arterials.
+
+## 11. Polish round (after the first run, 2026-10-02)
+
+Decided from seed 782008753 (inland, large, lakes, islands, river) with the
+user. These amend §3, §5 and §7; part 2 (C, D) is unchanged.
+
+1. **Megablock = the whole block.** The octagon core only decides *which*
+   block is the megablock (the block containing the core centre; streets
+   still stop at the core while tracing). In the lot pass that block gets
+   no normal lots at all: its hive footprint is the block footprint inset
+   by the sidewalk (`insetRing`, `insetByClipping` fallback, largest
+   piece). Inside: packed building cells from a BSP of the footprint bbox
+   (minCell 30, gap 2, jitter 0.3, rng `'megablocks'`), each cell clipped
+   to the footprint and emitted as a `Building`; the three longest BSP
+   cuts are the block's alleys. `Megablock.footprint: Pt[]` is added (the
+   hive ring) and set by the lot pass; `core` stays the tracing octagon.
+   Render: hive cells filled `megablock.fill` with a 0.5 px
+   `megablock.alley` stroke, footprint outline 2 px `megablock.alley`,
+   alleys 1.5 px; `data-megablock` moves to the outline polygon.
+2. **No hairpin spokes.** After the arterial passes, an arterial whose two
+   ends both lie within 6 m of the same ring road and that is shorter than
+   half the ring's circumference is dropped (ring circumference
+   = 2π(r + 60)). Zero-length spokes are dropped by the same rule.
+3. **Lakes bound blocks.** A block face must not span a lake: alleys are
+   clipped to land (every alley segment is cut where it enters water), and
+   the infill pass no longer skips an oversized face just because its
+   centroid is in water — it skips only when the face's *land* area is
+   under the 60 000 m² limit (land area = footprint area minus water,
+   measured on a 20 m sample grid). Blocks around a lake therefore get
+   split by infill streets that end at the shore.
+4. **Street ends in water.** A street (not arterial, not highway, not a
+   marked bridge span) whose end point lies in water is cut back to the
+   last point on land. A street end anchors on water only at a river or
+   sea shore (`terrain.water` rings that belong to the river slice or the
+   coast), never at a lake shore, and only if the stub from its last
+   junction to the water is ≥ 150 m; shorter stubs are pruned to the
+   junction. Arterials keep the old rules (they bridge).
+5. **Arcology designs.** `Arcology.design: 'rings' | 'ziggurat' |
+   'cluster' | 'satellites'`, drawn in `placeLandmarks` from the
+   `'landmarks'` stream without repetition within a sector (fifth and
+   later arcologies may repeat). Footprint radius `r` and the plaza
+   octagon are unchanged; the design only changes the drawing and the
+   name pattern pool:
+   - `rings`: the current octagon with inner octagons at 0.66 r, 0.33 r.
+   - `ziggurat`: a square of half-side r rotated to the field, nested
+     squares at 0.75, 0.5, 0.25 r, and four diagonals from the outer
+     corners to the innermost square's corners (a stepped pyramid from
+     above). Name pool: Ziggurat / Pyramid patterns.
+   - `cluster`: six rectangles 0.45 r × 0.25 r placed at radius 0.55 r
+     every 60°, each rotated tangentially, plus a central octagon of
+     radius 0.2 r. Name pool: Towers / Complex patterns.
+   - `satellites`: a central square of half-side 0.5 r, five squares of
+     half-side 0.18 r at radius 0.8 r (every 72°), and a 1 px walkway
+     line from the centre to each satellite. Name pool: Campus / Spire
+     patterns.
+   Packs gain `arcologyPatternsByDesign: Partial<Record<ArcologyDesign,
+   string[]>>`; naming uses the design's pool when present, else
+   `arcologyPatterns`. The footprint polygon stored on the model is the
+   design's outer shape (octagon, square, or the convex hull of the
+   cluster/satellite shapes) so `data-arcology` and the POI stay valid.
+   Every theme draws all four designs with the existing `arcology` keys.
+6. **Tests** per item: megablock block has ≥ 6 buildings, all inside the
+   hive footprint, and no other lots; no arterial with both ends on one
+   ring shorter than half its circumference; no alley point in water and
+   the lake-adjacent face on seed 782008753 is split; no street point in
+   water outside bridge spans and no street end within 6 m of a lake
+   shore; designs distinct for the first four arcologies of a sector,
+   every design renders with `data-design`; uicheck screenshots re-taken
+   and looked at.
