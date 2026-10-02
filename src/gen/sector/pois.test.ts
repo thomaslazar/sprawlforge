@@ -82,4 +82,32 @@ describe('placePois', () => {
   it('poiDensity 0 places no POIs at all', () => {
     expect(placePois(districts, buildings, pack, { ...base, poiDensity: 0 })).toEqual([])
   })
+
+  describe('landmarks', () => {
+    const sq = (x: number, y: number, r: number): Pt[] => rectPoly({ x: x - r, y: y - r, w: 2 * r, h: 2 * r })
+    const landmarks = {
+      arcologies: [{ id: 'A01', name: 'Aegis Spire', center: { x: 100, y: 300 }, radius: 80, footprint: sq(100, 300, 60), plaza: sq(100, 300, 80), ringRoadId: 'R1' }],
+      megablocks: [{ id: 'M01', name: 'Hive Nine', center: { x: 400, y: 300 }, core: sq(400, 300, 40) }],
+    }
+    it('one POI per landmark with its name', () => {
+      const pois = placePois(districts, buildings, pack, base, landmarks)
+      expect(pois[0]).toEqual({ id: 'P01', type: 'arcology', name: 'Aegis Spire', buildingId: '', districtId: 'D01', at: { x: 100, y: 300 } })
+      expect(pois[1]).toEqual({ id: 'P02', type: 'megablock', name: 'Hive Nine', buildingId: '', districtId: 'D01', at: { x: 400, y: 300 } })
+      expect(pois.filter((p) => p.type === 'arcology' || p.type === 'megablock')).toHaveLength(2)
+      expect(new Set(pois.map((p) => p.id)).size).toBe(pois.length)
+    })
+    it('landmark POIs survive poiDensity 0', () => {
+      expect(placePois(districts, buildings, pack, { ...base, poiDensity: 0 }, landmarks)).toHaveLength(2)
+    })
+    it('lottery never places a POI inside a plaza', () => {
+      // buildings 0..4 (x 0-95, y 0-15) sit inside a plaza covering that strip
+      const plaza = rectPoly({ x: -10, y: -10, w: 110, h: 40 })
+      const lm = { arcologies: [{ ...landmarks.arcologies[0], plaza }], megablocks: [] }
+      for (const seed of [1, 2, 3, 4, 5, 6]) {
+        const pois = placePois(districts, buildings, pack, { ...base, seed, poiDensity: 1 }, lm).filter((p) => p.buildingId)
+        expect(pois.length).toBeGreaterThan(0)
+        for (const p of pois) expect(p.at.x).toBeGreaterThan(100)
+      }
+    })
+  })
 })

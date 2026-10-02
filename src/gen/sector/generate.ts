@@ -302,12 +302,16 @@ export function generateSector(params: SectorParams): SectorModel {
     return { ...r, name: roadNames.get(base)! }
   })
 
+  // last draws on the names stream, so district and street names stay as they were
+  const namedArcologies = arcologies.map((a) => ({ ...a, name: generateName(nameRng.pick(pack.arcologyPatterns), pack.tables, nameRng) }))
+  const namedMegablocks = megablocks.map((m) => ({ ...m, name: generateName(nameRng.pick(pack.megablockPatterns), pack.tables, nameRng) }))
+
   const { buildings, blocks } = fillLots(namedDistricts, rawBlocks, params, terrain, [
     ...(highway ? noBuildStrips(highway, segments) : []),
     ...roads.filter((r) => r.class !== 'highway').flatMap((r) => corridorRects(r.points, r.width / 2 + SIDEWALK)),
   ], undefined, { arcologies, megablocks })
   const finalDistricts = deriveDistricts(namedDistricts, blocks)
-  const pois = placePois(finalDistricts, buildings, pack, params)
+  const pois = placePois(finalDistricts, buildings, pack, params, { arcologies: namedArcologies, megablocks: namedMegablocks })
   const piers = placePiers(finalDistricts, terrain, params)
 
   return {
@@ -325,7 +329,7 @@ export function generateSector(params: SectorParams): SectorModel {
     buildings,
     pois,
     piers,
-    arcologies,
-    megablocks,
+    arcologies: namedArcologies,
+    megablocks: namedMegablocks,
   }
 }

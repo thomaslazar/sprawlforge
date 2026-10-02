@@ -62,7 +62,7 @@ describe('generateSector', () => {
       // building's blockId ordinal must match its own districtId
       expect(b.blockId.slice(1, 3)).toBe(b.districtId.slice(1))
     }
-    for (const p of m.pois) expect(buildingIds.has(p.buildingId)).toBe(true)
+    for (const p of m.pois.filter((q) => q.buildingId)) expect(buildingIds.has(p.buildingId)).toBe(true)
   })
   // 3 full generations; field-driven irregularity (arterials + streets both
   // sample the noise field per cut now) pushes this past the 5s default
@@ -200,6 +200,25 @@ const district = (id: string, bounds: { x: number; y: number; w: number; h: numb
   irregularity: 0.5, shore: false,
   labelAt: { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 },
   flags: {},
+})
+
+describe('landmark names and POIs', () => {
+  for (const [label, params] of [
+    ['arcologies', { ...base, seed: 42, corpDominance: 0.85 }],
+    ['megablocks', { ...base, seed: 7, landform: 'bay' as const, corpDominance: 0.15 }],
+  ] as const) {
+    it(`every ${label} landmark is named and has exactly one POI at its centre`, () => {
+      const m = generateSector(params)
+      const marks = [...m.arcologies.map((l) => ({ l, type: 'arcology' })), ...m.megablocks.map((l) => ({ l, type: 'megablock' }))]
+      expect(marks.length).toBeGreaterThan(0)
+      for (const { l, type } of marks) {
+        expect(l.name.length).toBeGreaterThan(0)
+        const at = m.pois.filter((p) => p.type === type && p.at.x === l.center.x && p.at.y === l.center.y)
+        expect(at).toHaveLength(1)
+        expect(at[0].name).toBe(l.name)
+      }
+    })
+  }
 })
 
 describe('deriveDistricts', () => {
