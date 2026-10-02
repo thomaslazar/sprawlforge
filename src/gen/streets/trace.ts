@@ -1,4 +1,4 @@
-import { pointAtT, polylineLength, type Pt } from '../geometry'
+import { bboxOf, pointAtT, pointInRings, polylineLength, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import { inWater } from '../sector/bridges'
 import { distToPolyline } from '../terrain/rivers'
@@ -27,6 +27,8 @@ export interface TraceOpts {
   maxTurn?: number
   /** arterials only: continue across a narrow river corridor as a bridge instead of stopping at the bank */
   bridgeRivers?: boolean
+  /** simple polygons (arcology plazas, megablock cores) no streamline may enter */
+  obstacles?: Pt[][]
 }
 
 export const MAJOR: TraceOpts = { separation: 400, step: 10, maxSteps: 600, minLength: 60, jitter: 0, decay: 0, bridgeRivers: true }
@@ -216,6 +218,8 @@ function traceHalf(
   const ownRank = ownRankFor(axis)
   const sameOrHigher = (c: RoadClass) => CLASS_RANK[c] >= ownRank
   const maxTurn = opts.maxTurn ?? Math.PI
+  const obstacles = (opts.obstacles ?? []).map((ring) => ({ ring, box: bboxOf(ring) }))
+  const inObstacle = (q: Pt) => obstacles.some((o) => q.x >= o.box.x && q.x <= o.box.x + o.box.w && q.y >= o.box.y && q.y <= o.box.y + o.box.h && pointInRings(q, [o.ring]))
   const pts: Pt[] = []
   let p = start
   let dir = initDir
@@ -235,6 +239,7 @@ function traceHalf(
       pts.push(clampToWindow(next, sizeM))
       break
     }
+    if (inObstacle(next)) break
     if (inWater(terrain, next) && !(crossWater && inRiverBand(terrain, next, opts.step, corridorWidth))) {
       // arterials bridge a narrow river along their current heading (at most 2 per half)
       const river = terrain.riverSlice
@@ -399,7 +404,7 @@ function tangentAt(points: Pt[], t: number): Pt {
 }
 
 /** seeds every `every` m along a polyline, dir = segment normal, flipping side when alternate */
-export function seedsAlong(points: Pt[], every: number, alternate: boolean): Seed[] {
+export function seedsAlong(points: Pt[], every: number, alternate: boolean, reject?: (p: Pt) => boolean): Seed[] {
   const len = polylineLength(points)
   const seeds: Seed[] = []
   let flip = false
@@ -407,7 +412,8 @@ export function seedsAlong(points: Pt[], every: number, alternate: boolean): See
     const t = dist / len
     const tangent = tangentAt(points, t)
     const normal = { x: -tangent.y, y: tangent.x }
-    seeds.push({ at: pointAtT(points, t), dir: flip && alternate ? { x: -normal.x, y: -normal.y } : normal })
+    const at = pointAtT(points, t)
+    if (!reject?.(at)) seeds.push({ at, dir: flip && alternate ? { x: -normal.x, y: -normal.y } : normal })
     flip = !flip
   }
   return seeds

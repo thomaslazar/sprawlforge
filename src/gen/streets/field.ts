@@ -17,7 +17,7 @@ const GRID_STEP = 20
 export interface Patch { center: Pt; angle: number; size: number; shore: boolean }
 export interface FieldSample { major: Pt; minor: Pt } // unit vectors, minor ⟂ major
 export interface BasisField {
-  name: 'grid' | 'boundary' | 'noise' | 'spine'
+  name: 'grid' | 'boundary' | 'noise' | 'spine' | 'radial'
   /** line-field angle in radians, or null when this basis has nothing to say at p */
   angle(p: Pt): number | null
   weight(p: Pt): number
@@ -251,6 +251,18 @@ function gridBasis(patches: Patch[]): BasisField {
       return sx === 0 && sy === 0 ? 0 : Math.atan2(sy, sx) / 2
     },
     weight: () => 1,
+  }
+}
+
+/** streets converge on `center`: weight 1.5 at rInner fading linearly to 0 at rOuter, 0 inside rInner */
+export function radialBasis(center: Pt, rInner: number, rOuter: number): BasisField {
+  return {
+    name: 'radial',
+    angle: (p) => Math.atan2(center.y - p.y, center.x - p.x),
+    weight(p) {
+      const d = Math.hypot(p.x - center.x, p.y - center.y)
+      return d < rInner || d >= rOuter ? 0 : 1.5 * (1 - (d - rInner) / (rOuter - rInner))
+    },
   }
 }
 

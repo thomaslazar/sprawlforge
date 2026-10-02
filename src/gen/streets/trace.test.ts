@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { polylineLength, type Pt } from '../geometry'
+import { pointInRings, polylineLength, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import { inWater, waterIntervals } from '../sector/bridges'
 import { effectiveIrregularity } from '../sector/zoning'
@@ -506,5 +506,34 @@ describe('snap behind the walker', () => {
       const t = Math.atan2(pts[i].y - pts[i - 1].y, pts[i].x - pts[i - 1].x) - Math.atan2(pts[i - 1].y - pts[i - 2].y, pts[i - 1].x - pts[i - 2].x)
       expect(Math.abs(Math.atan2(Math.sin(t), Math.cos(t)))).toBeLessThanOrEqual((60 * Math.PI) / 180 + 1e-9)
     }
+  })
+})
+
+describe('obstacles', () => {
+  const square: Pt[] = [{ x: 600, y: 450 }, { x: 700, y: 450 }, { x: 700, y: 550 }, { x: 600, y: 550 }]
+
+  it('a streamline stops at an obstacle', () => {
+    const { terrain, irregularityAt } = setup({ landform: 'inland', river: false, lakes: false, irregularity: 0.05 })
+    const field = {
+      sizeM: 2000, patches: [],
+      sample: () => ({ major: { x: 1, y: 0 }, minor: { x: 0, y: 1 } }),
+    } as unknown as RoadField
+    const pts = traceStreamline(
+      field, 'major', { at: { x: 100, y: 500 }, dir: { x: 1, y: 0 } }, terrain, 2000, new RoadIndex(200),
+      { ...MAJOR, obstacles: [square] }, mulberry32(1), irregularityAt,
+    )!
+    const last = pts[pts.length - 1]
+    expect(pointInRings(last, [square])).toBe(false)
+    expect(last.x).toBeLessThanOrEqual(600)
+    expect(600 - last.x).toBeLessThanOrEqual(MAJOR.step)
+  })
+
+  it('seedsAlong rejects seeds inside obstacles', () => {
+    const line: Pt[] = [{ x: 0, y: 500 }, { x: 1000, y: 500 }]
+    const all = seedsAlong(line, 100, false)
+    const kept = seedsAlong(line, 100, false, (p) => pointInRings(p, [square]))
+    expect(all.some((s) => pointInRings(s.at, [square]))).toBe(true)
+    expect(kept.length).toBeLessThan(all.length)
+    expect(kept.some((s) => pointInRings(s.at, [square]))).toBe(false)
   })
 })
