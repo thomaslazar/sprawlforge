@@ -11,8 +11,10 @@ export interface Landmarks { arcologies: Arcology[]; megablocks: Megablock[] }
 const LATTICE = 300
 const JITTER = 90
 const EDGE_MARGIN = 350
-const WATER_MARGIN = 150
-const HIGHWAY_MARGIN = 250
+// clearances beyond a landmark's outer radius (ring road r + 60; megablock core 1.2 x r)
+const WATER_CLEAR = 40
+const HIGHWAY_CLEAR = 150
+const RING_GAP = 60
 const ARC_SPACING = 900
 const MEGA_SPACING = 700
 
@@ -75,15 +77,17 @@ export function placeLandmarks(
         x: Math.min(sizeM - EDGE_MARGIN, Math.max(EDGE_MARGIN, x + (jr.next() * 2 - 1) * JITTER)),
         y: Math.min(sizeM - EDGE_MARGIN, Math.max(EDGE_MARGIN, y + (jr.next() * 2 - 1) * JITTER)),
       }
-      if (inWater(terrain, p) || distToWater(terrain, p) < WATER_MARGIN) continue
-      if (highway && highway.points.length > 1 && distToPolyline(p, highway.points) < HIGHWAY_MARGIN) continue
-      cands.push(p)
+      if (!inWater(terrain, p)) cands.push(p)
     }
+  // per-candidate clearance: water and highway distance must exceed the landmark's outer radius plus a margin
+  const waterD = new Map<Pt, number>(cands.map((c) => [c, distToWater(terrain, c)]))
+  const hwD = new Map<Pt, number>(cands.map((c) => [c, highway && highway.points.length > 1 ? distToPolyline(c, highway.points) : Infinity]))
+  const clear = (c: Pt, outer: number) => waterD.get(c)! >= outer + WATER_CLEAR && hwD.get(c)! >= outer + HIGHWAY_CLEAR
 
   const centre = { x: sizeM / 2, y: sizeM / 2 }
   const arcCentres: Pt[] = []
   for (let k = 0; k < nArc; k++) {
-    const pool = cands.filter((c) => arcCentres.every((a) => dist(a, c) >= ARC_SPACING))
+    const pool = cands.filter((c) => clear(c, radii[k] + RING_GAP) && arcCentres.every((a) => dist(a, c) >= ARC_SPACING))
     if (!pool.length) break
     const score = (c: Pt) => (k === 0 ? -dist(c, centre) : Math.min(...arcCentres.map((a) => dist(a, c))))
     arcCentres.push(pool.reduce((b, c) => (score(c) > score(b) ? c : b)))
@@ -104,7 +108,7 @@ export function placeLandmarks(
   const megaCentres: Pt[] = []
   const taken = (c: Pt) => [...arcCentres, ...megaCentres].every((a) => dist(a, c) >= MEGA_SPACING)
   for (let k = 0; k < nMega; k++) {
-    const pool = cands.filter(taken)
+    const pool = cands.filter((c) => clear(c, 1.2 * megaRadii[k]) && taken(c))
     if (!pool.length) break
     megaCentres.push(pool.reduce((b, c) => (irr(c) > irr(b) ? c : b)))
   }

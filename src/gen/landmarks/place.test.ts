@@ -4,6 +4,7 @@ import { buildRoadField } from '../streets/field'
 import { traceHighway } from '../streets/highway'
 import { distToPolyline } from '../terrain/rivers'
 import { sampleTerrain } from '../terrain'
+import { inWater } from '../sector/bridges'
 import type { SectorParams, Terrain } from '../types'
 import { octagon, placeLandmarks, ringRoad } from './place'
 
@@ -55,7 +56,7 @@ describe('placeLandmarks', () => {
       }))
       const centres = [...out.arcologies, ...out.megablocks].map((l) => l.center)
       for (const c of centres) {
-        for (const line of water) expect(distToPolyline(c, line)).toBeGreaterThanOrEqual(150)
+        for (const line of water) expect(distToPolyline(c, line)).toBeGreaterThanOrEqual(200)
         if (hw.points.length > 1) expect(distToPolyline(c, hw.points)).toBeGreaterThanOrEqual(250)
       }
       for (const a of out.arcologies) {
@@ -64,6 +65,19 @@ describe('placeLandmarks', () => {
       }
     }
   })
+  it('ring roads and cores stay on land and off the highway', () => {
+    let n = 0
+    for (const seed of [42, 7, 99]) for (const corpDominance of [0.85, 0.5, 0.15]) {
+      const { out, terrain, hw } = run(mk({ seed, landform: 'coastal', river: true, corpDominance }))
+      const pts = [...out.arcologies.flatMap((a) => ringRoad(a).points), ...out.megablocks.flatMap((m) => m.core)]
+      n += out.arcologies.length + out.megablocks.length
+      for (const p of pts) {
+        expect(inWater(terrain, p)).toBe(false)
+        if (hw && hw.points.length > 1) expect(distToPolyline(p, hw.points)).toBeGreaterThanOrEqual(100)
+      }
+    }
+    expect(n).toBeGreaterThan(0)
+  }, 90000)
   it('works without a highway', () => {
     expect(run(mk(), false).out.arcologies.length).toBeGreaterThan(0)
   })

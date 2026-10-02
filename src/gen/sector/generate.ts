@@ -102,8 +102,8 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
   const infill: Road[] = []
   const tooBig = (f: Face) => {
     if (Math.abs(ringArea(f.footprint)) <= MAX_BLOCK_M2) return false
-    // a face holding an arcology centre, or touched by a megablock core, is the landmark's ground: nothing is split there
-    if (centres.some((c) => pointInRings(c, [f.footprint])) || cores.some((core) => core.some((p) => pointInRings(p, [f.footprint])))) return false
+    // a face holding an arcology / megablock centre is the landmark's ground: nothing is split there
+    if (centres.some((c) => pointInRings(c, [f.footprint]))) return false
     const c = ringCentroid(f.footprint)
     return !(Math.min(c.x, c.y, sizeM - c.x, sizeM - c.y) < INFILL_NEAR_M
       || inWater(terrain, c)
@@ -120,7 +120,10 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
       const ctr = ringCentroid(ring)
       const { cuts } = bspSplit(bboxOf(ring.map((p) => rotatePt(p, -theta, ctr))), { minCell: 100, gap: 9, jitter: 0.25, rng })
       const pieces: Road[] = []
+      // a face that only overlaps a core keeps its split, minus the cuts that would run through the core
+      const inCore = (p: Pt, q: Pt) => [0, 0.25, 0.5, 0.75, 1].some((t) => cores.some((core) => pointInRings({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t }, [core])))
       const add = (p: Pt, q: Pt) => {
+        if (inCore(p, q)) return
         next += 1
         pieces.push({ id: `S${String(next).padStart(3, '0')}`, class: 'street', points: [p, q], width: 9, name: null })
       }
@@ -184,6 +187,8 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
           if (best) r.points[end] = best
         }
       }
+      // loose ends were run on above: one that now reaches into a core goes
+      for (let i = pieces.length - 1; i >= 0; i--) if (inCore(pieces[i].points[0], pieces[i].points[1])) pieces.splice(i, 1)
       // a piece must be anchored at both ends (another piece, or the face ring away from the highway); dead ends go
       const closed = [...f.footprint, f.footprint[0]]
       const anchored = (e: Pt, self: Road) => (!(highway && distToPolyline(e, highway.points) <= 8) && distToPolyline(e, closed) <= 6)

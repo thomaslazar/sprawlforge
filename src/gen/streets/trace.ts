@@ -276,7 +276,7 @@ function traceHalf(
       for (let k = 0; k <= 2 && k <= pts.length && keep < 0; k++) if (aheadAt(pts.length - k)) keep = pts.length - k
       if (keep >= 0) {
         pts.length = keep
-        pts.push(foot)
+        if (!inObstacle(foot)) pts.push(foot)
         break
       }
     }
@@ -299,7 +299,7 @@ function traceHalf(
       // void it blocked stays empty): end it on that road instead, if the foot lies ahead of the walker
       const foot = hitPar.at
       const join = angleGapLines(Math.atan2(foot.y - p.y, foot.x - p.x), hitPar.segAngle)
-      if (!opts.bridgeRivers && hitPar.cls !== 'highway' && hitPar.edge >= 6 && join > JOIN_MIN_ANGLE && pts.length * opts.step >= 0.5 * sep && (foot.x - p.x) * dir.x + (foot.y - p.y) * dir.y > 0) pts.push(foot)
+      if (!opts.bridgeRivers && hitPar.cls !== 'highway' && hitPar.edge >= 6 && join > JOIN_MIN_ANGLE && pts.length * opts.step >= 0.5 * sep && (foot.x - p.x) * dir.x + (foot.y - p.y) * dir.y > 0 && !inObstacle(foot)) pts.push(foot)
       break
     }
 

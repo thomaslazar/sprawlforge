@@ -54,6 +54,11 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     ? buildRoadField(params, terrain, sizeM, arcologies.map((a) => radialBasis(a.center, a.radius + 60, 800)))
     : baseField
   const ringRoads = arcologies.map(ringRoad)
+  // spokes are seeded first (nothing later can kill them), each heading straight out from its arcology
+  const spokeSeeds = arcologies.flatMap((a, i) => seedsAlong(ringRoads[i].points, RING_SEED_M, false).map((x) => {
+    const dx = x.at.x - a.center.x, dy = x.at.y - a.center.y, len = Math.hypot(dx, dy) || 1
+    return { ...x, dir: { x: dx / len, y: dy / len } }
+  }))
   const plazas = arcologies.map((a) => a.plaza)
   const cores = megablocks.map((k) => k.core)
 
@@ -66,8 +71,8 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   const arterialsRaw = traceLayer(
     field, 'major',
     [
+      ...crossing(field, spokeSeeds),
       ...(highway ? crossing(field, seedsAlong(highway.points, 400, false)) : []),
-      ...ringRoads.flatMap((r) => crossing(field, seedsAlong(r.points, RING_SEED_M, false))),
       ...riverCrossingSeeds(terrain, arterialRng),
       ...poissonSeeds(sizeM, 400, arterialRng, (p: Pt) => !inWater(terrain, p) && !pointInRings(p, plazas)),
     ],
