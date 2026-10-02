@@ -434,6 +434,7 @@ export function fillLots(
     const cc = ringCentroid(block.footprint)
     const arc = landmarks?.arcologies.find((a) => pointInRings(cc, [a.plaza]))
     if (arc) { outBlocks.push({ ...block, style: 'plaza', alleys: [], flags: { ...block.flags, arcology: arc.id } }); continue }
+    // a second megablock centred in the same block gets no hive (placement keeps them >= 700 m apart)
     const mega = landmarks?.megablocks.find((m) => pointInRings(m.center, [block.footprint]))
     if (mega) {
       const hive = megablockHive(block.footprint, megaRng, (clipped) => (noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, near, convexNb, nearTie) : clipped))

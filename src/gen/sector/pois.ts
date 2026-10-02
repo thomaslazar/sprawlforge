@@ -32,7 +32,8 @@ export function placePois(
 
   for (const district of districts) {
     const candidates = buildings.filter((b) => b.districtId === district.id
-      && !plazas.some((p) => pointInRings(ringCentroid(b.footprint), [p])))
+      && !plazas.some((p) => pointInRings(ringCentroid(b.footprint), [p]))
+      && !landmarks.megablocks.some((m) => m.footprint.length > 0 && pointInRings(ringCentroid(b.footprint), [m.footprint])))
     const types = pack.poiTypes.filter((t) => t.zones.includes(district.zone) && t.type !== 'arcology' && t.type !== 'megablock')
     if (types.length === 0 || candidates.length === 0) continue
     const count = Math.min(

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Pt, Rect } from '../geometry'
 import { getPack } from '../names/packs'
 import type { Building, District, SectorParams } from '../types'
+import { generateSector } from './generate'
 import { placePois } from './pois'
 
 const rectPoly = (r: Rect): Pt[] => [
@@ -109,5 +110,14 @@ describe('placePois', () => {
         for (const p of pois) expect(p.at.x).toBeGreaterThan(100)
       }
     })
+  })
+  it('lottery never places a POI inside a megablock hive', { timeout: 90000 }, () => {
+    const m = generateSector({ ...base, seed: 7, corpDominance: 0.15, landform: 'bay' })
+    const hiveIds = new Set(m.blocks.filter((b) => b.flags.megablock).map((b) => b.id))
+    expect(m.megablocks.length).toBeGreaterThan(0)
+    for (const id of hiveIds) expect(m.buildings.filter((b) => b.blockId === id).length).toBeGreaterThanOrEqual(6)
+    const byId = new Map(m.buildings.map((b) => [b.id, b]))
+    for (const p of m.pois) if (p.buildingId) expect(hiveIds.has(byId.get(p.buildingId)!.blockId)).toBe(false)
+    expect(m.pois.filter((p) => p.type === 'megablock')).toHaveLength(m.megablocks.length)
   })
 })
