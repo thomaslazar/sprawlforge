@@ -1,6 +1,7 @@
 import type { SectorModel } from '../gen/types'
 import type { Theme } from './theme'
 import { renderHighway, renderJunctionMarkers } from './highway'
+import { megablockCores, renderLandmarkLabels, renderLandmarks } from './landmarks'
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -176,6 +177,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   }
   out.push('</g>')
 
+  const cores = megablockCores(model)
   if (interactive) {
     const byDistrict = new Map<string, string[]>()
     for (const b of model.buildings) {
@@ -197,13 +199,17 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     }
   }
 
+  renderLandmarks(model, theme, out, cores)
+
   // alleys: thin translucent strokes between buildings, under the streets
   const alleyPath = (blocks: typeof model.blocks) => {
     const d = blocks.flatMap((b) => b.alleys.map(([a, c]) => `M${n(a.x)},${n(a.y)}L${n(c.x)},${n(c.y)}`)).join(' ')
     return d ? `<path data-alleys="1" d="${d}" fill="none" stroke="${theme.road.street}" stroke-width="2" stroke-opacity="0.5"/>` : ''
   }
-  if (interactive) out.push(alleyPath(model.blocks))
-  else for (const b of model.blocks) out.push(alleyPath([b]))
+  // megablock blocks' alleys are drawn by renderLandmarks in their own colour
+  const plain = model.blocks.filter((b) => !b.flags.megablock)
+  if (interactive) out.push(alleyPath(plain))
+  else for (const b of plain) out.push(alleyPath([b]))
 
   // streets → arterials → ramps; the highway itself is drawn per level by
   // renderHighway once it has segments
@@ -292,6 +298,8 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
       `<text x="${n(cx + dx)}" y="${n(cy + dy)}" fill="${theme.districtLabel}" font-size="${n(fontD)}" text-anchor="middle" opacity="0.85">${esc(d.name)}</text>`,
     )
   }
+
+  renderLandmarkLabels(model, theme, out, fontD)
 
   // markers first (all pois, model order, hover tooltip carries the name even
   // when the visible label loses the placement contest)

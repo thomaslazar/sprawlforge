@@ -8,4 +8,10 @@ describe('themes', () => {
       for (const k of ['trench', 'column', 'hatch'] as const) expect(t.highway[k]).toMatch(/^#[0-9a-f]{6}$/i)
     }
   })
+  it('every theme defines arcology and megablock colours', () => {
+    for (const t of Object.values(themes)) {
+      for (const c of [t.arcology.fill, t.arcology.stroke, t.arcology.ring, t.megablock.fill, t.megablock.alley])
+        expect(c).toMatch(/^#[0-9a-f]{6}$/i)
+    }
+  })
 })

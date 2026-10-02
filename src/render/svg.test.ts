@@ -321,3 +321,24 @@ describe('alleys', () => {
     expect(svg.indexOf('data-alleys')).toBeLessThan(svg.indexOf('data-streets'))
   })
 })
+
+describe('landmarks', () => {
+  const corp = generateSector({ ...base, landform: 'inland', corpDominance: 0.85 })
+  const fringe = generateSector({ ...base, seed: 7, landform: 'bay', corpDominance: 0.15 })
+  it('renders arcology and megablock marks', { timeout: 90000 }, () => {
+    expect(corp.arcologies.length).toBeGreaterThan(0)
+    expect(fringe.megablocks.length).toBeGreaterThan(0)
+    for (const interactive of [false, true]) {
+      const a = renderSector(corp, getTheme('neon'), { interactive })
+      for (const k of corp.arcologies) {
+        expect(a).toContain(`data-arcology="${k.id}"`)
+        expect(a).toContain(k.name.replace(/&/g, '&amp;'))
+      }
+      expect(a.match(/<polygon[^>]*data-arcology/g)!.length).toBe(corp.arcologies.length)
+      expect(a.indexOf('data-arcology')).toBeLessThan(a.indexOf('<polyline'))
+      const m = renderSector(fringe, getTheme('neon'), { interactive })
+      for (const k of fringe.megablocks) expect(m).toContain(`data-megablock="${k.id}"`)
+      expect(m).toContain('data-landmark-label=""') // valueless attrs are invalid XML, which breaks PNG export
+    }
+  })
+})

@@ -7,9 +7,10 @@
 2b. **Tensor-field streets** ✅ — `docs/specs/2026-09-29-tensor-streets-design.md`
    (PR #6): highway levels, field streamlines, planar-graph faces, block
    styles. Open follow-ups below.
-2c. **Cyberpunk layer** — *in progress*, part 1 (arcologies, megablocks):
-   `docs/specs/2026-10-02-cyberpunk-layer-design.md`. **Part 2 is wanted
-   next:** highway frontage strips and walled corporate compounds.
+2c. **Cyberpunk layer, part 1** (arcologies, megablocks) ✅ —
+   `docs/specs/2026-10-02-cyberpunk-layer-design.md`.
+2d. **Cyberpunk layer, part 2** — *next, wanted:* highway frontage strips
+   and walled corporate compounds.
 3. **Metroplex generator** — parent of sectors, proves linkage chain.
    Candidate metroplex-scale landform: **city on an island** — a whole
    metro occupying an island, distinct from the sector-scale `islands`

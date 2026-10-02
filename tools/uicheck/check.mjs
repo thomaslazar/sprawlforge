@@ -354,6 +354,17 @@ if ((await countAttr(page, 'svg [data-buildings]')) < 50)
 if ((await page.locator('svg').innerHTML()) === svgPlanned)
   fail('planned and sprawl render identically')
 
+// cyberpunk landmarks: corp-run inland has arcologies, fringe bay has megablocks
+await page.goto(`${BASE}/?seed=42&tags=inland,corp-run`)
+await page.waitForSelector('svg')
+await page.screenshot({ path: `${OUT}/landmarks-arcology.png` })
+if ((await page.locator('svg [data-arcology]').count()) < 1) fail('corp-run: no arcology rendered')
+
+await page.goto(`${BASE}/?seed=7&tags=bay,fringe`)
+await page.waitForSelector('svg')
+await page.screenshot({ path: `${OUT}/landmarks-megablock.png` })
+if ((await page.locator('svg [data-megablock]').count()) < 1) fail('fringe: no megablock rendered')
+
 // water-heavy organic fabric: crooked streets + bridges coexist
 await page.goto(`${BASE}/?seed=42&tags=coastal,river,sprawl,small`)
 await page.waitForSelector('svg')
