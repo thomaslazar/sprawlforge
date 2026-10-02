@@ -1,6 +1,5 @@
-import { simplifyPolyline, type Pt } from '../geometry'
+import { pointInRings, simplifyPolyline, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
-import { pointInRings } from '../geometry'
 import { placeLandmarks, ringRoad } from '../landmarks/place'
 import { buildRoadField, radialBasis, type RoadField } from '../streets/field'
 import { traceHighway } from '../streets/highway'

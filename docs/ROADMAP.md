@@ -9,6 +9,14 @@
    styles. Open follow-ups below.
 2c. **Cyberpunk layer, part 1** (arcologies, megablocks) ✅ —
    `docs/specs/2026-10-02-cyberpunk-layer-design.md`.
+   Known limitations / follow-ups:
+   - obstacle and plaza/core tests check road vertices only (10 m step); a segment can clip a corner
+   - two megablocks centred in one block face: only the first gets a core building
+   - an arterial may cross a megablock core (core clipped to its block, other half gets normal lots)
+   - spoke invariant sits at 3 on seed 7
+   - `megablock.alley` colour overlaps other theme colours in print/blueprint/tokyo-night
+   - obstacle bboxes are rebuilt per streamline half (perf)
+   - landmark tests cover two seeds only
 2d. **Cyberpunk layer, part 2** — *next, wanted:* highway frontage strips
    and walled corporate compounds.
 3. **Metroplex generator** — parent of sectors, proves linkage chain.

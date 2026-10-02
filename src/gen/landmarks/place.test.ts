@@ -55,6 +55,7 @@ describe('placeLandmarks', () => {
         const l = r.map(([x, y]) => ({ x, y })); return [[...l, l[0]]]
       }))
       const centres = [...out.arcologies, ...out.megablocks].map((l) => l.center)
+      expect(centres.length).toBeGreaterThan(0)
       for (const c of centres) {
         for (const line of water) expect(distToPolyline(c, line)).toBeGreaterThanOrEqual(200)
         if (hw.points.length > 1) expect(distToPolyline(c, hw.points)).toBeGreaterThanOrEqual(250)
@@ -63,6 +64,7 @@ describe('placeLandmarks', () => {
         for (const b of out.arcologies) if (a !== b) expect(d(a.center, b.center)).toBeGreaterThanOrEqual(900)
         for (const m of out.megablocks) expect(d(a.center, m.center)).toBeGreaterThanOrEqual(700)
       }
+      for (const a of out.megablocks) for (const b of out.megablocks) if (a !== b) expect(d(a.center, b.center)).toBeGreaterThanOrEqual(700)
     }
   })
   it('ring roads and cores stay on land and off the highway', () => {

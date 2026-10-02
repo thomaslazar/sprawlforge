@@ -18,6 +18,9 @@ const RING_GAP = 60
 const ARC_SPACING = 900
 const MEGA_SPACING = 700
 
+/** id prefix of arcology ring roads */
+export const RING_ID_PREFIX = 'K'
+
 export function octagon(center: Pt, radius: number, angle: number, jitter: (i: number) => number = () => 1): Pt[] {
   return Array.from({ length: 8 }, (_, i) => {
     const a = angle + (i * Math.PI) / 4
@@ -61,7 +64,7 @@ export function placeLandmarks(
   const rng = mulberry32(hashSeed(params.seed, 'landmarks'))
   const [aLo, aHi, mLo, mHi] = countRanges(params.corpDominance)
   const cap = sizeM <= 2000 ? 1 : Infinity
-  // draw order is fixed: arcology count, radii, megablock count, jitters
+  // draw order is fixed: arcology count, radii, megablock count, jitters, megaRadii
   const nArc = Math.min(rng.int(aLo, aHi), cap)
   const radii = Array.from({ length: nArc }, () => rng.int(100, 180))
   const nMega = Math.min(rng.int(mLo, mHi), cap)
@@ -100,7 +103,7 @@ export function placeLandmarks(
       id: `ARC${i + 1}`, name: '', center, radius,
       footprint: octagon(center, radius, angle),
       plaza: octagon(center, radius + 40, angle),
-      ringRoadId: `K${i + 1}`,
+      ringRoadId: `${RING_ID_PREFIX}${i + 1}`,
     }
   })
 

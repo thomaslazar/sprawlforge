@@ -454,6 +454,19 @@ describe('pruneDangling', () => {
     const out = run([B, ...chain], dry, { accept: () => true, interiorOnly: true, minLength: 50 })
     expect(out.map((r) => r.id)).toEqual(['B'])
   })
+  it('pruneDangling keeps side streets anchored on a trunk that is cut back', () => {
+    const st = (id: string, a: Pt, b: Pt) => road(id, [a, b], 'street')
+    const ar = [
+      road('AR1', [{ x: 0, y: 100 }, { x: 1000, y: 100 }]),
+      road('AR2', [{ x: 700, y: 0 }, { x: 700, y: 1000 }]),
+    ]
+    const trunk = st('T', { x: 500, y: 100 }, { x: 500, y: 800 }) // free end at y=800
+    const rungs = [st('R1', { x: 500, y: 300 }, { x: 700, y: 300 }), st('R2', { x: 500, y: 500 }, { x: 700, y: 500 })]
+    const out = run([...ar, trunk, ...rungs], dry, { accept: () => true, interiorOnly: true, minLength: 60 })
+    expect(out.map((r) => r.id).sort()).toEqual(['AR1', 'AR2', 'R1', 'R2', 'T'])
+    const t = out.find((r) => r.id === 'T')!
+    expect(t.points.at(-1)!.y).toBeCloseTo(500, 0)
+  })
   it('pruneDangling keeps a decay cul-de-sac', () => {
     const A = road('A', [{ x: 0, y: 500 }, { x: 600, y: 500 }])
     const out = run([A, B], dry, { ...opts, keep: new Set([endKey({ x: 600, y: 500 })]) })

@@ -1,6 +1,6 @@
 # Cyberpunk Layer, Part 1: Arcologies and Megablocks — Design
 
-Status: approved in brainstorm, spec for review
+Status: implemented on `spec/cyberpunk-layer` (2026-10-02)
 Branch: `spec/cyberpunk-layer`
 Depends on: `docs/specs/2026-09-29-tensor-streets-design.md` (merged, PR #6)
 Deferred to part 2 (user wants both): highway frontage strips, walled

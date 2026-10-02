@@ -1,5 +1,6 @@
 import { bboxOf, pointAtT, pointInRings, polylineLength, type Pt } from '../geometry'
 import type { Rng } from '../rng'
+import { RING_ID_PREFIX } from '../landmarks/place'
 import { inWater } from '../sector/bridges'
 import { distToPolyline } from '../terrain/rivers'
 import type { Road, RoadClass, Terrain } from '../types'
@@ -227,7 +228,7 @@ function traceHalf(
   // parent exclusion (rules 3 and 4): only while the trace is
   // still within 0.35 × sep of the seed; beyond that the parent is ordinary
   // an arcology ring (id K<n>) is a closed circle: a spoke leaving it is never a twin of the far side
-  const isRing = (id: string) => id.startsWith('K')
+  const isRing = (id: string) => id.startsWith(RING_ID_PREFIX)
   const isSourceAt = (id: string, at: Pt) =>
     id === sourceId && Math.hypot(at.x - seedAt.x, at.y - seedAt.y) < 0.35 * opts.separation
   for (let i = 0; i < opts.maxSteps; i++) {
