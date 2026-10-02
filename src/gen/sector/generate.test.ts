@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { pointAtT, pointInRings, polylineLength, ringArea, ringCentroid, type Pt } from '../geometry'
 import { ISLET_MOAT_OUTER_FACTOR, ISLET_RADIUS_MAX } from '../terrain/field'
 import { GENERATOR_VERSION, type Block, type District, type SectorParams, type Terrain } from '../types'
@@ -508,7 +508,7 @@ describe('coast-aligned streets', () => {
       [{ ...base, seed: 42, landform: 'coastal', river: true }, 17],
     ]
     for (const [params, max] of cases) {
-      const m = generateSector(params)
+      const m = modelFor(params)
       const bad: string[] = []
       for (const b of m.blocks) {
         const xs = b.footprint.map((p) => p.x), ys = b.footprint.map((p) => p.y)
@@ -712,6 +712,14 @@ describe('landmarks in road tracing', () => {
   })
 })
 
+/** one generateSector per distinct params across the slow 6 km describes */
+const modelCache = new Map<string, ReturnType<typeof generateSector>>()
+const modelFor = (params: SectorParams) => {
+  const k = JSON.stringify(params)
+  if (!modelCache.has(k)) modelCache.set(k, generateSector(params))
+  return modelCache.get(k)!
+}
+
 describe('no hairpin spokes', () => {
   const models: [string, SectorParams][] = [
     ['seed 782008753 inland 6 km', { ...base, seed: 782008753, size: 6, landform: 'inland', density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, river: true, lakes: true, islands: true, piers: true, pack: 'generic', theme: 'print' }],
@@ -743,13 +751,14 @@ describe('lakes bound blocks', () => {
     ['seed 42 inland corp 0.85', { ...base, corpDominance: 0.85 }],
     ['seed 7 bay corp 0.15', { ...base, seed: 7, landform: 'bay', corpDominance: 0.15 }],
   ]
-  for (const [label, params] of models) {
-    const m = generateSector(params)
-    it(`no alley point lies in water (${label})`, () => {
+  for (const [label, params] of models) describe(label, () => {
+    let m: ReturnType<typeof generateSector>
+    beforeAll(() => { m = modelFor(params) }, 90000)
+    it(`no alley point lies in water `, () => {
       const bad = m.blocks.filter((b) => b.alleys.some(([p, q]) => [p, q, { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }].some((s) => inWater(m.terrain, s)))).map((b) => b.id)
       expect(bad).toEqual([])
     })
-    it(`no street point lies in water, no street end sits on a lake shore (${label})`, () => {
+    it(`no street point lies in water, no street end sits on a lake shore `, () => {
       const streets = m.roads.filter((r) => r.class === 'street')
       expect(streets.filter((r) => r.points.some((p) => inWater(m.terrain, p))).map((r) => r.id)).toEqual([])
       if (!params.lakes) return
@@ -763,7 +772,7 @@ describe('lakes bound blocks', () => {
       // river/sea shore stubs of >= 150 m stay: some street end sits at a river/sea shore
       expect(ends.filter((e) => !isLakeShore(m.terrain, e, sizeM)).length).toBeGreaterThan(0)
     })
-    it(`no big block has its centroid in a lake (${label})`, () => {
+    it(`no big block has its centroid in a lake `, () => {
       const bad = m.blocks.filter((b) => {
         if (!inWater(m.terrain, ringCentroid(b.footprint))) return false
         const xs = b.footprint.map((p) => p.x), ys = b.footprint.map((p) => p.y)
@@ -776,5 +785,5 @@ describe('lakes bound blocks', () => {
       }).map((b) => b.id)
       expect(bad).toEqual([])
     })
-  }
+  })
 })

@@ -209,7 +209,7 @@ user. These amend §3, §5 and §7; part 2 (C, D) is unchanged.
    octagon are unchanged; the design only changes the drawing and the
    name pattern pool:
    - `rings`: the current octagon with inner octagons at 0.66 r, 0.33 r.
-   - `ziggurat`: a square of half-side r rotated to the field, nested
+   - `ziggurat`: a square inscribed in radius r (half-side r/√2), rotated to the field, nested
      squares at 0.75, 0.5, 0.25 r, and four diagonals from the outer
      corners to the innermost square's corners (a stepped pyramid from
      above). Name pool: Ziggurat / Pyramid patterns.
@@ -226,6 +226,9 @@ user. These amend §3, §5 and §7; part 2 (C, D) is unchanged.
    design's outer shape (octagon, square, or the convex hull of the
    cluster/satellite shapes) so `data-arcology` and the POI stay valid.
    Every theme draws all four designs with the existing `arcology` keys.
+   For ziggurat/cluster/satellites the hull outline is drawn unfilled with
+   a 1 px `arcology.ring` stroke; the structures carry `arcology.fill` and
+   the 2 px `arcology.stroke`; rings is unchanged.
 6. **Tests** per item: megablock block has ≥ 6 buildings, all inside the
    hive footprint, and no other lots; no arterial with both ends on one
    ring shorter than half its circumference; no alley point in water and

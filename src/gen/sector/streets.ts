@@ -31,8 +31,9 @@ const finalize = (roads: Road[], terrain: Terrain, index: RoadIndex, maxStub = 4
 /** a ~1 km ring gets only 2 seeds at the 400 m arterial spacing, and some die on neighbours: 200 m keeps >= 4 spokes */
 const RING_SEED_M = 200
 /** a spoke that leaves its ring and snaps back onto it (both ends within 6 m, shorter than half a lap) is a hairpin: drop it; zero-length ones too */
-const dropHairpins = (roads: Road[], rings: Road[], arcologies: Arcology[]) => roads.filter((r) => !rings.some((k, i) =>
-  r.points.length === 0 || (distToPolyline(r.points[0], k.points) <= 6 && distToPolyline(r.points[r.points.length - 1], k.points) <= 6
+// rings[i] pairs 1:1 with arcologies[i] (both built by arcologies.map(ringRoad))
+const dropHairpins = (roads: Road[], rings: Road[], arcologies: Arcology[]) => roads.filter((r) => r.points.length > 0 && !rings.some((k, i) =>
+  (distToPolyline(r.points[0], k.points) <= 6 && distToPolyline(r.points[r.points.length - 1], k.points) <= 6
     && polylineLength(r.points) < Math.PI * (arcologies[i].radius + 60))))
 /** a street stub may end at a river/sea shore (never a lake) and only if >= 150 m long, so it reads as a street to the water */
 export const streetWaterAnchor = (terrain: Terrain, sizeM: number) => (p: Pt, stub: number) => stub >= 150 && !isLakeShore(terrain, p, sizeM)

@@ -220,7 +220,7 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
           if (!anchored(r.points[0], r) || !anchored(r.points[1], r)) { pieces.splice(i, 1); again = true }
         }
       }
-      // the sub-faces lie inside f.footprint, which is already land: no land clipping needed
+      // footprints may contain water: sub-faces with no land are dropped (landM2 > 0), the rest keep their footprint
       const sub: Face[] = pieces.length ? dropSlivers(facesOf(pruneDanglers(buildPlanarGraph(pieces, [f.footprint, ...gaps])))).map((poly) => ({ poly, footprint: poly })).filter((x) => landM2(x.footprint) > 0) : []
       if (sub.length < 2) { out.push(f); continue }
       infill.push(...pieces)
