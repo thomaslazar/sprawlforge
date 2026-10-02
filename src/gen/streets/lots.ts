@@ -4,6 +4,7 @@ import { hashSeed, mulberry32 } from '../rng'
 import { fractalNoise2D } from '../terrain/noise'
 import { inWater } from '../sector/bridges'
 import type { Block, BlockStyle, Building, District, SectorParams, Terrain, ZoneType } from '../types'
+import type { Landmarks } from '../landmarks/place'
 
 export const ZONE_BUILD: Record<ZoneType, { minCell: number; fill: number }> = {
   corp: { minCell: 60, fill: 0.7 },
@@ -361,19 +362,36 @@ export function clipSegmentToRing(a: Pt, b: Pt, ring: Pt[]): Array<[Pt, Pt]> {
   return out
 }
 
+/** a megablock core's single building (core inset 3 m, concave allowed) and its BSP alleys clipped to the core */
+function megablockCore(core: Pt[], rng: ReturnType<typeof mulberry32>): { footprint: Pt[] | null; alleys: Array<[Pt, Pt]> } {
+  const footprint = insetRing(core, 3) ?? insetByClipping(core, 3).sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)))[0] ?? null
+  const alleys: Array<[Pt, Pt]> = []
+  for (const { axis, strip } of bspSplit(bboxOf(core), { minCell: 60, gap: 3, jitter: 0.25, rng }).cuts) {
+    const [a, b] = axis === 'x'
+      ? [{ x: strip.x + strip.w / 2, y: strip.y }, { x: strip.x + strip.w / 2, y: strip.y + strip.h }]
+      : [{ x: strip.x, y: strip.y + strip.h / 2 }, { x: strip.x + strip.w, y: strip.y + strip.h / 2 }]
+    alleys.push(...clipSegmentToRing(a, b, core))
+  }
+  return { footprint, alleys }
+}
+
 export function fillLots(
   districts: District[],
   blocks: Block[],
   params: SectorParams,
   terrain: Terrain,
-  noBuild: Pt[][],
+  noBuildIn: Pt[][],
   forceStyle?: BlockStyle,
+  landmarks?: Landmarks,
 ): { buildings: Building[]; blocks: Block[] } {
   const rng = mulberry32(hashSeed(params.seed, 'buildings'))
   // own stream: notches must not reshuffle the lots the main stream lays out
   const notchRng = mulberry32(hashSeed(params.seed, 'notches'))
   const neighbourhood = fractalNoise2D(hashSeed(params.seed, 'neighbourhood'), 2)
   const districtById = new Map(districts.map((d) => [d.id, d]))
+  // megablock cores are no-build strips for the surrounding lots (few, so global)
+  const noBuild = [...noBuildIn, ...(landmarks?.megablocks.map((m) => m.core) ?? [])]
+  const megaRng = mulberry32(hashSeed(params.seed, 'megablocks'))
   const noBuildPolys = noBuild.map((nb) => [toRing(nb)])
   const noBuildBoxes = noBuild.map(boxOf)
   const convexNb = noBuild.map(isConvex)
@@ -403,6 +421,18 @@ export function fillLots(
     const district = districtById.get(block.districtId)
     if (!district) { outBlocks.push(block); continue }
     const cc = ringCentroid(block.footprint)
+    const arc = landmarks?.arcologies.find((a) => pointInRings(cc, [a.plaza]))
+    if (arc) { outBlocks.push({ ...block, style: 'plaza', alleys: [], flags: { ...block.flags, arcology: arc.id } }); continue }
+    const mega = landmarks?.megablocks.find((m) => pointInRings(m.center, [block.footprint]))
+    let coreAlleys: Array<[Pt, Pt]> = []
+    if (mega) {
+      const core = megablockCore(mega.core, megaRng)
+      coreAlleys = core.alleys
+      if (core.footprint) {
+        n += 1
+        buildings.push({ id: `BLD${String(n).padStart(4, '0')}`, blockId: block.id, districtId: district.id, footprint: core.footprint })
+      }
+    }
     const chosen = forceStyle ?? chooseStyle(district.zone, params.density, neighbourhood(cc.x / 500, cc.y / 500))
     let blockStyle: BlockStyle = 'rows'
     const alleys: Array<[Pt, Pt]> = []
@@ -526,7 +556,9 @@ export function fillLots(
         })
     }
     }
-    outBlocks.push({ ...block, style: blockStyle, alleys })
+    outBlocks.push(mega
+      ? { ...block, style: 'megablock', alleys: coreAlleys, flags: { ...block.flags, megablock: mega.id } }
+      : { ...block, style: blockStyle, alleys })
   }
 
   return { buildings, blocks: outBlocks }

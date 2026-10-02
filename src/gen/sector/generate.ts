@@ -305,7 +305,7 @@ export function generateSector(params: SectorParams): SectorModel {
   const { buildings, blocks } = fillLots(namedDistricts, rawBlocks, params, terrain, [
     ...(highway ? noBuildStrips(highway, segments) : []),
     ...roads.filter((r) => r.class !== 'highway').flatMap((r) => corridorRects(r.points, r.width / 2 + SIDEWALK)),
-  ])
+  ], undefined, { arcologies, megablocks })
   const finalDistricts = deriveDistricts(namedDistricts, blocks)
   const pois = placePois(finalDistricts, buildings, pack, params)
   const piers = placePiers(finalDistricts, terrain, params)

@@ -2,6 +2,7 @@ import polygonClipping from 'polygon-clipping'
 import { describe, expect, it, vi } from 'vitest'
 import { pointInRings, ringArea, type Pt } from '../geometry'
 import type { Block, District, SectorParams, Terrain } from '../types'
+import { generateSector } from '../sector/generate'
 import { corridorRects, fillLots as fillLotsFull, insetByClipping, insetRing } from './lots'
 
 // pre-style tests assumed BSP rows everywhere, so the shared helper forces 'rows'
@@ -283,6 +284,38 @@ describe('fillLots', () => {
       expect(hit.length).toBe(clean.length - 1)
     } finally {
       spy.mockRestore()
+    }
+  })
+})
+
+describe('landmark blocks', () => {
+  // 4 km generates are slow: one model per seed, shared across the its
+  const arc = generateSector({ ...base, seed: 42, size: 4, corpDominance: 0.85, landform: 'inland' })
+  const mega = generateSector({ ...base, seed: 7, size: 4, corpDominance: 0.15, landform: 'bay' })
+  it('arcology blocks have no buildings', () => {
+    const flagged = arc.blocks.filter((b) => b.flags.arcology)
+    expect(flagged.length).toBeGreaterThan(0)
+    for (const b of flagged) {
+      expect(b.alleys).toEqual([])
+      expect(arc.buildings.filter((x) => x.blockId === b.id)).toEqual([])
+    }
+  })
+  it('a megablock core is exactly one building with alleys', () => {
+    expect(mega.megablocks.length).toBeGreaterThan(0)
+    for (const m of mega.megablocks) {
+      const block = mega.blocks.find((b) => b.flags.megablock === m.id)!
+      expect(block.style).toBe('megablock')
+      expect(block.alleys.length).toBeGreaterThanOrEqual(1)
+      const inCore = mega.buildings.filter((x) => x.blockId === block.id && x.footprint.every((p) => pointInRings(p, [m.core])))
+      expect(inCore).toHaveLength(1)
+    }
+  })
+  it('lots around a megablock never overlap the core', () => {
+    for (const m of mega.megablocks) {
+      const block = mega.blocks.find((b) => b.flags.megablock === m.id)!
+      const others = mega.buildings.filter((x) => x.blockId === block.id).filter((x) => !x.footprint.every((p) => pointInRings(p, [m.core])))
+      expect(others.length).toBeGreaterThan(0)
+      for (const b of others) expect(b.footprint.some((p) => strictlyInside(p, m.core))).toBe(false)
     }
   })
 })
