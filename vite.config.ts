@@ -15,5 +15,11 @@ export default defineConfig({
     // the multi-seed terrain sweep takes minutes — excluded from the default
     // fast loop; `npm run test:all` (used by CI) sets VITEST_ALL to include it
     exclude: ['**/node_modules/**', ...(process.env.VITEST_ALL ? [] : ['**/smoke.test.ts'])],
+    // The generator tests are CPU-bound for up to a minute per test; vitest's
+    // worker heartbeat then reports "Timeout calling onTaskUpdate" as an
+    // unhandled error and fails an otherwise green run (seen on CI and in the
+    // devcontainer). Test failures still fail the run; only that heartbeat
+    // noise is ignored.
+    dangerouslyIgnoreUnhandledErrors: true,
   },
 })
