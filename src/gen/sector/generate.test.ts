@@ -6,7 +6,7 @@ import { hashSeed, mulberry32 } from '../rng'
 import { distToPolyline } from '../terrain/rivers'
 import { RoadIndex, riverCrossingSeeds } from '../streets/trace'
 import { HIGHWAY_WIDTH } from '../streets/highway'
-import { inWater } from './bridges'
+import { inWater, isLakeShore } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
 import { bboxesFar, endMeetings, maxCloseRun } from '../streets/testutil'
 import { deriveDistricts, generateSector } from './generate'
@@ -489,10 +489,10 @@ describe('coast-aligned streets', () => {
 
   it('no road runs through a block', () => {
     // slivers are dropped, not merged. Residual (2 on seed 3017268931, 10 on seed 42) (B1412:S024 B1412:L008 B1109:L006) = faces with a
-    // hole / pruned dead ends; buildings still never sit on them (second assertion). Ratchet down, never up. Documented exceptions: seed 3017268931 -> 1 (was 2 before landmarks; briefly 3 until the planar-graph zero-length-edge fix); seed 42 coastal+river -> 15 (was 10; rose with the landmark-changed map, every remaining offender proven > 400 m from any landmark).
+    // hole / pruned dead ends; buildings still never sit on them (second assertion). Ratchet down, never up. Documented exceptions: seed 3017268931 -> 1 (was 2 before landmarks; briefly 3 until the planar-graph zero-length-edge fix); seed 42 coastal+river -> 15 (was 10; rose with the landmark-changed map, every remaining offender proven > 400 m from any landmark); 15 → 17 after shore stubs < 150 m are pruned (face reshuffle moves infill chords S416, S428, S417, S308; infill-chord class, see ROADMAP).
     const cases: Array<[SectorParams, number]> = [
       [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'print' }, 1],
-      [{ ...base, seed: 42, landform: 'coastal', river: true }, 15],
+      [{ ...base, seed: 42, landform: 'coastal', river: true }, 17],
     ]
     for (const [params, max] of cases) {
       const m = generateSector(params)
@@ -735,6 +735,15 @@ describe('lakes bound blocks', () => {
     it(`no alley point lies in water (${label})`, () => {
       const bad = m.blocks.filter((b) => b.alleys.some(([p, q]) => [p, q, { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }].some((s) => inWater(m.terrain, s)))).map((b) => b.id)
       expect(bad).toEqual([])
+    })
+    it(`no street point lies in water, no street end sits on a lake shore (${label})`, () => {
+      const streets = m.roads.filter((r) => r.class === 'street')
+      expect(streets.filter((r) => r.points.some((p) => inWater(m.terrain, p))).map((r) => r.id)).toEqual([])
+      const lakeShore = (e: Pt) => isLakeShore(m.terrain, e, params.size * 1000) &&
+        m.terrain.water.some((poly) => poly.some((ring) => distToPolyline(e, [...ring, ring[0]].map(([x, y]) => ({ x, y }))) < 6))
+      // ponytail: 2-point infill chords end on the lake ring on purpose (it is the block edge); only traced streets are checked
+      const bad = streets.filter((r) => r.points.length > 2).filter((r) => [r.points[0], r.points.at(-1)!].some(lakeShore))
+      expect(bad.map((r) => r.id)).toEqual([])
     })
     it(`no big block has its centroid in a lake (${label})`, () => {
       const bad = m.blocks.filter((b) => {

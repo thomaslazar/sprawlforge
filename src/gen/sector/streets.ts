@@ -7,7 +7,7 @@ import {
   MAJOR, MINOR, RoadIndex, endKey, poissonSeeds, pruneDangling, riverCrossingSeeds, seedsAlong, traceLayer, trimStubs, type Seed,
 } from '../streets/trace'
 import type { Arcology, Megablock, Road, SectorParams, Terrain } from '../types'
-import { inWater, truncateUnlandableRoads } from './bridges'
+import { dryStreetPieces, inWater, isLakeShore, truncateUnlandableRoads } from './bridges'
 import { distToPolyline } from '../terrain/rivers'
 import { effectiveIrregularity } from './zoning'
 
@@ -34,6 +34,8 @@ const RING_SEED_M = 200
 const dropHairpins = (roads: Road[], rings: Road[], arcologies: Arcology[]) => roads.filter((r) => !rings.some((k, i) =>
   r.points.length === 0 || (distToPolyline(r.points[0], k.points) <= 6 && distToPolyline(r.points[r.points.length - 1], k.points) <= 6
     && polylineLength(r.points) < Math.PI * (arcologies[i].radius + 60))))
+/** a street stub may end at a river/sea shore (never a lake) and only if >= 150 m long, so it reads as a street to the water */
+export const streetWaterAnchor = (terrain: Terrain, sizeM: number) => (p: Pt, stub: number) => stub >= 150 && !isLakeShore(terrain, p, sizeM)
 const ARTERIAL_STUB_M = 0.3 * MAJOR.separation
 
 /** field → highway → arterials → queue-grown streets, in spec §4 order; every polyline simplified */
@@ -110,10 +112,12 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     field, 'minor', queue, terrain, sizeM, index, { ...MINOR, obstacles: [...plazas, ...cores] }, mulberry32(hashSeed(params.seed, 'streets')), irregularityAt, 'S', 'street', decayEnds,
     (r) => crossing(field, seedsAlong(r.points, 100, true)),
   )
-  const streets = finalize(raw, terrain, index)
+  const streets = dryStreetPieces(finalize(raw, terrain, index), terrain)
   // streets may keep genuine decay cul-de-sacs; every other dangling end is pruned (the highway never anchors a street)
   const all = indexOf([...arterials, ...streets])
-  const pruned = pruneDangling(streets, all, terrain, sizeM, { accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, keep: new Set(decayEnds.map(endKey)) })
+  const pruned = pruneDangling(streets, all, terrain, sizeM, { accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, keep: new Set(decayEnds.map(endKey)),
+    waterAnchor: streetWaterAnchor(terrain, sizeM),
+  })
   return {
     highway: highway && simplify(highway),
     arterials,

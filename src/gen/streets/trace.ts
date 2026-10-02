@@ -540,6 +540,8 @@ export interface PruneOpts {
   weld?: number
   /** a junction must be >= weld m of arc from both ends of the other road (end-to-end chains don't anchor) */
   interiorOnly?: boolean
+  /** replaces the plain "near water" acceptance of an end; `stubLength` = arc length from the end to the nearest accepted junction (whole road if none) */
+  waterAnchor?: (p: Pt, stubLength: number) => boolean
 }
 
 /**
@@ -570,20 +572,24 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
         const dx = end.x - seq[1].x
         const dy = end.y - seq[1].y
         const len = Math.hypot(dx, dy) || 1
-        if (nearWater(terrain, end, 15) || inWater(terrain, { x: end.x + (dx / len) * 15, y: end.y + (dy / len) * 15 })) continue
+        const wet = nearWater(terrain, end, 15) || inWater(terrain, { x: end.x + (dx / len) * 15, y: end.y + (dy / len) * 15 })
+        if (wet && !opts.waterAnchor) continue
         // walk inward in ~5 m samples to the first junction
         let kept: Pt[] | null = null
+        let stub = 0
         for (let i = 1; i < seq.length && !kept; i++) {
           const a = seq[i - 1]
           const b = seq[i]
           const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 5))
           for (let k = 1; k <= n; k++) {
             const q = { x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n }
+            stub = polylineLength(seq.slice(0, i)) + Math.hypot(q.x - a.x, q.y - a.y)
             // any end counts here: a trunk cut back to the foot of a side street it carries keeps that street; interiorOnly would drop the whole trunk and cascade
             const hit = near(q, true)
             if (hit) { kept = [hit.at, ...seq.slice(k === n ? i + 1 : i)]; break }
           }
         }
+        if (wet && opts.waterAnchor!(end, kept ? stub : polylineLength(seq))) continue
         if (!kept) { dead = true; break }
         pts = fromEnd ? kept.reverse() : kept
       }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { pointInRings, polylineLength, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
-import { inWater, waterIntervals } from '../sector/bridges'
+import { dryStreetPieces, inWater, isLakeShore, waterIntervals } from '../sector/bridges'
 import { effectiveIrregularity } from '../sector/zoning'
 import { sampleTerrain } from '../terrain'
 import { nearestOnPolyline } from '../terrain/rivers'
@@ -466,6 +466,33 @@ describe('pruneDangling', () => {
     expect(out.map((r) => r.id).sort()).toEqual(['AR1', 'AR2', 'R1', 'R2', 'T'])
     const t = out.find((r) => r.id === 'T')!
     expect(t.points.at(-1)!.y).toBeCloseTo(500, 0)
+  })
+  describe('water ends (streets)', () => {
+    const st = (id: string, pts: Pt[]) => road(id, pts, 'street')
+    const rect = (x0: number, y0: number, x1: number, y1: number) => [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]]
+    const sopts = { accept: (c: Road['class']) => c !== 'highway', interiorOnly: true, minLength: 60 }
+    // lake: closed rect off the window edge; river: band across the window with a riverSlice
+    const lake = { water: [rect(400, 420, 600, 600)] } as unknown as Terrain
+    const river = { water: [rect(-10, 400, 1010, 600)], riverSlice: { course: [{ x: -10, y: 500 }, { x: 1010, y: 500 }], width: 200 } } as unknown as Terrain
+    const anchor = (t: Terrain) => ({ ...sopts, waterAnchor: (p: Pt, stub: number) => stub >= 150 && !isLakeShore(t, p, 1000) })
+    it('a street end inside water is cut back to the bank', () => {
+      const S = st('S', [{ x: 500, y: 100 }, { x: 500, y: 390 }, { x: 500, y: 450 }, { x: 500, y: 500 }])
+      const out = dryStreetPieces([S], river)
+      expect(out).toHaveLength(1)
+      expect(out[0].points.at(-1)).toEqual({ x: 500, y: 390 })
+    })
+    it('a 100 m stub to a lake shore is pruned', () => {
+      const cross = (y: number) => road('AR', [{ x: 0, y }, { x: 1000, y }])
+      const stub = (y: number) => st('S', [{ x: 500, y }, { x: 500, y: 415 }]) // ends 5 m short of the bank at y=420
+      expect(run([cross(315), stub(315)], lake, anchor(lake)).map((r) => r.id)).toEqual(['AR'])
+      expect(run([cross(100), stub(100)], lake, anchor(lake)).map((r) => r.id)).toEqual(['AR']) // even a long one
+    })
+    it('a 200 m stub to the river shore is kept, a 95 m one is pruned', () => {
+      const cross = (y: number) => road('AR', [{ x: 0, y }, { x: 1000, y }])
+      const stub = (y: number) => st('S', [{ x: 300, y }, { x: 300, y: 395 }]) // ends 5 m short of the bank at y=400
+      expect(run([cross(195), stub(195)], river, anchor(river)).map((r) => r.id)).toEqual(['AR', 'S'])
+      expect(run([cross(300), stub(300)], river, anchor(river)).map((r) => r.id)).toEqual(['AR'])
+    })
   })
   it('pruneDangling keeps a decay cul-de-sac', () => {
     const A = road('A', [{ x: 0, y: 500 }, { x: 600, y: 500 }])

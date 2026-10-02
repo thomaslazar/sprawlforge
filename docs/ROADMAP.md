@@ -17,6 +17,7 @@
    - `megablock.alley` colour overlaps other theme colours in print/blueprint/tokyo-night
    - obstacle bboxes are rebuilt per streamline half (perf)
    - landmark tests cover two seeds only
+   - the `no road runs through a block` ratchet counts infill chords and is chaotic under face reshuffles; replace by a per-cause metric
 2d. **Cyberpunk layer, part 2** — *next, wanted:* highway frontage strips
    and walled corporate compounds.
 3. **Metroplex generator** — parent of sectors, proves linkage chain.
