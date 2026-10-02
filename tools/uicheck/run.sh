@@ -14,7 +14,15 @@ if [ ! -d "$HOME/.cache/ms-playwright" ]; then
   npx playwright install --with-deps chromium
 fi
 
-npm run build
+SHA=$(git rev-parse HEAD)
+if git diff --quiet HEAD && [ -z "$(git ls-files --others --exclude-standard src index.html)" ]; then CLEAN=1; else CLEAN=0; fi
+if [ "$CLEAN" = 1 ] && [ -d dist ] && [ "$(cat dist/.uicheck-build 2>/dev/null)" = "$SHA" ]; then
+  echo "build cached ($SHA)"
+else
+  npm run build
+  # only a clean tree is cacheable; a dirty one always rebuilds
+  if [ "$CLEAN" = 1 ]; then echo "$SHA" >dist/.uicheck-build; else rm -f dist/.uicheck-build; fi
+fi
 # Invoke the local binary directly (not via `npx`, which wraps it in extra
 # shell/npm layers whose PID isn't the one $! captures, leaking the server
 # past this script's trap).
