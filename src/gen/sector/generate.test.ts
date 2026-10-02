@@ -602,6 +602,20 @@ describe('landmarks in road tracing', () => {
         expect(m.arcologies.length + m.megablocks.length).toBeGreaterThan(0)
       })
       // m.roads includes infill, so these two also prove landmark faces are not infilled
+      it('landmark districts are zoned corp and slum', () => {
+        expect(m.arcologies.length + m.megablocks.length).toBeGreaterThan(0)
+        for (const a of m.arcologies) {
+          const d = m.districts.find((x) => pointInRings(a.center, [x.poly]))!
+          expect(d.zone).toBe('corp')
+          expect(d.flags.arcology).toBe(a.id)
+        }
+        for (const k of m.megablocks) {
+          const d = m.districts.find((x) => pointInRings(k.center, [x.poly]))!
+          expect(d.zone).toBe('slum')
+          // two megablocks can share one district; the flag holds one of their ids
+          expect(m.megablocks.filter((o) => pointInRings(o.center, [d.poly])).map((o) => o.id)).toContain(d.flags.megablock)
+        }
+      })
       it('no road enters an arcology plaza', () => {
         expect(m.roads.filter((r) => inside(r, plazas)).map((r) => r.id)).toEqual([])
       })

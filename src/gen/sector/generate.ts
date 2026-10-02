@@ -267,7 +267,10 @@ export function generateSector(params: SectorParams): SectorModel {
   const boundaries = [windowRing(sizeM), ...terrain.land.map((poly) => poly[0].map(([x, y]) => ({ x, y })))]
 
   const districtFaces = facesFor([...(highway ? [highway] : []), ...arterials], boundaries, terrain)
-  const districts = assignZones(districtFaces.map((f) => f.poly), params, terrain)
+  const districts = assignZones(districtFaces.map((f) => f.poly), params, terrain, [
+    ...arcologies.map((a) => ({ at: a.center, zone: 'corp' as const, flag: { arcology: a.id } })),
+    ...megablocks.map((m) => ({ at: m.center, zone: 'slum' as const, flag: { megablock: m.id } })),
+  ])
 
   // highway levels decide where streets stop at the ground-level highway
   const levelRng = mulberry32(hashSeed(params.seed, 'highway-levels'))
