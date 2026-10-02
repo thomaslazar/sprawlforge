@@ -1,7 +1,7 @@
 import type { SectorModel } from '../gen/types'
 import type { Theme } from './theme'
 import { renderHighway, renderJunctionMarkers } from './highway'
-import { megablockCores, renderLandmarkLabels, renderLandmarks } from './landmarks'
+import { megablockCores, renderLandmarks } from './landmarks'
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -287,6 +287,8 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   const placedLabels: Box[] = []
 
   for (const d of model.districts) {
+    // a landmark district's label is replaced by the landmark name below
+    if (d.flags.arcology || d.flags.megablock) continue
     const cx = d.labelAt.x
     const cy = d.labelAt.y
     // district labels always render — they anchor the map — but still
@@ -299,7 +301,17 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     )
   }
 
-  renderLandmarkLabels(model, theme, out, fontD)
+  // landmark names at their centres, always shown, one size up; registered
+  // before the poi contest so poi labels avoid them
+  for (const l of [...model.arcologies, ...model.megablocks]) {
+    const fs = fontD * 1.25
+    const raw = textBox(l.center.x, l.center.y, l.name, fs, 'middle')
+    const { dx, dy } = clampShift(raw, S)
+    placedLabels.push({ ...raw, x: raw.x + dx, y: raw.y + dy })
+    out.push(
+      `<text data-landmark-label="" x="${n(l.center.x + dx)}" y="${n(l.center.y + dy)}" fill="${theme.districtLabel}" font-size="${n(fs)}" text-anchor="middle" opacity="0.85">${esc(l.name)}</text>`,
+    )
+  }
 
   // markers first (all pois, model order, hover tooltip carries the name even
   // when the visible label loses the placement contest)

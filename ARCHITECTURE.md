@@ -50,7 +50,9 @@ shore tangent, …; the extension point for new field kinds). `streets/trace.ts`
 enforcing separation; layers differ only in `TraceOpts` (`MAJOR`,
 `MINOR`). `streets/graph.ts` — polylines become a **planar graph**; its
 faces are the districts (major graph) and blocks (full graph). Road width
-follows road class (highway 32 m, arterial 18, street 9, ramp 8). Each arcology adds a `radialBasis` field (spokes and rings
+follows road class (highway 32 m, arterial 18, street 9, ramp 8).
+
+Each arcology adds a `radialBasis` field (spokes and rings
 around its centre), and landmark footprints are `TraceOpts.obstacles`
 the tracer never enters.
 

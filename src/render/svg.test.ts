@@ -338,6 +338,9 @@ describe('landmarks', () => {
       expect(a.indexOf('data-arcology')).toBeLessThan(a.indexOf('<polyline'))
       const m = renderSector(fringe, getTheme('neon'), { interactive })
       for (const k of fringe.megablocks) expect(m).toContain(`data-megablock="${k.id}"`)
+      expect(m).toMatch(/<polygon data-megablock="MEG\d+"[^>]*stroke-width="2"/)
+      const generic = m.match(/<path data-alleys[^>]*>/g)?.join('') ?? ''
+      expect(generic).not.toContain(getTheme('neon').megablock.alley)
       expect(m).toContain('data-landmark-label=""') // valueless attrs are invalid XML, which breaks PNG export
     }
   })

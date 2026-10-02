@@ -46,7 +46,7 @@ const neon: Theme = {
   bridge: { deck: '#8a93a6', shadow: '#04060a' },
   highway: { trench: '#080a0f', column: '#04060a', hatch: '#8a93a6' },
   arcology: { fill: '#2c3d66', stroke: '#4fc9d9', ring: '#2f7f8c' },
-  megablock: { fill: '#0f1424', alley: '#6a5a48' },
+  megablock: { fill: '#0f1424', alley: '#d08a45' },
   scaleBar: '#9fb8c8',
   glow: true,
 }
@@ -73,7 +73,7 @@ const print: Theme = {
   bridge: { deck: '#e8e8e2', shadow: '#b5b5b0' },
   highway: { trench: '#d9d9d9', column: '#b5b5b0', hatch: '#e8e8e2' },
   arcology: { fill: '#d5dbe8', stroke: '#555555', ring: '#9a9a9a' },
-  megablock: { fill: '#b8b8b2', alley: '#8a7f70' },
+  megablock: { fill: '#8c8c88', alley: '#2a2a2a' },
   scaleBar: '#222222',
   glow: false,
 }
@@ -104,7 +104,7 @@ const blueprint: Theme = {
   bridge: { deck: '#e4f4ff', shadow: '#071c38' },
   highway: { trench: '#09274c', column: '#071c38', hatch: '#e4f4ff' },
   arcology: { fill: '#2a6aa8', stroke: '#f1fbff', ring: '#7fb0d8' },
-  megablock: { fill: '#061f3f', alley: '#6f93b8' },
+  megablock: { fill: '#061f3f', alley: '#bfe3ff' },
   scaleBar: '#dff3ff',
   glow: false,
 }
@@ -131,7 +131,7 @@ const synthwave: Theme = {
   bridge: { deck: '#a893c9', shadow: '#0c0616' },
   highway: { trench: '#11081a', column: '#0c0616', hatch: '#a893c9' },
   arcology: { fill: '#3d2766', stroke: '#33c2e6', ring: '#2a7894' },
-  megablock: { fill: '#150d24', alley: '#7a5a6a' },
+  megablock: { fill: '#150d24', alley: '#e8a070' },
   scaleBar: '#d9b8ff',
   glow: true,
 }
@@ -158,7 +158,7 @@ const tokyoNight: Theme = {
   bridge: { deck: '#a9b1d6', shadow: '#0d0e14' },
   highway: { trench: '#161720', column: '#0d0e14', hatch: '#a9b1d6' },
   arcology: { fill: '#34406a', stroke: '#7dcfff', ring: '#4f7f9f' },
-  megablock: { fill: '#12131c', alley: '#6b6258' },
+  megablock: { fill: '#0a0b10', alley: '#e0af68' },
   scaleBar: '#c0caf5',
   glow: false,
 }

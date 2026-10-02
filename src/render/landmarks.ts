@@ -5,7 +5,6 @@ import type { Theme } from './theme'
 
 const n = (v: number) => String(Math.round(v * 100) / 100)
 const pts = (p: Pt[]) => p.map((q) => `${n(q.x)},${n(q.y)}`).join(' ')
-const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 /** building id -> megablock id for each core building (the building of a megablock block whose first vertex lies inside the core; surrounding lots are kept out of the core) */
 export function megablockCores(model: SectorModel): Map<string, string> {
@@ -32,14 +31,9 @@ export function renderLandmarks(model: SectorModel, theme: Theme, out: string[],
   for (const m of model.megablocks) {
     // ponytail: all of the block's alleys (core + surrounding lots' rows alleys) share the megablock colour
     const d = model.blocks.filter((b) => b.flags.megablock === m.id).flatMap((b) => b.alleys.map(([p, q]) => `M${n(p.x)},${n(p.y)}L${n(q.x)},${n(q.y)}`)).join(' ')
-    if (d) out.push(`<path d="${d}" fill="none" stroke="${theme.megablock.alley}" stroke-width="2" stroke-opacity="0.6"/>`)
+    if (d) out.push(`<path d="${d}" fill="none" stroke="${theme.megablock.alley}" stroke-width="1.5"/>`)
     for (const b of model.buildings)
       if (cores.get(b.id) === m.id)
-        out.push(`<polygon data-megablock="${m.id}" points="${pts(b.footprint)}" fill="${theme.megablock.fill}" stroke="${theme.building.stroke}" stroke-width="1"/>`)
+        out.push(`<polygon data-megablock="${m.id}" points="${pts(b.footprint)}" fill="${theme.megablock.fill}" stroke="${theme.megablock.alley}" stroke-width="2"/>`)
   }
-}
-
-export function renderLandmarkLabels(model: SectorModel, theme: Theme, out: string[], font: number): void {
-  for (const l of [...model.arcologies, ...model.megablocks])
-    out.push(`<text data-landmark-label="" x="${n(l.center.x)}" y="${n(l.center.y)}" fill="${theme.districtLabel}" font-size="${n(font * 1.25)}" text-anchor="middle" opacity="0.85">${esc(l.name)}</text>`)
 }
