@@ -100,9 +100,17 @@ export interface Road {
 }
 
 export type ArcologyDesign = 'rings' | 'ziggurat' | 'cluster' | 'satellites'
+/** how the street network meets an arcology: full K ring, open half ring, a boulevard passing by, or none (plaza sits in ordinary fabric) */
+export type ArcologyAccess = 'ring' | 'half' | 'boulevard' | 'embedded'
+export type RingShape = 'circle' | 'square' | 'octagon'
 export interface Arcology {
   id: string; name: string; design: ArcologyDesign; angle: number; center: Pt; radius: number
   footprint: Pt[]; plaza: Pt[]; ringRoadId: string
+  access: ArcologyAccess
+  /** ring access only */
+  ringShape?: RingShape
+  /** half / boulevard: 0 or PI, which side of the field angle the road lies on */
+  side?: number
 }
 export interface Megablock { id: string; name: string; center: Pt; core: Pt[]; footprint: Pt[] }
 export type LandmarkFlags = Partial<{ arcology: string; megablock: string }>

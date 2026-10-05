@@ -337,7 +337,7 @@ describe('landmarks', () => {
     const arcologies = designs.map((design, i) => {
       const center = { x: 200 + i * 200, y: 500 }
       const s = designShape(design, center, 100, 0.3)
-      return { id: `ARC${i + 1}`, name: design, design, angle: 0.3, center, radius: 100, footprint: s.outline, plaza: s.outline, ringRoadId: `K${i + 1}` }
+      return { id: `ARC${i + 1}`, name: design, design, angle: 0.3, center, radius: 100, footprint: s.outline, plaza: s.outline, ringRoadId: `K${i + 1}`, access: 'ring' as const }
     })
     const withArc = { ...model, arcologies, megablocks: [] }
     const svg = renderSector(withArc, getTheme('neon'))

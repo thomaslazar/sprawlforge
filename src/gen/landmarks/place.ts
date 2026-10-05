@@ -5,7 +5,7 @@ import { inWater } from '../sector/bridges'
 import type { RoadField } from '../streets/field'
 import { distToPolyline } from '../terrain/rivers'
 import { designShape } from './designs'
-import type { Arcology, ArcologyDesign, Megablock, Road, SectorParams, Terrain } from '../types'
+import type { Arcology, ArcologyAccess, ArcologyDesign, Megablock, RingShape, Road, SectorParams, Terrain } from '../types'
 
 export interface Landmarks { arcologies: Arcology[]; megablocks: Megablock[] }
 
@@ -31,12 +31,26 @@ export function octagon(center: Pt, radius: number, angle: number, jitter: (i: n
   })
 }
 
-export function ringRoad(a: Arcology): Road {
+/** the K road of a `ring` / `half` arcology; boulevard and embedded have none */
+export function ringRoad(a: Arcology): Road | null {
+  if (a.access === 'boulevard' || a.access === 'embedded') return null
   const r = a.radius + 60
-  const points = Array.from({ length: 48 }, (_, i) => {
-    const t = (i * 2 * Math.PI) / 48
-    return { x: a.center.x + r * Math.cos(t), y: a.center.y + r * Math.sin(t) }
-  })
+  const at = (t: number, rr = r) => ({ x: a.center.x + rr * Math.cos(t), y: a.center.y + rr * Math.sin(t) })
+  let points: Pt[]
+  if (a.access === 'half') {
+    return { id: a.ringRoadId, class: 'arterial', width: 18, name: null,
+      points: Array.from({ length: 25 }, (_, i) => at(a.angle + (a.side ?? 0) + (i * Math.PI) / 24)) }
+  }
+  if (a.ringShape === 'octagon') points = octagon(a.center, r, a.angle)
+  else if (a.ringShape === 'square') {
+    // rounded square, corner radius 0.3 r: four 12-point corner arcs joined by the straight sides
+    const c = 0.3 * r, o = r - c
+    points = []
+    for (let q = 0; q < 4; q++) {
+      const base = a.angle + q * (Math.PI / 2) + Math.PI / 4, k = { x: a.center.x + o * Math.SQRT2 * Math.cos(base), y: a.center.y + o * Math.SQRT2 * Math.sin(base) }
+      for (let i = 0; i < 12; i++) { const t = base - Math.PI / 4 + (i * Math.PI) / 2 / 11; points.push({ x: k.x + c * Math.cos(t), y: k.y + c * Math.sin(t) }) }
+    }
+  } else points = Array.from({ length: 48 }, (_, i) => at((i * 2 * Math.PI) / 48))
   points.push({ ...points[0] })
   return { id: a.ringRoadId, class: 'arterial', width: 18, points, name: null }
 }
@@ -105,16 +119,43 @@ export function placeLandmarks(
   // designs: drawn after every other draw so existing placements stay identical; shuffled once, a fifth arcology restarts the list
   const order = [...DESIGNS]
   for (let i = order.length - 1; i > 0; i--) { const j = rng.int(0, i); [order[i], order[j]] = [order[j], order[i]] }
+  // access: drawn after the designs, still at the end of the stream; weights 40/20/20/20
+  const ACCESS: ArcologyAccess[] = ['ring', 'half', 'boulevard', 'embedded']
+  const SHAPES: RingShape[] = ['circle', 'square', 'octagon']
+  const used = new Set<string>()
+  const angleOf = arcCentres.map((c) => { const m = field.sample(c).major; return Math.atan2(m.y, m.x) })
+  const accessOf = arcCentres.map((_, i) => {
+    const r = rng.next()
+    let k = r < 0.4 ? 0 : Math.min(3, 1 + Math.floor((r - 0.4) / 0.2))
+    // no two arcologies share a (design, access) pair while another pair is free: walk on from the drawn slot
+    const design = order[i % order.length]
+    for (let n = 0; n < 4 && used.has(`${design}/${ACCESS[k]}`); n++) k = (k + 1) % 4
+    used.add(`${design}/${ACCESS[k]}`)
+    const access = ACCESS[k]
+    const ringShape = access === 'ring' ? SHAPES[Math.min(2, Math.floor(rng.next() * 3))] : undefined
+    let side = access === 'half' || access === 'boulevard' ? (rng.next() < 0.5 ? 0 : Math.PI) : undefined
+    // a boulevard follows the field, so it must run tangentially there or it rams the plaza and is pruned: flip to the other side if the drawn one doesn't
+    if (access === 'boulevard') {
+      const tangential = (t: number) => {
+        const f = field.sample({ x: arcCentres[i].x + (radii[i] + 60) * Math.cos(t), y: arcCentres[i].y + (radii[i] + 60) * Math.sin(t) })
+        const nx = -Math.sin(t), ny = Math.cos(t)
+        return Math.max(Math.abs(f.major.x * nx + f.major.y * ny), Math.abs(f.minor.x * nx + f.minor.y * ny)) >= Math.cos(0.45)
+      }
+      const t0 = angleOf[i] + side!
+      if (!tangential(t0) && tangential(t0 + Math.PI)) side = side === 0 ? Math.PI : 0
+    }
+    return { access, ringShape, side }
+  })
   const arcologies: Arcology[] = arcCentres.map((center, i) => {
     const radius = radii[i]
-    const m = field.sample(center).major
-    const angle = Math.atan2(m.y, m.x)
+    const angle = angleOf[i]
     const design = order[i % order.length]
     return {
       id: `ARC${i + 1}`, name: '', design, angle, center, radius,
       footprint: designShape(design, center, radius, angle).outline,
       plaza: octagon(center, radius + 40, angle),
       ringRoadId: `${RING_ID_PREFIX}${i + 1}`,
+      ...accessOf[i],
     }
   })
 

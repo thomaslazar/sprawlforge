@@ -297,10 +297,11 @@ describe('fillLots', () => {
 
 describe('landmark blocks', () => {
   // 4 km generates are slow: one model per seed, shared across the its
-  const arc = generateSector({ ...base, seed: 42, size: 4, corpDominance: 0.85, landform: 'inland' })
+  const arc = generateSector({ ...base, seed: 7, size: 4, corpDominance: 0.85, landform: 'inland' })
   const mega = generateSector({ ...base, seed: 7, size: 4, corpDominance: 0.15, landform: 'bay' })
   it('arcology blocks have no buildings', () => {
-    const flagged = arc.blocks.filter((b) => b.flags.arcology)
+    // ring arcologies only: a half/boulevard/embedded one keeps its block's lots (seed 7 4 km corp 0.85: ring)
+    const flagged = arc.blocks.filter((b) => b.flags.arcology && arc.arcologies.find((a) => a.id === b.flags.arcology)!.access === 'ring')
     expect(flagged.length).toBeGreaterThan(0)
     for (const b of flagged) {
       expect(b.alleys).toEqual([])

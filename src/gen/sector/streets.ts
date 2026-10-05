@@ -15,7 +15,7 @@ export interface TracedRoads {
   /** undefined when every window edge is sea */
   highway: Road | undefined
   arterials: Road[]
-  /** closed arcology rings; also present in `arterials` */
+  /** arcology K roads (closed rings, open half rings); also present in `arterials` */
   ringRoads: Road[]
   arcologies: Arcology[]
   megablocks: Megablock[]
@@ -31,9 +31,9 @@ const finalize = (roads: Road[], terrain: Terrain, index: RoadIndex, maxStub = 4
 /** a ~1 km ring gets only 2 seeds at the 400 m arterial spacing, and some die on neighbours: 200 m keeps >= 4 spokes */
 const RING_SEED_M = 200
 /** a spoke that leaves its ring and snaps back onto it (both ends within 6 m, shorter than half a lap) is a hairpin: drop it; zero-length ones too */
-// rings[i] pairs 1:1 with arcologies[i] (both built by arcologies.map(ringRoad))
-const dropHairpins = (roads: Road[], rings: Road[], arcologies: Arcology[]) => roads.filter((r) => r.points.length > 0 && !rings.some((k, i) =>
-  (distToPolyline(r.points[0], k.points) <= 6 && distToPolyline(r.points[r.points.length - 1], k.points) <= 6
+// rings[i] pairs 1:1 with arcologies[i] (both built by arcologies.map(ringRoad)); null = no K road (boulevard / embedded)
+const dropHairpins = (roads: Road[], rings: (Road | null)[], arcologies: Arcology[]) => roads.filter((r) => r.points.length > 0 && !rings.some((k, i) =>
+  k && (distToPolyline(r.points[0], k.points) <= 6 && distToPolyline(r.points[r.points.length - 1], k.points) <= 6
     && polylineLength(r.points) < Math.PI * (arcologies[i].radius + 60))))
 /** a street stub may end at a river/sea shore (never a lake) and only if >= 150 m long, so it reads as a street to the water */
 export const streetWaterAnchor = (terrain: Terrain, sizeM: number) => (p: Pt, stub: number) => stub >= 150 && !isLakeShore(terrain, p, sizeM)
@@ -58,15 +58,30 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   const { arcologies, megablocks } = placeLandmarks(params, terrain, sizeM, traced.points.length > 0 ? traced : undefined, baseField)
   // arterials and streets bend toward each arcology, outside its ring road
   const field = arcologies.length
-    ? buildRoadField(params, terrain, sizeM, arcologies.map((a) => radialBasis(a.center, a.radius + 60, 800)))
+    ? buildRoadField(params, terrain, sizeM, arcologies.filter((a) => a.access === 'ring' || a.access === 'half').map((a) => radialBasis(a.center, a.radius + 60, 800)))
     : baseField
-  const ringRoads = arcologies.map(ringRoad)
-  // spokes are seeded first (nothing later can kill them), each heading straight out from its arcology
-  const spokeSeeds = arcologies.flatMap((a, i) => seedsAlong(ringRoads[i].points, RING_SEED_M, false).map((x) => {
-    const dx = x.at.x - a.center.x, dy = x.at.y - a.center.y, len = Math.hypot(dx, dy) || 1
-    return { ...x, dir: { x: dx / len, y: dy / len } }
-  }))
-  const plazas = arcologies.map((a) => a.plaza)
+  const ringsOrNull = arcologies.map(ringRoad)
+  const ringRoads = ringsOrNull.filter((r): r is Road => r !== null)
+  // spokes are seeded first (nothing later can kill them), each heading straight out from its arcology;
+  // a half ring is open, so its two ends are seeded too (seedsAlong skips them)
+  const spokeSeeds = arcologies.flatMap((a, i) => {
+    const ring = ringsOrNull[i]
+    if (!ring) {
+      // boulevard: one seed beside the plaza, heading tangentially; embedded: nothing
+      if (a.access !== 'boulevard') return []
+      const t = a.angle + (a.side ?? 0), r = a.radius + 60
+      return crossing(field, [{ at: { x: a.center.x + r * Math.cos(t), y: a.center.y + r * Math.sin(t) }, dir: { x: -Math.sin(t), y: Math.cos(t) } }])
+    }
+    const ends = a.access === 'half' ? [{ at: ring.points[0] }, { at: ring.points.at(-1)! }] : []
+    return [...ends, ...seedsAlong(ring.points, RING_SEED_M, false)].map((x) => {
+      const dx = x.at.x - a.center.x, dy = x.at.y - a.center.y, len = Math.hypot(dx, dy) || 1
+      // major axis: the radial basis is the field's major there; sampled ON the ring (d ~ R) its weight is 0 and `crossing` would pick the grid's axis
+      return { ...x, dir: { x: dx / len, y: dy / len }, axis: 'major' as const }
+    })
+  })
+  // ponytail: a square ring's inner corners lie outside its octagonal plaza, so the whole ring (shrunk 5 %, so spokes can start on it) is the obstacle there
+  const plazas = arcologies.map((a, i) => (a.ringShape === 'square' && a.access === 'ring'
+    ? ringsOrNull[i]!.points.map((p) => ({ x: a.center.x + 0.95 * (p.x - a.center.x), y: a.center.y + 0.95 * (p.y - a.center.y) })) : a.plaza))
   const cores = megablocks.map((k) => k.core)
 
   let index = new RoadIndex(200)
@@ -78,7 +93,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   const arterialsRaw = traceLayer(
     field, 'major',
     [
-      ...crossing(field, spokeSeeds),
+      ...spokeSeeds,
       ...(highway ? crossing(field, seedsAlong(highway.points, 400, false)) : []),
       ...riverCrossingSeeds(terrain, arterialRng),
       ...poissonSeeds(sizeM, 400, arterialRng, (p: Pt) => !inWater(terrain, p) && !pointInRings(p, plazas)),
@@ -93,7 +108,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     terrain, sizeM, index, MAJOR_OPTS, mulberry32(hashSeed(params.seed, 'arterials-2')), irregularityAt, 'B', 'arterial',
   )
   // truncate before seeding so S/L seeds come from the final arterials
-  let arterials = [...ringRoads, ...dropHairpins(finalize([...arterialsRaw, ...crossRaw], terrain, index, ARTERIAL_STUB_M), ringRoads, arcologies)]
+  let arterials = [...ringRoads, ...dropHairpins(finalize([...arterialsRaw, ...crossRaw], terrain, index, ARTERIAL_STUB_M), ringsOrNull, arcologies)]
   const indexOf = (rs: Road[]) => {
     const idx = new RoadIndex(200)
     if (highway) idx.add(highway.id, highway.points, 'highway')

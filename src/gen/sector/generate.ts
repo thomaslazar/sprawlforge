@@ -130,7 +130,7 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
       const { cuts } = bspSplit(bboxOf(ring.map((p) => rotatePt(p, -theta, ctr))), { minCell: 100, gap: 9, jitter: 0.25, rng })
       const pieces: Road[] = []
       const gaps: Pt[][] = []
-      // a face that only overlaps a core keeps its split, minus the cuts that would run through the core
+      // a face that only overlaps a core (or a non-ring arcology's plaza) keeps its split, minus the cuts that would run through the core
       const inCore = (p: Pt, q: Pt) => [0, 0.25, 0.5, 0.75, 1].some((t) => cores.some((core) => pointInRings({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t }, [core])))
       const add = (p: Pt, q: Pt) => {
         if (inCore(p, q)) return
@@ -303,7 +303,7 @@ export function generateSector(params: SectorParams): SectorModel {
     : { crossings, ramps: [] as Road[] }
   const hw = highway ? [{ ...highway, segments, crossings: finalCrossings }] : []
 
-  const { faces, infill, dropped } = infillFaces(facesFor([...hw, ...arterials, ...minorAll], boundaries, terrain), minorAll, arterials, highway, terrain, sizeM, [...arcologies, ...megablocks].map((l) => l.center), megablocks.map((k) => k.core))
+  const { faces, infill, dropped } = infillFaces(facesFor([...hw, ...arterials, ...minorAll], boundaries, terrain), minorAll, arterials, highway, terrain, sizeM, [...arcologies.filter((a) => a.access === 'ring'), ...megablocks].map((l) => l.center), [...megablocks.map((k) => k.core), ...arcologies.filter((a) => a.access !== 'ring').map((a) => a.plaza)])
   const minor = minorAll.filter((r) => !dropped.has(r.id))
   const rawBlocks = toBlocks(faces, districts)
 

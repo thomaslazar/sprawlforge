@@ -560,8 +560,8 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
     let changed = false
     const next: Road[] = []
     for (const r of cur) {
-      // a closed ring has no ends to prune
-      if (Math.hypot(r.points[0].x - r.points.at(-1)!.x, r.points[0].y - r.points.at(-1)!.y) < 1) { next.push(r); continue }
+      // K roads are never pruned: a closed ring has no ends, an open half ring ends on its end spokes
+      if (r.id.startsWith(RING_ID_PREFIX)) { next.push(r); continue }
       const near = (p: Pt, anyEnd = false) => index.nearestMatching(p, weld, (h) => h.id !== r.id && opts.accept(h.cls) && (anyEnd || !opts.interiorOnly || h.edge >= weld))
       let pts = r.points
       let dead = false

@@ -6,6 +6,7 @@ import { hashSeed, mulberry32 } from '../rng'
 import { distToPolyline } from '../terrain/rivers'
 import { RoadIndex, riverCrossingSeeds } from '../streets/trace'
 import { traceRoads } from './streets'
+import { ringRoad } from '../landmarks/place'
 import { HIGHWAY_WIDTH } from '../streets/highway'
 import { inWater, isLakeShore } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
@@ -502,9 +503,9 @@ describe('coast-aligned streets', () => {
 
   it('no road runs through a block', () => {
     // slivers are dropped, not merged. Residual (2 on seed 3017268931, 10 on seed 42) (B1412:S024 B1412:L008 B1109:L006) = faces with a
-    // hole / pruned dead ends; buildings still never sit on them (second assertion). Ratchet down, never up. Documented exceptions: seed 3017268931 -> 1 (was 2 before landmarks; briefly 3 until the planar-graph zero-length-edge fix); seed 42 coastal+river -> 15 (was 10; rose with the landmark-changed map, every remaining offender proven > 400 m from any landmark); 15 → 17 after shore stubs < 150 m are pruned (face reshuffle moves infill chords S416, S428, S417, S308; infill-chord class, see ROADMAP).
+    // hole / pruned dead ends; buildings still never sit on them (second assertion). Ratchet down, never up. Documented exceptions: seed 3017268931 -> 2 (boulevard arcology access replaced its ring: B0901:S066 sits > 500 m from the arcology, B0808:S038 is a short stub ~300 m off; was 1 and 2 before landmarks; briefly 3 until the planar-graph zero-length-edge fix); seed 42 coastal+river -> 15 (was 10; rose with the landmark-changed map, every remaining offender proven > 400 m from any landmark); 15 → 17 after shore stubs < 150 m are pruned (face reshuffle moves infill chords S416, S428, S417, S308; infill-chord class, see ROADMAP).
     const cases: Array<[SectorParams, number]> = [
-      [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, arcology: true, megablock: false, pack: 'generic', theme: 'print' }, 1],
+      [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, arcology: true, megablock: false, pack: 'generic', theme: 'print' }, 2],
       [{ ...base, seed: 42, landform: 'coastal', river: true }, 17],
     ]
     for (const [params, max] of cases) {
@@ -643,6 +644,10 @@ describe('landmarks in road tracing', () => {
   const seeds: [string, SectorParams][] = [
     ['seed 42 inland corp 0.85', { ...base, corpDominance: 0.85 }],
     ['seed 7 bay corp 0.15', { ...base, seed: 7, landform: 'bay', corpDominance: 0.15 }],
+    // access kinds at 4 km inland corp 0.85: seed 42 embedded, 7 ring (square) + ring, 11 half + ring (octagon), 5 ring + boulevard
+    ['seed 7 inland corp 0.85', { ...base, seed: 7, corpDominance: 0.85 }],
+    ['seed 11 inland corp 0.85', { ...base, seed: 11, corpDominance: 0.85 }],
+    ['seed 5 inland corp 0.85', { ...base, seed: 5, corpDominance: 0.85 }],
   ]
   for (const [label, params] of seeds) {
     describe(label, () => {
@@ -653,7 +658,7 @@ describe('landmarks in road tracing', () => {
       it('places landmarks', () => {
         expect(m.arcologies.length + m.megablocks.length).toBeGreaterThan(0)
       })
-      // m.roads includes infill, so these two also prove landmark faces are not infilled
+      // m.roads includes infill: ring/megablock faces are not infilled, and no infill cut runs through a non-ring plaza
       it('landmark districts are zoned corp and slum', () => {
         expect(m.arcologies.length + m.megablocks.length).toBeGreaterThan(0)
         for (const a of m.arcologies) {
@@ -675,7 +680,7 @@ describe('landmarks in road tracing', () => {
         expect(m.roads.filter((r) => r.class === 'street' && inside(r, cores)).map((r) => r.id)).toEqual([])
       })
       it('ring roads are block boundaries', () => {
-        for (const a of m.arcologies) {
+        for (const a of m.arcologies.filter((x) => x.access === 'ring')) {
           const ring = m.roads.filter((r) => r.id === a.ringRoadId || r.id.startsWith(`${a.ringRoadId}-`))
           const closed = ring.flatMap((r) => r.points)
           for (const b of m.blocks) {
@@ -690,7 +695,7 @@ describe('landmarks in road tracing', () => {
         }
       })
       it('ring roads are closed and spoked', () => {
-        for (const a of m.arcologies) {
+        for (const a of m.arcologies.filter((x) => x.access === 'ring')) {
           const ring = m.roads.filter((r) => r.id === a.ringRoadId || r.id.startsWith(`${a.ringRoadId}-`))
           expect(ring.length).toBeGreaterThan(0)
           const pts = ring.flatMap((r) => r.points)
@@ -698,6 +703,40 @@ describe('landmarks in road tracing', () => {
           const spokes = m.roads.filter((r) => r.class === 'arterial' && !ring.includes(r)).flatMap((r) => [r.points[0], r.points[r.points.length - 1]])
             .filter((e) => distToPolyline(e, closed) <= 6)
           expect(spokes.length).toBeGreaterThanOrEqual(3)
+        }
+      })
+      it('half rings are open and spoked', () => {
+        for (const a of m.arcologies.filter((x) => x.access === 'half')) {
+          const ring = m.roads.filter((r) => r.id === a.ringRoadId || r.id.startsWith(`${a.ringRoadId}-`))
+          expect(ring.length).toBeGreaterThan(0)
+          const pts = ring.flatMap((r) => r.points)
+          const ends = [ringRoad(a)!.points[0], ringRoad(a)!.points.at(-1)!]
+          expect(pts[0]).not.toEqual(pts.at(-1))
+          const spokeEnds = m.roads.filter((r) => r.class === 'arterial' && !ring.includes(r)).flatMap((r) => [r.points[0], r.points.at(-1)!])
+          for (const e of ends) expect(spokeEnds.some((q) => Math.hypot(q.x - e.x, q.y - e.y) <= 6), 'end spoke').toBe(true)
+          expect(spokeEnds.filter((e) => distToPolyline(e, pts) <= 6).length).toBeGreaterThanOrEqual(3)
+        }
+      })
+      it('boulevards pass the plaza; boulevard and embedded have no K road', () => {
+        for (const a of m.arcologies.filter((x) => x.access === 'boulevard' || x.access === 'embedded')) {
+          expect(m.roads.filter((r) => r.id.startsWith(a.ringRoadId + '-') || r.id === a.ringRoadId)).toEqual([])
+          if (a.access === 'boulevard') {
+            const near = m.roads.filter((r) => r.class === 'arterial' && distToPolyline(a.center, r.points) <= a.radius + 80)
+            expect(near.length, a.id).toBeGreaterThan(0)
+          }
+        }
+      })
+      it('non-ring arcology blocks keep lots outside the plaza', () => {
+        for (const a of m.arcologies.filter((x) => x.access !== 'ring')) {
+          const b = m.blocks.find((x) => pointInRings(a.center, [x.footprint]))!
+          expect(b.flags.arcology).toBe(a.id)
+          expect(b.style).not.toBe('plaza')
+          expect(m.buildings.filter((x) => x.blockId === b.id).length, a.id).toBeGreaterThan(0)
+        }
+        // 0.98: a lot clipped to the plaza edge has vertices on it, which the boundary test may call inside
+        for (const a of m.arcologies) {
+          const inner = a.plaza.map((p) => ({ x: a.center.x + 0.98 * (p.x - a.center.x), y: a.center.y + 0.98 * (p.y - a.center.y) }))
+          for (const bl of m.buildings) expect(bl.footprint.some((p) => pointInRings(p, [inner])), `${bl.id} in ${a.id}`).toBe(false)
         }
       })
       it('no sizeable land district is left without streets', () => {
@@ -730,7 +769,7 @@ describe('no hairpin spokes', () => {
     it(`no arterial loops back onto its own ring (${label})`, () => {
       const m = generateSector(params)
       const bad: string[] = []
-      for (const a of m.arcologies) {
+      for (const a of m.arcologies.filter((x) => x.access === 'ring' || x.access === 'half')) {
         const ring = m.roads.filter((r) => r.id === a.ringRoadId || r.id.startsWith(`${a.ringRoadId}-`))
         const pts = ring.flatMap((r) => r.points)
         const closed = [...pts, pts[0]]

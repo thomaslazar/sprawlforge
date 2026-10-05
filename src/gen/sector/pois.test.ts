@@ -87,7 +87,7 @@ describe('placePois', () => {
   describe('landmarks', () => {
     const sq = (x: number, y: number, r: number): Pt[] => rectPoly({ x: x - r, y: y - r, w: 2 * r, h: 2 * r })
     const landmarks = {
-      arcologies: [{ id: 'A01', name: 'Aegis Spire', design: 'rings' as const, angle: 0, center: { x: 100, y: 300 }, radius: 80, footprint: sq(100, 300, 60), plaza: sq(100, 300, 80), ringRoadId: 'R1' }],
+      arcologies: [{ id: 'A01', name: 'Aegis Spire', design: 'rings' as const, angle: 0, center: { x: 100, y: 300 }, radius: 80, footprint: sq(100, 300, 60), plaza: sq(100, 300, 80), ringRoadId: 'R1', access: 'ring' as const }],
       megablocks: [{ id: 'M01', name: 'Hive Nine', center: { x: 400, y: 300 }, core: sq(400, 300, 40), footprint: [] }],
     }
     it('one POI per landmark with its name', () => {

@@ -416,7 +416,8 @@ export function fillLots(
   const notchRng = mulberry32(hashSeed(params.seed, 'notches'))
   const neighbourhood = fractalNoise2D(hashSeed(params.seed, 'neighbourhood'), 2)
   const districtById = new Map(districts.map((d) => [d.id, d]))
-  const noBuild = noBuildIn
+  // a non-ring arcology sits in an ordinary face: its plaza is ground nobody builds on (ring plazas are their own block)
+  const noBuild = [...noBuildIn, ...(landmarks?.arcologies ?? []).filter((a) => a.access !== 'ring').map((a) => a.plaza)]
   const megaRng = mulberry32(hashSeed(params.seed, 'megablocks'))
   const noBuildPolys = noBuild.map((nb) => [toRing(nb)])
   const noBuildBoxes = noBuild.map(boxOf)
@@ -448,7 +449,7 @@ export function fillLots(
     const district = districtById.get(block.districtId)
     if (!district) { outBlocks.push(block); continue }
     const cc = ringCentroid(block.footprint)
-    const arc = landmarks?.arcologies.find((a) => pointInRings(cc, [a.plaza]))
+    const arc = landmarks?.arcologies.find((a) => a.access === 'ring' && pointInRings(cc, [a.plaza]))
     if (arc) { outBlocks.push({ ...block, style: 'plaza', alleys: [], flags: { ...block.flags, arcology: arc.id } }); continue }
     // a second megablock centred in the same block gets no hive (placement keeps them >= 700 m apart)
     const mega = landmarks?.megablocks.find((m) => pointInRings(m.center, [block.footprint]))
@@ -462,7 +463,10 @@ export function fillLots(
       outBlocks.push({ ...block, style: 'megablock', alleys: hive.alleys, flags: { ...block.flags, megablock: mega.id } })
       continue
     }
-    const chosen = forceStyle ?? chooseStyle(district.zone, params.density, neighbourhood(cc.x / 500, cc.y / 500))
+    const home = landmarks?.arcologies.find((a) => a.access !== 'ring' && pointInRings(a.center, [block.footprint]))
+    // a 'plaza'-style block keeps only its 1-2 biggest cells, which here would sit in the arcology plaza: build rows around it instead
+    const picked = chooseStyle(district.zone, params.density, neighbourhood(cc.x / 500, cc.y / 500))
+    const chosen = forceStyle ?? (home && picked === 'plaza' ? 'rows' : picked)
     let blockStyle: BlockStyle = 'rows'
     const alleys: Array<[Pt, Pt]> = []
     const fast = insetRing(block.footprint, SIDEWALK)
@@ -585,7 +589,7 @@ export function fillLots(
         })
     }
     }
-    outBlocks.push({ ...block, style: blockStyle, alleys })
+    outBlocks.push({ ...block, style: blockStyle, alleys, ...(home ? { flags: { ...block.flags, arcology: home.id } } : {}) })
   }
 
   return { buildings, blocks: outBlocks, megablockFootprints }
