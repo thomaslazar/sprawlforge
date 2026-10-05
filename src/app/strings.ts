@@ -23,6 +23,7 @@ export const strings = {
       activity: 'Activity',
       streets: 'Streets',
       water: 'Water',
+      landmarks: 'Landmarks',
     },
     tags: {
       inland: 'Inland',
@@ -47,6 +48,8 @@ export const strings = {
       mixed: 'Mixed',
       sprawl: 'Sprawl',
       piers: 'Piers',
+      arcology: 'Arcology',
+      megablock: 'Megablock',
       piersNeedsWater: 'Needs water — pick a wet terrain',
     },
     exports: {

@@ -21,6 +21,8 @@ describe('resolveTags', () => {
       poiDensity: 0.7,
       irregularity: 0.5,
       piers: true,
+      arcology: false,
+      megablock: false,
     })
   })
 
@@ -39,6 +41,14 @@ describe('resolveTags', () => {
       river: true,
       lakes: true,
     })
+  })
+})
+
+describe('landmark toggles', () => {
+  it('tags map to params, keep as free toggles, default off', () => {
+    expect(resolveTags(['arcology', 'megablock'])).toEqual({ ...DEFAULT_PARAMS, arcology: true, megablock: true })
+    expect(DEFAULT_PARAMS).toMatchObject({ arcology: false, megablock: false })
+    expect(normalizeTags(['inland', 'arcology', 'megablock'])).toEqual(['inland', 'arcology', 'megablock'])
   })
 })
 

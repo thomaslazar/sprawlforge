@@ -12,7 +12,7 @@ import { MAJOR } from './trace'
 
 const params = (over: Partial<SectorParams> = {}): SectorParams => ({
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
-  landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon', ...over,
+  landform: 'inland', river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon', ...over,
 })
 
 const MAX_TURN = MAJOR.step / 300

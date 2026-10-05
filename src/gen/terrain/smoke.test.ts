@@ -4,7 +4,7 @@ import { sampleTerrain } from './index'
 
 const base: SectorParams = {
   seed: 0, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
-  landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
+  landform: 'inland', river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon',
 }
 
 // outer rings add area, holes subtract — same convention as contour.test.ts

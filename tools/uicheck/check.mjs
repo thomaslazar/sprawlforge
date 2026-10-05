@@ -25,7 +25,7 @@ const ALL_TAGS = [
   'inland', 'coastal', 'bay', 'river', 'lakes', 'islands',
   'small', 'medium', 'large', 'sparse', 'dense', 'packed',
   'corp-run', 'balanced', 'fringe', 'quiet', 'normal', 'lively',
-  'planned', 'mixed', 'sprawl', 'piers',
+  'planned', 'mixed', 'sprawl', 'piers', 'arcology', 'megablock',
 ]
 // generation now round-trips through a worker (async) — an action that
 // should regenerate the map needs to wait for the new svg, not assume it
@@ -356,13 +356,13 @@ if ((await page.locator('svg').innerHTML()) === svgPlanned)
   fail('planned and sprawl render identically')
 
 // cyberpunk landmarks: corp-run inland has arcologies, fringe bay has megablocks
-await page.goto(`${BASE}/?seed=42&tags=inland,corp-run`)
+await page.goto(`${BASE}/?seed=42&tags=inland,corp-run,arcology`)
 await page.waitForSelector('svg')
 await page.screenshot({ path: `${OUT}/landmarks-arcology.png` })
 if ((await page.locator('svg [data-arcology]').count()) < 1) fail('corp-run: no arcology rendered')
 if ((await page.locator('svg [data-design]').count()) < 1) fail('corp-run: no arcology design attribute')
 
-await page.goto(`${BASE}/?seed=7&tags=bay,fringe`)
+await page.goto(`${BASE}/?seed=7&tags=bay,fringe,megablock`)
 await page.waitForSelector('svg')
 await page.screenshot({ path: `${OUT}/landmarks-megablock.png` })
 if ((await page.locator('svg [data-megablock]').count()) < 1) fail('fringe: no megablock rendered')

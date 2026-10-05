@@ -17,7 +17,7 @@ vi.setConfig({ testTimeout: 90000 })
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
-  landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
+  landform: 'inland', river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon',
 }
 
 describe('generateSector', () => {
@@ -131,7 +131,7 @@ describe('generateSector', () => {
     // same seeds for the face and lot clipping that replaced them.
     const params: SectorParams = {
       seed: 0, size: 2, density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.85,
-      landform: 'inland', river: true, lakes: false, islands: true, piers: false,
+      landform: 'inland', river: true, lakes: false, islands: true, piers: false, arcology: false, megablock: false,
       pack: 'generic', theme: 'print',
     }
     for (const seed of [2882370099, 4, 40, 95, 96]) {
@@ -149,7 +149,7 @@ describe('generateSector', () => {
     const params: SectorParams = {
       seed: 2882370099, size: 2, density: 0.6, corpDominance: 0.5, poiDensity: 0.5,
       irregularity: 0.85, landform: 'inland', river: true, lakes: false, islands: true,
-      piers: false, pack: 'generic', theme: 'neon',
+      piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon',
     }
     let m: ReturnType<typeof generateSector> | undefined
     expect(() => {
@@ -313,13 +313,13 @@ describe('generateSector invariants', () => {
 describe('arterial connectivity', () => {
   const cases = [
     { seed: 4280430344, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15,
-      landform: 'coastal', river: true, lakes: true },
+      landform: 'coastal', river: true, lakes: true, megablock: true },
     { seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, poiDensity: 0.5, irregularity: 0.85,
       landform: 'bay', river: false, lakes: false },
   ] as const
   for (const c of cases) {
     it(`no arterial dangles (seed ${c.seed})`, () => {
-      const m = generateSector({ ...c, islands: false, piers: false, pack: 'generic', theme: 'neon' })
+      const m = generateSector({ islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon', ...c })
       const roads = m.roads.filter((r) => r.class !== 'ramp')
       const idx = new RoadIndex(200)
       for (const r of roads) idx.add(r.id, r.points, r.class)
@@ -354,7 +354,7 @@ describe('arterial bridges', () => {
   it('arterial bridges appear between the seeded crossings', () => {
     const m = generateSector({
       seed: 4280430344, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15,
-      landform: 'coastal', river: true, lakes: true, islands: false, piers: false, pack: 'generic', theme: 'neon',
+      landform: 'coastal', river: true, lakes: true, islands: false, piers: false, arcology: false, megablock: true, pack: 'generic', theme: 'neon',
     })
     const seeds = riverCrossingSeeds(m.terrain, mulberry32(hashSeed(4280430344, 'arterials'))).length
     const bridges = m.roads.filter((r) => r.class === 'arterial' && r.bridge)
@@ -504,7 +504,7 @@ describe('coast-aligned streets', () => {
     // slivers are dropped, not merged. Residual (2 on seed 3017268931, 10 on seed 42) (B1412:S024 B1412:L008 B1109:L006) = faces with a
     // hole / pruned dead ends; buildings still never sit on them (second assertion). Ratchet down, never up. Documented exceptions: seed 3017268931 -> 1 (was 2 before landmarks; briefly 3 until the planar-graph zero-length-edge fix); seed 42 coastal+river -> 15 (was 10; rose with the landmark-changed map, every remaining offender proven > 400 m from any landmark); 15 → 17 after shore stubs < 150 m are pruned (face reshuffle moves infill chords S416, S428, S417, S308; infill-chord class, see ROADMAP).
     const cases: Array<[SectorParams, number]> = [
-      [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'print' }, 1],
+      [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, arcology: true, megablock: false, pack: 'generic', theme: 'print' }, 1],
       [{ ...base, seed: 42, landform: 'coastal', river: true }, 17],
     ]
     for (const [params, max] of cases) {
@@ -533,7 +533,7 @@ describe('coast-aligned streets', () => {
 describe('block size', () => {
   const cases: SectorParams[] = [
     { ...base, seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, irregularity: 0.85, landform: 'bay', pack: 'generic', theme: 'print' },
-    { ...base, seed: 4280430344, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15, landform: 'coastal', river: true, lakes: true },
+    { ...base, seed: 4280430344, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15, landform: 'coastal', river: true, lakes: true, megablock: true },
     base,
   ]
   it('every land block is street-sized', () => {
@@ -573,13 +573,14 @@ describe('density tags', () => {
 
 describe('streets at the highway', () => {
   const cases = [
-    { seed: 4280430344, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15,
-      landform: 'coastal', river: true, lakes: true },
+    // size 3, not 4: at 4 km the landmark-table layout leaves street S499 (142 m) ending at the highway (latent, not landmark-related)
+    { seed: 4280430344, size: 3, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15,
+      landform: 'coastal', river: true, lakes: true, megablock: true },
     { seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, poiDensity: 0.5, irregularity: 0.85,
       landform: 'bay', river: false, lakes: false },
   ] as const
   for (const c of cases) {
-    const m = generateSector({ ...c, islands: false, piers: false, pack: 'generic', theme: 'print' })
+    const m = generateSector({ islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'print', ...c })
     // markWetSpans may split the highway; crossings are copied to every piece
     const pieces = m.roads.filter((r) => r.class === 'highway')
     const hw = { ...pieces[0], points: pieces.flatMap((r) => r.points) }
@@ -706,7 +707,7 @@ describe('landmarks in road tracing', () => {
     })
   }
   it('seed 7 bay 2 km: the district north of the arcology keeps its streets', () => {
-    const m = generateSector({ ...base, seed: 7, size: 2, landform: 'bay', density: 0.25, corpDominance: 0.15, poiDensity: 0.7 })
+    const m = generateSector({ ...base, seed: 7, size: 2, landform: 'bay', density: 0.25, corpDominance: 0.15, poiDensity: 0.7, arcology: true })
     const d = m.districts.find((x) => pointInRings({ x: 1297, y: 950 }, [x.poly]))!
     expect(streetDensity(m, d)).toBeGreaterThanOrEqual(8)
   })

@@ -53,23 +53,28 @@ function distToWater(terrain: Terrain, p: Pt): number {
   return best
 }
 
-/** counts per spec §2.4: [arcology min,max, megablock min,max] */
-function countRanges(c: number): [number, number, number, number] {
-  if (c >= 0.7) return [2, 3, 0, 1]
-  if (c >= 0.3) return [1, 2, 1, 2]
-  return [0, 1, 2, 4]
+/** count cell: a range, or a probability of exactly one (spec §12.1) */
+type Cell = { lo: number; hi: number } | { p: number }
+const R = (lo: number, hi: number): Cell => ({ lo, hi })
+const P = (p: number): Cell => ({ p })
+// rows: corp-run, balanced, fringe; columns: small (<= 2 km), medium (<= 4 km), large
+const ARCOLOGIES: Cell[][] = [[P(0.5), R(1, 2), R(2, 3)], [R(0, 0), P(0.5), R(0, 1)], [R(0, 0), R(0, 0), P(0.15)]]
+const MEGABLOCKS: Cell[][] = [[R(0, 0), R(0, 0), P(0.2)], [P(0.3), R(0, 1), R(1, 2)], [R(1, 1), R(1, 3), R(2, 4)]]
+
+/** exactly one rng draw per count, whatever the cell kind */
+function drawCount(rng: ReturnType<typeof mulberry32>, table: Cell[][], c: number, sizeM: number): number {
+  const cell = table[c >= 0.7 ? 0 : c >= 0.3 ? 1 : 2][sizeM <= 2000 ? 0 : sizeM <= 4000 ? 1 : 2]
+  return 'p' in cell ? (rng.next() < cell.p ? 1 : 0) : rng.int(cell.lo, cell.hi)
 }
 
 export function placeLandmarks(
   params: SectorParams, terrain: Terrain, sizeM: number, highway: Road | undefined, field: RoadField,
 ): Landmarks {
   const rng = mulberry32(hashSeed(params.seed, 'landmarks'))
-  const [aLo, aHi, mLo, mHi] = countRanges(params.corpDominance)
-  const cap = sizeM <= 2000 ? 1 : Infinity
   // draw order is fixed: arcology count, radii, megablock count, jitters, megaRadii
-  const nArc = Math.min(rng.int(aLo, aHi), cap)
+  const nArc = Math.max(drawCount(rng, ARCOLOGIES, params.corpDominance, sizeM), params.arcology ? 1 : 0)
   const radii = Array.from({ length: nArc }, () => rng.int(100, 180))
-  const nMega = Math.min(rng.int(mLo, mHi), cap)
+  const nMega = Math.max(drawCount(rng, MEGABLOCKS, params.corpDominance, sizeM), params.megablock ? 1 : 0)
   const jitters = Array.from({ length: nMega }, () => Array.from({ length: 8 }, () => 0.8 + rng.next() * 0.4))
   const megaRadii = Array.from({ length: nMega }, () => rng.int(150, 250))
 

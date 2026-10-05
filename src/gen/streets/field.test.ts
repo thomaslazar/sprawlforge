@@ -6,7 +6,7 @@ import { buildPatches, buildRoadField, radialBasis, shoreTangent } from './field
 
 const params = (over: Partial<SectorParams> = {}): SectorParams => ({
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
-  landform: 'coastal', river: true, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon', ...over,
+  landform: 'coastal', river: true, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon', ...over,
 })
 const lineAngleDiff = (a: number, b: number) => {
   const d = Math.abs(a - b) % Math.PI

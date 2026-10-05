@@ -10,7 +10,7 @@ const rectPoly = (r: Rect): Pt[] => [
 
 const params: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
-  landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
+  landform: 'inland', river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon',
 }
 const rects: Rect[] = Array.from({ length: 12 }, (_, i) => ({
   x: (i % 4) * 1000, y: Math.floor(i / 4) * 1000, w: 900, h: 900,

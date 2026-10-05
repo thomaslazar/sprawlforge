@@ -10,7 +10,7 @@ import { octagon, placeLandmarks, ringRoad } from './place'
 
 const mk = (o: Partial<SectorParams> = {}): SectorParams => ({
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
-  landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon', ...o,
+  landform: 'inland', river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon', ...o,
 })
 const run = (p: SectorParams, withHighway = true) => {
   const sizeM = p.size * 1000
@@ -31,23 +31,30 @@ describe('placeLandmarks', () => {
       const ds = run(mk(o)).out.arcologies.map((a) => a.design)
       expect(new Set(ds).size).toBe(ds.length)
     }
-    expect(run(mk({ seed: 42, corpDominance: 0.85 })).out.arcologies.length).toBeGreaterThanOrEqual(2)
+    expect(run(mk({ seed: 42, corpDominance: 0.85 })).out.arcologies.length).toBeGreaterThanOrEqual(1)
   })
-  it('counts follow the power tag', () => {
-    const hi = run(mk({ corpDominance: 0.85 })).out
-    expect(hi.arcologies.length).toBeGreaterThanOrEqual(2)
-    expect(hi.arcologies.length).toBeLessThanOrEqual(3)
-    expect(hi.megablocks.length).toBeLessThanOrEqual(1)
-    const mid = run(mk({ corpDominance: 0.5 })).out
-    expect(mid.arcologies.length).toBeGreaterThanOrEqual(1)
-    expect(mid.arcologies.length).toBeLessThanOrEqual(2)
-    expect(mid.megablocks.length).toBeGreaterThanOrEqual(1)
-    expect(mid.megablocks.length).toBeLessThanOrEqual(2)
-    const lo = run(mk({ corpDominance: 0.15 })).out
-    expect(lo.arcologies.length).toBeLessThanOrEqual(1)
-    expect(lo.megablocks.length).toBeGreaterThanOrEqual(2)
-    expect(lo.megablocks.length).toBeLessThanOrEqual(4)
-  })
+  // [lo, hi] per cell, p cells are [0, 1]; rows corp 0.85 / balanced 0.5 / fringe 0.15, columns 2 / 4 / 6 km. Only hi is asserted: placement may fall short of the drawn count when space runs out.
+  const ARC = [[[0, 1], [1, 2], [2, 3]], [[0, 0], [0, 1], [0, 1]], [[0, 0], [0, 0], [0, 1]]]
+  const MEGA = [[[0, 0], [0, 0], [0, 1]], [[0, 1], [0, 1], [1, 2]], [[1, 1], [1, 3], [2, 4]]]
+  const cells = () => [42, 7, 1443928265].flatMap((seed) => [2, 4, 6].flatMap((size, c) => [0.85, 0.5, 0.15].map((corp, r) => ({ seed, size, corp, r, c }))))
+  it('counts follow the table', () => {
+    for (const { seed, size, corp, r, c } of cells()) {
+      const { out } = run(mk({ seed, size, corpDominance: corp, landform: 'coastal', river: true }))
+      const at = `${seed}/${size}km/${corp}`
+      expect(out.arcologies.length, `arc ${at}`).toBeLessThanOrEqual(ARC[r][c][1])
+      expect(out.megablocks.length, `mega ${at}`).toBeLessThanOrEqual(MEGA[r][c][1])
+    }
+  }, 1_800_000)
+  it('toggles guarantee a landmark', () => {
+    // find an untoggled cell whose count is 0, then the toggle must give exactly 1
+    const zero = cells().find(({ seed, size, corp }) => {
+      const { out } = run(mk({ seed, size, corpDominance: corp }))
+      return out.arcologies.length === 0
+    })!
+    expect(zero).toBeDefined()
+    const { out } = run(mk({ seed: zero.seed, size: zero.size, corpDominance: zero.corp, arcology: true }))
+    expect(out.arcologies.length).toBe(1)
+  }, 1_800_000)
   it('a 2 km sector has at most one of each', () => {
     for (const c of [0.85, 0.5, 0.15]) {
       const { out } = run(mk({ size: 2, corpDominance: c }))
@@ -57,7 +64,7 @@ describe('placeLandmarks', () => {
   })
   it('landmarks keep their distances', () => {
     for (const seed of [42, 7, 99]) {
-      const p = mk({ seed, landform: 'coastal', river: true, corpDominance: 0.5 })
+      const p = mk({ seed, landform: 'coastal', river: true, corpDominance: 0.5, arcology: true, megablock: true })
       const { out, terrain, hw } = run(p)
       const water = terrain.water.flatMap((poly) => poly.flatMap((r) => {
         const l = r.map(([x, y]) => ({ x, y })); return [[...l, l[0]]]

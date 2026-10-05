@@ -9,6 +9,8 @@ import { TAG_GROUPS, type Tag, type TagGroup } from './tags'
 // as a water-themed chip row (piers is water-themed too: harbor decor).
 const WATER_TAGS: Tag[] = ['river', 'lakes', 'islands', 'piers']
 
+const LANDMARK_TAGS: Tag[] = ['arcology', 'megablock']
+
 interface Props {
   applied: AppState
   pendingTags: Tag[]
@@ -178,6 +180,20 @@ export function KnobPanel({
               onClick={() => toggleWaterTag(tag)}
               disabled={tag === 'piers' ? piersDisabled : undefined}
               title={tag === 'piers' && piersDisabled ? t.tags.piersNeedsWater : undefined}
+            />
+          ))}
+        </div>
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ marginBottom: 4 }}>{t.tagGroups.landmarks}</div>
+        <div>
+          {LANDMARK_TAGS.map((tag) => (
+            <Chip
+              key={tag}
+              label={t.tags[tag]}
+              pending={pendingTags.includes(tag)}
+              applied={applied.tags.includes(tag)}
+              onClick={() => toggleWaterTag(tag)}
             />
           ))}
         </div>

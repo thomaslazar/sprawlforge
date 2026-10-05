@@ -8,6 +8,11 @@ describe('AppState codec', () => {
     expect(stateFromSearch(stateToSearch(s), 0)).toEqual(s)
   })
 
+  it('round-trips the landmark toggles', () => {
+    const s: AppState = { seed: 1, tags: ['inland', 'arcology', 'megablock'], pack: 'generic', theme: 'neon' }
+    expect(stateFromSearch(stateToSearch(s), 0)).toEqual(s)
+  })
+
   it('empty search uses fallback seed and no tags', () => {
     expect(stateFromSearch('', 123)).toEqual({ seed: 123, tags: [], pack: 'generic', theme: 'neon' })
   })

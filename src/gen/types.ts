@@ -55,6 +55,8 @@ export interface SectorParams {
   islands: boolean
   /** pier/harbor decoration pass (spec §4, last task) */
   piers: boolean
+  arcology: boolean
+  megablock: boolean
   /** flavor pack id */
   pack: string
   /** theme id (render-side concern, carried in params for URL round-trip) */
