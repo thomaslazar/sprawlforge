@@ -187,7 +187,8 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
           const e = r.points[end], o = r.points[1 - end]
           if (!looseAt(e, r)) continue
           const hit = reach(e, o, r)
-          if (hit) r.points[end] = hit
+          // a ring crossing inside a lake is no junction: the run-on would end the street in water
+          if (hit && !inWater(terrain, hit)) r.points[end] = hit
         }
       }
       // weld each end that stops within 8 m of another piece onto it exactly (the highway test wants <= 6 m)
