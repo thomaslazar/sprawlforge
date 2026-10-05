@@ -85,7 +85,12 @@ export function placeLandmarks(
   params: SectorParams, terrain: Terrain, sizeM: number, highway: Road | undefined, field: RoadField,
 ): Landmarks {
   const rng = mulberry32(hashSeed(params.seed, 'landmarks'))
-  // draw order is fixed: arcology count, radii, megablock count, jitters, megaRadii
+  // three independent streams so adding designs/access kinds never moves placements:
+  // 'landmarks' (placement: counts, radii, jitters), 'design' (shuffle), 'access' (access/ringShape/side), 'detail' (count/twist)
+  const designRng = mulberry32(hashSeed(params.seed, 'landmarks', 'design'))
+  const accessRng = mulberry32(hashSeed(params.seed, 'landmarks', 'access'))
+  const detailRng = mulberry32(hashSeed(params.seed, 'landmarks', 'detail'))
+  // placement draw order is fixed: arcology count, radii, megablock count, jitters, megaRadii
   const nArc = Math.max(drawCount(rng, ARCOLOGIES, params.corpDominance, sizeM), params.arcology ? 1 : 0)
   const radii = Array.from({ length: nArc }, () => rng.int(100, 180))
   const nMega = Math.max(drawCount(rng, MEGABLOCKS, params.corpDominance, sizeM), params.megablock ? 1 : 0)
@@ -116,24 +121,24 @@ export function placeLandmarks(
     const score = (c: Pt) => (k === 0 ? -dist(c, centre) : Math.min(...arcCentres.map((a) => dist(a, c))))
     arcCentres.push(pool.reduce((b, c) => (score(c) > score(b) ? c : b)))
   }
-  // designs: drawn after every other draw so existing placements stay identical; shuffled once, a fifth arcology restarts the list
+  // designs: own stream; shuffled once, a fifth arcology restarts the list
   const order = [...DESIGNS]
-  for (let i = order.length - 1; i > 0; i--) { const j = rng.int(0, i); [order[i], order[j]] = [order[j], order[i]] }
-  // access: drawn after the designs, still at the end of the stream; weights 40/20/20/20
+  for (let i = order.length - 1; i > 0; i--) { const j = designRng.int(0, i); [order[i], order[j]] = [order[j], order[i]] }
+  // access: own stream; weights 40/20/20/20
   const ACCESS: ArcologyAccess[] = ['ring', 'half', 'boulevard', 'embedded']
   const SHAPES: RingShape[] = ['circle', 'square', 'octagon']
   const used = new Set<string>()
   const angleOf = arcCentres.map((c) => { const m = field.sample(c).major; return Math.atan2(m.y, m.x) })
   const accessOf = arcCentres.map((_, i) => {
-    const r = rng.next()
+    const r = accessRng.next()
     let k = r < 0.4 ? 0 : Math.min(3, 1 + Math.floor((r - 0.4) / 0.2))
     // no two arcologies share a (design, access) pair while another pair is free: walk on from the drawn slot
     const design = order[i % order.length]
     for (let n = 0; n < 4 && used.has(`${design}/${ACCESS[k]}`); n++) k = (k + 1) % 4
     used.add(`${design}/${ACCESS[k]}`)
     const access = ACCESS[k]
-    const ringShape = access === 'ring' ? SHAPES[Math.min(2, Math.floor(rng.next() * 3))] : undefined
-    let side = access === 'half' || access === 'boulevard' ? (rng.next() < 0.5 ? 0 : Math.PI) : undefined
+    const ringShape = access === 'ring' ? SHAPES[Math.min(2, Math.floor(accessRng.next() * 3))] : undefined
+    let side = access === 'half' || access === 'boulevard' ? (accessRng.next() < 0.5 ? 0 : Math.PI) : undefined
     // a boulevard follows the field, so it must run tangentially there or it rams the plaza and is pruned: flip to the other side if the drawn one doesn't
     if (access === 'boulevard') {
       const tangential = (t: number) => {
@@ -146,12 +151,12 @@ export function placeLandmarks(
     }
     return { access, ringShape, side }
   })
-  // details: drawn after the access draws, two per arcology whatever the design
+  // details: own stream, two per arcology whatever the design
   const COUNTS: Record<ArcologyDesign, [number, number]> = { rings: [0, 0], twins: [0, 0], crescent: [0, 0], ziggurat: [3, 4], cluster: [5, 8], satellites: [4, 7], stack: [3, 4] }
   const details = arcCentres.map((_, i) => {
     const [lo, hi] = COUNTS[order[i % order.length]]
-    const count = lo + Math.floor(rng.next() * (hi - lo + 1))
-    return { count, twist: rng.next() * (Math.PI / 4) }
+    const count = lo + Math.floor(detailRng.next() * (hi - lo + 1))
+    return { count, twist: detailRng.next() * (Math.PI / 4) }
   })
   const arcologies: Arcology[] = arcCentres.map((center, i) => {
     const radius = radii[i]
