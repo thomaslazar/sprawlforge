@@ -98,14 +98,15 @@ describe('placeLandmarks', () => {
   it('works without a highway', () => {
     expect(run(mk(), false).out.arcologies.length).toBeGreaterThan(0)
   })
-  it('access kinds vary, designs x access never repeat, draws are deterministic', () => {
-    // 4 km inland corp 0.85: seed 42 embedded, 7 ring, 11 half + ring, 5 ring + boulevard
+  it('access kinds vary, designs x access never repeat, same seed gives the same access', () => {
+    // 4 km inland corp 0.85: seed 42 embedded, 7 embedded + ring, 11 half + ring, 5 ring + boulevard, 13 boulevard x2
     const kinds = new Set<string>()
     for (const seed of [42, 7, 11, 5, 13]) {
       const { out } = run(mk({ seed, corpDominance: 0.85 }))
+      expect(run(mk({ seed, corpDominance: 0.85 })).out).toEqual(out)
       for (const a of out.arcologies) {
         kinds.add(a.access)
-        expect(a.access === 'ring' ? a.ringShape : a.ringShape ?? 'none').toBeDefined()
+        if (a.access === 'ring') expect(a.ringShape).toBeDefined(); else expect(a.ringShape).toBeUndefined()
         expect(a.side !== undefined).toBe(a.access === 'half' || a.access === 'boulevard')
       }
       const pairs = out.arcologies.map((a) => `${a.design}/${a.access}`)

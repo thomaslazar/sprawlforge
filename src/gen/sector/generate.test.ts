@@ -503,7 +503,7 @@ describe('coast-aligned streets', () => {
 
   it('no road runs through a block', () => {
     // slivers are dropped, not merged. Residual (2 on seed 3017268931, 10 on seed 42) (B1412:S024 B1412:L008 B1109:L006) = faces with a
-    // hole / pruned dead ends; buildings still never sit on them (second assertion). Ratchet down, never up. Documented exceptions: seed 3017268931 -> 2 (boulevard arcology access replaced its ring: B0901:S066 sits > 500 m from the arcology, B0808:S038 is a short stub ~300 m off; was 1 and 2 before landmarks; briefly 3 until the planar-graph zero-length-edge fix); seed 42 coastal+river -> 15 (was 10; rose with the landmark-changed map, every remaining offender proven > 400 m from any landmark); 15 → 17 after shore stubs < 150 m are pruned (face reshuffle moves infill chords S416, S428, S417, S308; infill-chord class, see ROADMAP).
+    // hole / pruned dead ends; buildings still never sit on them (second assertion). Ratchet down, never up. Documented exceptions: seed 3017268931 -> 2 (boulevard arcology access replaced its ring and the 'streets' rng stream shifted; PROOF the two offenders are the pre-existing decay cul-de-sac class, not ours: both are traced streets (not infill) whose free end is in decayEnds, i.e. kept on purpose by pruneDangling: B0901:S066 end (1912,1581), 538 m from the arcology, B0808:S038 end (925,666), 317 m, beyond the 187 m plaza and away from the boulevard; was 1 and 2 before landmarks; briefly 3 until the planar-graph zero-length-edge fix); seed 42 coastal+river -> 15 (was 10; rose with the landmark-changed map, every remaining offender proven > 400 m from any landmark); 15 → 17 after shore stubs < 150 m are pruned (face reshuffle moves infill chords S416, S428, S417, S308; infill-chord class, see ROADMAP).
     const cases: Array<[SectorParams, number]> = [
       [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, arcology: true, megablock: false, pack: 'generic', theme: 'print' }, 2],
       [{ ...base, seed: 42, landform: 'coastal', river: true }, 17],
@@ -644,7 +644,7 @@ describe('landmarks in road tracing', () => {
   const seeds: [string, SectorParams][] = [
     ['seed 42 inland corp 0.85', { ...base, corpDominance: 0.85 }],
     ['seed 7 bay corp 0.15', { ...base, seed: 7, landform: 'bay', corpDominance: 0.15 }],
-    // access kinds at 4 km inland corp 0.85: seed 42 embedded, 7 ring (square) + ring, 11 half + ring (octagon), 5 ring + boulevard
+    // access kinds at 4 km inland corp 0.85: seed 42 embedded, 7 embedded + ring (square), 11 half + ring (octagon), 5 ring (circle) + boulevard
     ['seed 7 inland corp 0.85', { ...base, seed: 7, corpDominance: 0.85 }],
     ['seed 11 inland corp 0.85', { ...base, seed: 11, corpDominance: 0.85 }],
     ['seed 5 inland corp 0.85', { ...base, seed: 5, corpDominance: 0.85 }],
