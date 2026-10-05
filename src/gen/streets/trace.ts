@@ -588,7 +588,8 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
             stub = done + Math.hypot(q.x - a.x, q.y - a.y)
             // any end counts here: a trunk cut back to the foot of a side street it carries keeps that street; interiorOnly would drop the whole trunk and cascade
             const hit = near(q, true)
-            if (hit) { kept = [hit.at, ...seq.slice(k === n ? i + 1 : i)]; break }
+            // a wet end that only touches another road's end is a chain, not an anchor: both tails go
+            if (hit && !(opts.interiorOnly && wet && stub <= weld && hit.edge < weld)) { kept = [hit.at, ...seq.slice(k === n ? i + 1 : i)]; break }
           }
           done += seg
         }
