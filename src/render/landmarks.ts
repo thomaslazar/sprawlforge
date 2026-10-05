@@ -23,7 +23,7 @@ export function renderLandmarks(model: SectorModel, theme: Theme, out: string[],
     const line = ([p, q]: [Pt, Pt]) => out.push(`<line x1="${n(p.x)}" y1="${n(p.y)}" x2="${n(q.x)}" y2="${n(q.y)}" stroke="${ring}" stroke-width="1"/>`)
     const rings = a.design === 'rings'
     // the hull outline is the footprint for hit-testing; only rings fills it, the other designs let their structures carry the fill
-    out.push(`<polygon data-arcology="${a.id}" data-design="${a.design}" points="${pts(a.footprint)}" fill="${rings ? fill : 'none'}" stroke="${rings ? stroke : ring}" stroke-width="${rings ? 2 : 1}"/>`)
+    out.push(`<polygon data-arcology="${a.id}" data-design="${a.design}" data-access="${a.access}" points="${pts(a.footprint)}" fill="${rings ? fill : 'none'}" stroke="${rings ? stroke : ring}" stroke-width="${rings ? 2 : 1}"/>`)
     if (rings) s.polys.forEach((p) => poly(p, 'none', ring, 1))
     else if (a.design === 'ziggurat') { poly(s.outline, fill, stroke, 2); s.polys.forEach((p) => poly(p, 'none', ring, 1)); s.lines.forEach(line) }
     else if (a.design === 'crescent') { poly(s.polys[0], fill, stroke, 2); poly(s.polys[1], 'none', ring, 1) }

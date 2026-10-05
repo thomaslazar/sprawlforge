@@ -350,6 +350,7 @@ describe('landmarks', () => {
       return (svg.slice(start, end).match(new RegExp(`<${tag} `, 'g')) ?? []).length
     }
     for (const d of designs) expect(svg).toContain(`data-design="${d}"`)
+    expect(svg).toContain(`data-access="ring"`)
     // slice starts inside the outline tag; a non-last slice also holds the next plaza and the next outline tag (2 extra polygons)
     const polys = (d: string) => count(d, 'polygon') - (d === 'stack' ? 0 : 2)
     expect(polys('rings')).toBe(2)
