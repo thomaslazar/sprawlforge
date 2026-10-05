@@ -9,7 +9,7 @@
    styles. Open follow-ups below.
 2c. **Cyberpunk layer, part 1** (arcologies, megablocks) ✅ —
    `docs/specs/2026-10-02-cyberpunk-layer-design.md`.
-   Arcology designs: rings, ziggurat, cluster, satellites; more designs welcome.
+   Variation round done: landmark frequency table (power x size) with `arcology`/`megablock` toggles, four surroundings (ring / half ring / boulevard / embedded), seven designs with randomised details and name pools; more designs welcome.
    Known limitations / follow-ups:
    - obstacle and plaza/core tests check road vertices only (10 m step); a segment can clip a corner
    - two megablocks centred in one block face: only the first gets a core building
@@ -23,6 +23,9 @@
    - hive cells are individual polygons in interactive mode (batch if hives get huge)
    - `dryStreetPieces` has no length filter
    - `svg.test` design counts are slice-based
+   - a dangling half-ring end if its end spoke dies later (K roads are never pruned)
+   - boulevard may still meet the plaza when neither side is tangential
+   - design/detail/access tests cover a handful of seeds
 2d. **Cyberpunk layer, part 2** — *next, wanted:* highway frontage strips
    and walled corporate compounds.
 3. **Metroplex generator** — parent of sectors, proves linkage chain.

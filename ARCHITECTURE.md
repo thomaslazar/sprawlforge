@@ -24,7 +24,7 @@ each other.
 | 1 | Terrain | `terrain/` `sampleTerrain` | Metro-scale heightfield, carved river, lakes, islets; contouring → `water`/`land` multipolygons + `riverSlice` |
 | 2 | Road field | `streets/field.ts` `buildRoadField` | Orientation patches + basis fields → `sample(p) → {major, minor}` |
 | 3 | Highway | `streets/highway.ts` `traceHighway` | One highway polyline (or none if every edge is sea) |
-| 3b | Landmarks | `landmarks/place.ts` `placeLandmarks` | Arcologies (4 designs + ring road), megablock cores; obstacles for the tracer |
+| 3b | Landmarks | `landmarks/place.ts` `placeLandmarks` | Arcologies (7 designs; ring / half ring / boulevard / embedded), megablock cores; obstacles for the tracer |
 | 4 | Arterials | `sector/streets.ts` `traceRoads` → `streets/trace.ts` `traceLayer` | Major streamlines ~400 m apart, seeded along the highway and across the river |
 | 5 | Streets pass 1 | same | Minor streamlines ~100 m apart |
 | 6 | Streets pass 2 | same | Second minor pass fills gaps |

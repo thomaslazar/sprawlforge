@@ -1,6 +1,6 @@
 # Cyberpunk Layer, Part 1: Arcologies and Megablocks — Design
 
-Status: implemented on `spec/cyberpunk-layer` (2026-10-02)
+Status: implemented on `spec/cyberpunk-layer` (2026-10-05, incl. §11 polish and §12 variation rounds)
 Branch: `spec/cyberpunk-layer`
 Depends on: `docs/specs/2026-09-29-tensor-streets-design.md` (merged, PR #6)
 Deferred to part 2 (user wants both): highway frontage strips, walled
