@@ -170,6 +170,33 @@ export function octagon(center: Pt, radius: number, angle: number, jitter?: (i: 
 - [ ] Tests (RED): `designs do not repeat within a sector` (first four distinct, seed with ≥ 2 arcologies); `every design renders` (fixture model with one arcology per design → `data-design="…"` present, ziggurat has 4 nested squares + 4 diagonals, cluster 6 rectangles + octagon, satellites 5 satellites + 5 walkways); `names follow the design pool` (a ziggurat name comes from the Ziggurat/Pyramid pool).
 - [ ] Implement spec §11.5; pools: 3+ patterns per design in both packs. Run `tools/uicheck/run.sh`, look at the shots. Commit `feat: four arcology designs with matching name pools`.
 
+### Task 13: Landmark frequency table and toggle tags
+
+**Files:** `src/gen/types.ts` (`SectorParams.arcology/megablock`), `src/app/tags.ts` (FREE_TAGS + effects + defaults), `src/app/strings.ts`, `src/app/KnobPanel.tsx` (new "Landmarks" toggle row beside Water), `src/gen/landmarks/place.ts` (`countRanges` → table of spec §12.1), `place.test.ts`, `src/gen/sector/generate.test.ts` (landmark seeds: pass the toggles or adjust expectations), `tools/uicheck/check.mjs` (landmark URLs gain `arcology` / `megablock` tags; tag-chip assertions), `src/app/*.test.ts*` if tag tests exist.
+
+- [ ] Tests (RED): `counts follow the table` (three seeds × small/medium/large × corp 0.85 / 0.5 / 0.15, each cell's range, p % cells ∈ {0, 1}); `toggles guarantee a landmark` (a seed/size whose draw is 0 gets exactly 1 with the toggle); `tags map to params` (`arcology`, `megablock` resolve; chips render; URL round-trips).
+- [ ] Implement §12.1; keep rng draw order fixed (both counts drawn first). Existing landmark describes in generate.test.ts: add `arcology: true` / `megablock: true` to their params where the table would now give 0, so the shared models keep their landmarks; re-baseline megablock counts downward where the table shrinks them. Commit `feat: landmark frequency by power and size, with arcology and megablock toggles`.
+
+### Task 14: Arcology surroundings
+
+**Files:** `src/gen/types.ts` (`ArcologyAccess`, `RingShape`, `Arcology.access/ringShape`), `src/gen/landmarks/place.ts` (draws at the end of the stream; `ringRoad(a)` shapes; half ring open), `src/gen/sector/streets.ts` (K roads never pruned; boulevard seed first in pass A; radial basis only for ring/half; spokes at half-ring ends), `src/gen/streets/trace.ts` only if the K-road prune exemption needs it, `src/gen/streets/lots.ts` (plaza as no-build for non-ring; block keeps lots), `src/gen/sector/generate.ts` (infill: drop cuts through plazas, do not skip non-ring arcology faces), tests alongside, `src/render/landmarks.ts` only if the plaza render needs the access.
+
+- [ ] Tests (RED): `access kinds vary` (over the landmark seeds ≥ 2 kinds appear); `ring shapes` (closed, vertex counts per shape); `half ring is open and spoked` (first ≠ last, both ends have an arterial end within 6 m, ≥ 3 spoke ends); `boulevard passes the plaza` (an arterial within R + 20 m of the centre, no K road); `embedded has no K road`; `non-ring arcology blocks keep lots outside the plaza` (≥ 1 building in the block, none inside the plaza); `no infill road through a plaza`; existing ring/spoke tests restricted to `access === 'ring'`.
+- [ ] Implement §12.2. Commit `feat: arcology surroundings — ring shapes, half ring, boulevard, embedded`.
+
+### Task 15: More structures and randomised details
+
+**Files:** `src/gen/types.ts` (`ArcologyDesign` + 3, `Arcology.detail`), `src/gen/landmarks/place.ts` (detail draws after access), `src/gen/landmarks/designs.ts` (twins, crescent, stack; count/twist for existing designs), `src/gen/names/packs/*.ts` (pools), `src/render/landmarks.ts`, `src/render/svg.test.ts`, `src/gen/landmarks/place.test.ts`.
+
+- [ ] Tests (RED): `every design renders` extended to seven with shape counts (twins 2 slabs + 1 line, crescent 1 band + 1 court, stack `count` squares); `details vary` (two arcologies with the same design on different seeds differ in count or twist); `(design, access) pairs are unique while possible`; names from the new pools.
+- [ ] Implement §12.3. Commit `feat: twins, crescent and stack arcologies with randomised details`.
+
+### Task 16: uicheck, docs, screenshots
+
+**Files:** `tools/uicheck/check.mjs` (assert `[data-design]` and that the two landmark shots differ in access or design; new toggles pressed from URL), `ARCHITECTURE.md` (row 3b mentions access kinds), `docs/ROADMAP.md`, `docs/specs/...` status line.
+
+- [ ] Run `tools/uicheck/run.sh`; render a 6 km corp-run seed and screenshot 600 m crops of every arcology (fresh Playwright script in temp/) and describe each; perf median of 3 vs main on seed 42 coastal+river 4 km. Commit `docs: cyberpunk variation round docs and uicheck`.
+
 ## Plan self-review notes
 
 - Spec coverage: §3→T1, §4→T2+T3, §5→T4+T5, §6→T1 (patterns/types)+T6, §7→T7, §8→T1, §9 spread over tasks, §10 docs→T7.

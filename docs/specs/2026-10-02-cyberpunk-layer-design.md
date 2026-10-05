@@ -237,3 +237,85 @@ user. These amend §3, §5 and §7; part 2 (C, D) is unchanged.
    shore; designs distinct for the first four arcologies of a sector,
    every design renders with `data-design`; uicheck screenshots re-taken
    and looked at.
+
+## 12. Variation round (2026-10-05)
+
+User feedback after the polish round: too many arcologies on default maps,
+every arcology sits in the same round ring road, structures too uniform.
+
+1. **Frequency and tags.** `SectorParams` gains `arcology: boolean` and
+   `megablock: boolean` (free toggle tags `arcology`, `megablock`, UI group
+   "Landmarks" beside Water, labels "Arcology" / "Megablock"). Counts are
+   drawn from this table by power tag and size ("p %" = that chance of
+   exactly one, else none; both counts are always drawn so the rng order
+   never depends on the outcome):
+
+   | arcologies | small 2 km | medium 4 km | large 6 km |
+   |---|---|---|---|
+   | corp-run (≥ 0.7) | 50 % | 1–2 | 2–3 |
+   | balanced | 0 | 50 % | 0–1 |
+   | fringe (< 0.3) | 0 | 0 | 15 % |
+
+   | megablocks | small | medium | large |
+   |---|---|---|---|
+   | corp-run | 0 | 0 | 20 % |
+   | balanced | 30 % | 0–1 | 1–2 |
+   | fringe | 1 | 1–3 | 2–4 |
+
+   A toggle that is on raises its count to at least 1 (if a candidate spot
+   exists). Spacing rules are unchanged.
+2. **Surroundings.** `Arcology.access: 'ring' | 'half' | 'boulevard' |
+   'embedded'`, weights 40 / 20 / 20 / 20, drawn at the end of the
+   `'landmarks'` stream (after the design draws). No two arcologies in a
+   sector share the same (design, access) pair while another pair is
+   available.
+   - `ring`: ring road as today, radius R = r + 60, but `ringShape:
+     'circle' | 'square' | 'octagon'` (equal odds): circle 48 points;
+     square = a rounded square of half-side R with corner radius 0.3 R,
+     aligned to the field; octagon of radius R aligned to the field.
+   - `half`: an open arterial arc of 180° at radius R, id `K<n>`, starting
+     at the field major angle plus a random side (0 or 180°). Spokes are
+     seeded at both ends and every 200 m along it; `K` roads are never
+     pruned (R3 generalised to open rings).
+   - `boulevard`: no ring. One straight arterial seed at distance R on a
+     random side, direction tangential to the plaza, traced first in pass
+     A (like spokes). The plaza obstacle keeps it outside.
+   - `embedded`: no ring, no boulevard. The plaza is an obstacle for every
+     road class, nothing else.
+   - The radial basis field applies only to `ring` and `half` (spokes);
+     `boulevard` and `embedded` keep the grid field.
+   - Lots: for `half`, `boulevard` and `embedded` the arcology lies inside
+     an ordinary block face: the plaza is a no-build polygon, the block
+     keeps its normal lots outside the plaza, `flags.arcology` is still
+     set. Infill no longer skips such a face; cuts through the plaza are
+     dropped (as for cores before §11.1). Zoning, POIs, labels unchanged.
+3. **Structures.** `ArcologyDesign` gains `'twins' | 'crescent' | 'stack'`
+   (seven designs, drawn without repetition as before), and every design
+   takes a `detail` drawn after the access draws: `Arcology.detail: {
+   count: number; twist: number }` with `twist` in 0–45° and `count` per
+   design: cluster 5–8 rectangles, satellites 4–7, ziggurat 3–4 nested
+   steps, stack 3–4 squares; others ignore `count`. `twist` is added to the
+   design's rotation.
+   - `twins`: two slabs 0.9 r × 0.3 r centred at ± 0.35 r along the minor
+     axis, one 1 px bridge line between their centres; outline = hull.
+   - `crescent`: a C-shaped band from radius 0.55 r to r spanning 250°,
+     opening toward the access side (toward the ring gap for `half`, the
+     boulevard, or a random side otherwise), 12 segments per arc, filled;
+     plus a court octagon of radius 0.2 r stroked 1 px.
+   - `stack`: `count` squares of half-side 0.7 r, 0.6 r, 0.5 r, 0.4 r
+     rotated by k · 90° / count + twist, drawn largest first, each filled
+     and stroked 2 px.
+   - Name pools: twins (Twin Towers / Gemini words), crescent (Crescent /
+     Arc), stack (Stack / Terraces); 3+ patterns each in both packs.
+   - Render per R19 (hull unfilled for all non-`rings` designs).
+4. **Tests.** Counts per table (three seeds × three sizes, each cell's
+   range; `p %` cells assert 0 or 1); toggles force ≥ 1 when the untoggled
+   draw gave 0; `K` road only for `ring`/`half`, open for `half`, closed
+   for `ring`, shape vertex counts; boulevard arterial passes within R + 20
+   m of the centre; no building inside any plaza and normal lots present
+   in the block of a non-ring arcology; no infill road through a plaza;
+   `(design, access)` pairs unique while possible; the three new designs
+   render with their shape counts; uicheck on `inland,corp-run,arcology`
+   (≥ 1 `[data-arcology]`) and `bay,fringe,megablock` (≥ 1
+   `[data-megablock]`); screenshots looked at; perf within +10 % of main.
+   `GENERATOR_VERSION` stays 6 (unreleased).
