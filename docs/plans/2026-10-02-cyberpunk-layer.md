@@ -1,0 +1,204 @@
+# Cyberpunk Layer Part 1 Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Add arcologies (giant corp structures the road net bends toward) and megablocks (solid slum masses with no streets) as placed-before-roads landmarks, named, marked, rendered.
+
+**Architecture:** New `src/gen/landmarks/place.ts` picks landmark sites after the highway and before arterials. The tracer gains `obstacles`; the field gains a `radial` basis per arcology; a ring road per arcology is pre-added like the highway. Zoning, lots, POIs, names and the renderer read landmark flags.
+
+**Tech Stack:** TypeScript, vitest, polygon-clipping (already present), Playwright for uicheck. No new dependencies.
+
+**Spec:** `docs/specs/2026-10-02-cyberpunk-layer-design.md`
+
+## Global Constraints
+
+- Metric only. Determinism via `mulberry32(hashSeed(seed, '<stage>'))`; stage `'landmarks'` for placement, `'names'` reused for landmark names. Window containment.
+- `GENERATOR_VERSION` = 6.
+- Perf: within +10 % of `main` on seed 42 coastal+river 4 km (median of 3).
+- Conventional Commits, no `Co-Authored-By` / "Generated with" lines (check `git log -1 --format=%B`, amend your own fresh commit if a trailer appeared).
+- Every task: `npx tsc -b --noEmit` + the task's tests before commit; tasks touching render or UI run `tools/uicheck/run.sh` (alone, not concurrently with vitest) and look at the screenshots.
+- Ratchets in `generate.test.ts` only go down.
+
+## Review Focus
+
+1. Inland sector with no highway (all edges sea is impossible inland; but a sector whose highway trace is empty): placement must work with `highway` undefined (Task 1 test).
+2. 2 km sector: at most one arcology and one megablock; a sector where no candidate satisfies the distances yields zero landmarks without throwing (Task 1 test).
+3. Arcology next to a river: the plaza must not swallow the river bank — candidates are ≥ 150 m from water (Task 1) and the ring road must not enter water (Task 3 test).
+4. Megablock core inside a face that also holds normal lots: no lot overlaps the core (Task 5 test).
+5. POI lottery placing a club inside an arcology plaza (Task 6 test).
+
+---
+
+### Task 1: Types, pack patterns, placement
+
+**Files:**
+- Modify: `src/gen/types.ts`, `src/gen/names/names.ts`, `src/gen/names/packs/generic.ts`, `src/gen/names/packs/shadowrunish.ts`
+- Create: `src/gen/landmarks/place.ts`, `src/gen/landmarks/place.test.ts`
+
+**Interfaces:**
+- Produces: spec §8 types (`Arcology`, `Megablock`, `LandmarkFlags`, `BlockStyle` + `'megablock'`, `SectorModel.arcologies/megablocks`, `GENERATOR_VERSION = 6`); `FlavorPack.arcologyPatterns: string[]`, `megablockPatterns: string[]`; POI types `arcology` (zones `['corp']`) and `megablock` (zones `['slum']`) in both packs; and
+```ts
+export interface Landmarks { arcologies: Arcology[]; megablocks: Megablock[] }
+export function placeLandmarks(params: SectorParams, terrain: Terrain, sizeM: number, highway: Road | undefined, field: RoadField): Landmarks
+export function ringRoad(a: Arcology): Road   // id a.ringRoadId, class arterial, width 18, 48 segments, closed (last point = first)
+export function octagon(center: Pt, radius: number, angle: number, jitter?: (i: number) => number): Pt[]
+```
+`Arcology.name` / `Megablock.name` are `''` here (Task 6 names them).
+
+- [ ] **Step 1: Failing tests** (`place.test.ts`): `is deterministic`; `counts follow the power tag` (seed 42 size 4 inland: corpDominance 0.85 → 2-3 arcologies and ≤ 1 megablock; 0.5 → 1-2 / 1-2; 0.15 → ≤ 1 / 2-4); `a 2 km sector has at most one of each`; `landmarks keep their distances` (≥ 150 m from water on a coastal+river seed, ≥ 250 m from the highway, arcologies ≥ 900 m apart, megablocks ≥ 700 m from arcologies); `works without a highway` (pass `undefined`); `ring road is closed and inside the window`; `no candidate → zero landmarks, no throw` (a terrain fixture that is almost all water).
+- [ ] **Step 2: Run** `npx vitest run src/gen/landmarks` → FAIL (module missing).
+- [ ] **Step 3: Implement** per spec §3 (lattice 300 m jittered ±0.3, candidate filters, greedy picks, octagons, ring road). Field major angle at the centre from `field.sample(center).major`.
+- [ ] **Step 4: Types and packs.** Add the types; `flags` types change from `Record<string, never>` to `LandmarkFlags` (compile fallout: literals keep `flags: {}`); patterns and POI types in both packs (4+ patterns each, using existing tables `corpA`, `corpB`, `place`, `adj`).
+- [ ] **Step 5:** `npx tsc -b --noEmit && npx vitest run src/gen/landmarks src/gen/names` → PASS. Commit `feat: landmark placement for arcologies and megablocks`.
+
+---
+
+### Task 2: Field radial basis and tracer obstacles
+
+**Files:**
+- Modify: `src/gen/streets/field.ts`, `src/gen/streets/trace.ts`, tests alongside.
+
+**Interfaces:**
+- Produces: `radialBasis(center: Pt, rInner: number, rOuter: number): BasisField` (name `'radial'`; angle = line angle toward the centre; weight 1.5 at `rInner` → 0 at `rOuter`, 0 inside `rInner`); `BasisField.name` union gains `'radial'`.
+- `TraceOpts.obstacles?: Pt[][]`; `traceHalf` stops when `next` is inside any obstacle (`pointInRings`, bbox prefilter); `poissonSeeds(..., accept)` callers pass `accept` that also rejects obstacle points; `seedsAlong(points, every, alternate, reject?: (p: Pt) => boolean)` drops seeds for which `reject(p)` is true.
+
+- [ ] **Step 1: Failing tests**: `radial basis points at the centre` (angle at (c.x + 300, c.y) is horizontal; at (c.x, c.y + 300) vertical; weight 0 inside rInner, 0 beyond rOuter); `a streamline stops at an obstacle` (square obstacle in the path on the inland stub field → last point outside the obstacle, within one step of its edge); `seedsAlong rejects seeds inside obstacles`.
+- [ ] **Step 2:** run → FAIL. **Step 3:** implement. **Step 4:** `npx vitest run src/gen/streets` → PASS. Commit `feat: radial basis field and tracer obstacles`.
+
+---
+
+### Task 3: Wire landmarks into road tracing
+
+**Files:**
+- Modify: `src/gen/sector/streets.ts`, `src/gen/sector/generate.ts` (call order only), `src/gen/sector/generate.test.ts`
+
+**Interfaces:**
+- `traceRoads(params, terrain, sizeM): TracedRoads` gains `landmarks: Landmarks` and `ringRoads: Road[]` in its result; internally: highway → `placeLandmarks` → field rebuilt with `extra = arcologies.map(radialBasis(center, r + 60, 800))` → ring roads added to the index → arterial seeds = highway seeds + ring-road seeds (`seedsAlong(ring, 400, false)`, crossing axis) + river crossings + Poisson (rejecting obstacle points) → arterial passes with `obstacles = plazas` → street queue with `obstacles = plazas + cores`. Ring roads are part of `arterials` in the output (so graph, naming, prune treat them as arterials; `pruneDangling` must not touch a closed ring: skip roads whose first and last point coincide).
+- `infillFaces` skips faces containing an arcology centre or megablock core; for a megablock face it measures `area − coreArea`.
+
+- [ ] **Step 1: Failing tests** in `generate.test.ts` on seed 42 inland 4 km corpDominance 0.85 and seed 7 bay 4 km corpDominance 0.15: `no road enters an arcology plaza`; `no street enters a megablock core`; `ring roads are closed and spoked` (≥ 4 arterial ends within 6 m of each ring road); `landmark faces are not infilled` (no infill road inside a plaza or core); keep every existing test green (re-baseline only downward).
+- [ ] **Step 2:** FAIL. **Step 3:** implement. **Step 4:** `npx tsc -b --noEmit && npx vitest run src/gen` → PASS. Commit `feat: roads bend toward arcologies and stop at megablocks`.
+
+---
+
+### Task 4: Zoning and district flags
+
+**Files:**
+- Modify: `src/gen/sector/zoning.ts`, `zoning.test.ts`, `generate.ts`
+
+**Interfaces:**
+- `assignZones(districtPolys, params, terrain, forced: Array<{ at: Pt; zone: ZoneType; flag: LandmarkFlags }> = [])`: a polygon containing `at` gets that zone and `flags` merged; the lottery runs for the rest.
+
+- [ ] Tests: `forced zones win the lottery`; `generate`: the district containing each arcology centre is `corp` with `flags.arcology`, each megablock core district is `slum` with `flags.megablock`. Implement, PASS, commit `feat: landmark districts are zoned corp and slum`.
+
+---
+
+### Task 5: Lots: arcology blocks empty, megablock core as one building
+
+**Files:**
+- Modify: `src/gen/streets/lots.ts`, `lots.test.ts`, `generate.ts`
+
+**Interfaces:**
+- `fillLots(districts, blocks, params, terrain, noBuild, forcedStyle?, landmarks?: Landmarks)`: a block whose centroid lies inside an arcology plaza → `flags.arcology = id`, no buildings, no alleys; a block whose face contains a megablock core → `flags.megablock = id`, `style: 'megablock'`, ONE building = core inset 3 m (concave allowed via `insetByClipping`), alleys = BSP cuts of the core bbox at 60 m clipped to the core, the core is a no-build strip for the rest of the face's normal lots.
+
+- [ ] Tests: `arcology blocks have no buildings`; `a megablock core is exactly one building with alleys`; `lots around a megablock never overlap the core`. Implement, PASS (`npx vitest run src/gen/streets src/gen/sector/generate.test.ts`), commit `feat: megablock cores and empty arcology blocks in the lot pass`.
+
+---
+
+### Task 6: Names and POIs
+
+**Files:**
+- Modify: `src/gen/sector/generate.ts`, `src/gen/sector/pois.ts`, `pois.test.ts`, `generate.test.ts`
+
+**Interfaces:**
+- Landmark names from `nameRng` after districts: `generateName(rng.pick(pack.arcologyPatterns), pack.tables, rng)` (same for megablocks).
+- `placePois(districts, buildings, pack, params, landmarks?)`: first one POI per landmark at its centre (`type: 'arcology' | 'megablock'`, `name` = landmark name, `buildingId: ''`, `districtId` = containing district), then the lottery, which skips buildings whose centroid lies in a plaza (there are none) and never picks a `type` of `arcology`/`megablock`.
+
+- [ ] Tests: `one POI per landmark with its name`; `names are non-empty and from the pack patterns`; `lottery never places a POI inside a plaza`. Implement, PASS, commit `feat: landmark names and POIs`.
+
+---
+
+### Task 7: Rendering, themes, uicheck, docs
+
+**Files:**
+- Modify: `src/render/theme.ts`, `theme.test.ts`, `src/render/svg.ts`, `svg.test.ts`, `tools/uicheck/check.mjs`, `ARCHITECTURE.md`, `docs/ROADMAP.md`
+
+- [ ] Theme keys per spec §7 in all five themes (test extends the existing all-themes check).
+- [ ] `svg.ts`: landmark pass after buildings, before roads: arcology plaza fill, footprint octagon, two inner rings, `data-arcology`; megablock core `data-megablock` with `megablock.fill`, its alleys in `megablock.alley`; landmark labels with district-label styling one size larger, always shown. Test: `renders arcology and megablock marks` on the corp-run and fringe seeds.
+- [ ] uicheck: after the existing planned/sprawl block, load `?seed=42&tags=inland,corp-run` and assert ≥ 1 `[data-arcology]`; load `?seed=7&tags=bay,fringe` and assert ≥ 1 `[data-megablock]`; screenshot both as `landmarks-arcology.png` / `landmarks-megablock.png`. Run `tools/uicheck/run.sh`; look at the shots.
+- [ ] Perf check: seed 42 coastal+river 4 km median of 3 vs `main`; report.
+- [ ] ARCHITECTURE.md: one row in the pipeline table ("Landmarks", `landmarks/place.ts`, after Highway) and one sentence under the road field about the radial basis and obstacles. ROADMAP: move "Cyberpunk street layer" to a done note pointing at this spec; add part 2 (highway frontage, corporate compounds) as the next entry.
+- [ ] Commit `feat: render arcologies and megablocks; uicheck and docs`.
+
+---
+
+### Task 8: Megablock as the whole block with packed cells
+
+**Files:**
+- Modify: `src/gen/types.ts` (`Megablock.footprint: Pt[]`), `src/gen/streets/lots.ts`, `lots.test.ts`, `src/gen/sector/generate.ts` (write `footprint` back onto the model's megablocks), `src/render/landmarks.ts`, `src/render/svg.test.ts`
+
+**Interfaces:** spec §11.1. In `fillLots` the megablock block takes an early branch (like arcology blocks): hive footprint = block footprint inset by `SIDEWALK` (`insetRing` → `insetByClipping` largest piece); cells = `bspSplit(bbox(hive), { minCell: 30, gap: 2, jitter: 0.3, rng: megaRng })` rotated to `longestEdgeAngle(hive)`, each cell clipped to the hive (`safeClip`/`clipSegmentToRing` helpers already in lots.ts), every piece ≥ 40 m² becomes a `Building`; alleys = the three longest cuts clipped to the hive; no other lots in that block; the core is no longer added to `noBuild`. Render: hive buildings drawn by `landmarks.ts` (not the batched building path) with `megablock.fill` + 0.5 px `megablock.alley`; outline 2 px; `data-megablock` on the outline.
+
+- [ ] Tests (RED first): `a megablock block is one hive of packed cells` (≥ 6 buildings, all centroids inside `footprint`, none elsewhere in the block, cell areas 40–3000 m²); `megablock footprint hugs its streets` (every footprint vertex within SIDEWALK + 2 m of the block footprint); render: `data-megablock` on the outline, hive cells not in `[data-buildings]`.
+- [ ] `npx tsc -b --noEmit && npx vitest run src/gen/streets src/gen/sector/generate.test.ts src/render` → PASS. Commit `feat: megablocks fill their block with packed hive cells`.
+
+### Task 9: Drop hairpin spokes
+
+**Files:** `src/gen/sector/streets.ts`, `src/gen/sector/generate.test.ts`
+
+- [ ] Test (RED): on seed 782008753, size 6, inland, density 0.6, corpDominance 0.5, poiDensity 0.5, irregularity 0.5, river+lakes+islands+piers, pack generic: no arterial has both ends within 6 m of the same ring road while being shorter than π(r + 60) (today A006, 168 m, and a zero-length A003). Same invariant on the two landmark seeds.
+- [ ] Implement spec §11.2 after the arterial `finalize`, before `pruneDangling`. Commit `fix: drop arterial spokes that loop back onto their ring`.
+
+### Task 10: Lakes bound blocks
+
+**Files:** `src/gen/streets/lots.ts` (alleys clipped to land), `src/gen/sector/generate.ts` (`infillFaces` land-area rule), `generate.test.ts`
+
+- [ ] Tests (RED): on the Task 9 seed: `no alley point lies in water`; `no block over 60 000 m² of land area has its centroid in a lake` (today B3001, 73 ha, 365 alleys across the lake).
+- [ ] Implement spec §11.3. Keep `landmark faces are skipped` behaviour. Commit `fix: lakes bound blocks; alleys clipped to land`.
+
+### Task 11: Street ends in water
+
+**Files:** `src/gen/streets/trace.ts` (`pruneDangling` options), `src/gen/sector/streets.ts`, `trace.test.ts`, `generate.test.ts`
+
+- [ ] Tests (RED): unit — a street ending inside water is cut back to the bank; a 100 m stub to a lake shore is pruned, a 200 m stub to the river shore is kept; generate — on the Task 9 seed no street point lies in water outside `wet` bridge spans and no street end lies within 6 m of a lake shore.
+- [ ] Implement spec §11.4: `PruneOpts.waterAnchor?: (p: Pt, stubLength: number) => boolean`; streets pass a predicate that accepts only river/sea shores (`terrain.water[0]`-style rings: the ones the river slice / coast produced — derive from `terrain.riverSlice` and the land outer ring, lakes are land-polygon holes) and stubs ≥ 150 m. Commit `fix: streets end on land; lake shores never anchor a stub`.
+
+### Task 12: Arcology designs
+
+**Files:** `src/gen/types.ts` (`ArcologyDesign`, `Arcology.design`), `src/gen/landmarks/place.ts` + test, `src/gen/names/names.ts`, both packs, `src/gen/sector/generate.ts` (name pool by design), `src/render/landmarks.ts`, `svg.test.ts`, `tools/uicheck/check.mjs` (re-take the two landmark shots; assert `[data-design]` present), `docs/ROADMAP.md`
+
+- [ ] Tests (RED): `designs do not repeat within a sector` (first four distinct, seed with ≥ 2 arcologies); `every design renders` (fixture model with one arcology per design → `data-design="…"` present, ziggurat has 4 nested squares + 4 diagonals, cluster 6 rectangles + octagon, satellites 5 satellites + 5 walkways); `names follow the design pool` (a ziggurat name comes from the Ziggurat/Pyramid pool).
+- [ ] Implement spec §11.5; pools: 3+ patterns per design in both packs. Run `tools/uicheck/run.sh`, look at the shots. Commit `feat: four arcology designs with matching name pools`.
+
+### Task 13: Landmark frequency table and toggle tags
+
+**Files:** `src/gen/types.ts` (`SectorParams.arcology/megablock`), `src/app/tags.ts` (FREE_TAGS + effects + defaults), `src/app/strings.ts`, `src/app/KnobPanel.tsx` (new "Landmarks" toggle row beside Water), `src/gen/landmarks/place.ts` (`countRanges` → table of spec §12.1), `place.test.ts`, `src/gen/sector/generate.test.ts` (landmark seeds: pass the toggles or adjust expectations), `tools/uicheck/check.mjs` (landmark URLs gain `arcology` / `megablock` tags; tag-chip assertions), `src/app/*.test.ts*` if tag tests exist.
+
+- [ ] Tests (RED): `counts follow the table` (three seeds × small/medium/large × corp 0.85 / 0.5 / 0.15, each cell's range, p % cells ∈ {0, 1}); `toggles guarantee a landmark` (a seed/size whose draw is 0 gets exactly 1 with the toggle); `tags map to params` (`arcology`, `megablock` resolve; chips render; URL round-trips).
+- [ ] Implement §12.1; keep rng draw order fixed (both counts drawn first). Existing landmark describes in generate.test.ts: add `arcology: true` / `megablock: true` to their params where the table would now give 0, so the shared models keep their landmarks; re-baseline megablock counts downward where the table shrinks them. Commit `feat: landmark frequency by power and size, with arcology and megablock toggles`.
+
+### Task 14: Arcology surroundings
+
+**Files:** `src/gen/types.ts` (`ArcologyAccess`, `RingShape`, `Arcology.access/ringShape`), `src/gen/landmarks/place.ts` (draws at the end of the stream; `ringRoad(a)` shapes; half ring open), `src/gen/sector/streets.ts` (K roads never pruned; boulevard seed first in pass A; radial basis only for ring/half; spokes at half-ring ends), `src/gen/streets/trace.ts` only if the K-road prune exemption needs it, `src/gen/streets/lots.ts` (plaza as no-build for non-ring; block keeps lots), `src/gen/sector/generate.ts` (infill: drop cuts through plazas, do not skip non-ring arcology faces), tests alongside, `src/render/landmarks.ts` only if the plaza render needs the access.
+
+- [ ] Tests (RED): `access kinds vary` (over the landmark seeds ≥ 2 kinds appear); `ring shapes` (closed, vertex counts per shape); `half ring is open and spoked` (first ≠ last, both ends have an arterial end within 6 m, ≥ 3 spoke ends); `boulevard passes the plaza` (an arterial within R + 20 m of the centre, no K road); `embedded has no K road`; `non-ring arcology blocks keep lots outside the plaza` (≥ 1 building in the block, none inside the plaza); `no infill road through a plaza`; existing ring/spoke tests restricted to `access === 'ring'`.
+- [ ] Implement §12.2. Commit `feat: arcology surroundings — ring shapes, half ring, boulevard, embedded`.
+
+### Task 15: More structures and randomised details
+
+**Files:** `src/gen/types.ts` (`ArcologyDesign` + 3, `Arcology.detail`), `src/gen/landmarks/place.ts` (detail draws after access), `src/gen/landmarks/designs.ts` (twins, crescent, stack; count/twist for existing designs), `src/gen/names/packs/*.ts` (pools), `src/render/landmarks.ts`, `src/render/svg.test.ts`, `src/gen/landmarks/place.test.ts`.
+
+- [ ] Tests (RED): `every design renders` extended to seven with shape counts (twins 2 slabs + 1 line, crescent 1 band + 1 court, stack `count` squares); `details vary` (two arcologies with the same design on different seeds differ in count or twist); `(design, access) pairs are unique while possible`; names from the new pools.
+- [ ] Implement §12.3. Commit `feat: twins, crescent and stack arcologies with randomised details`.
+
+### Task 16: uicheck, docs, screenshots
+
+**Files:** `tools/uicheck/check.mjs` (assert `[data-design]` and that the two landmark shots differ in access or design; new toggles pressed from URL), `ARCHITECTURE.md` (row 3b mentions access kinds), `docs/ROADMAP.md`, `docs/specs/...` status line.
+
+- [ ] Run `tools/uicheck/run.sh`; render a 6 km corp-run seed and screenshot 600 m crops of every arcology (fresh Playwright script in temp/) and describe each; perf median of 3 vs main on seed 42 coastal+river 4 km. Commit `docs: cyberpunk variation round docs and uicheck`.
+
+## Plan self-review notes
+
+- Spec coverage: §3→T1, §4→T2+T3, §5→T4+T5, §6→T1 (patterns/types)+T6, §7→T7, §8→T1, §9 spread over tasks, §10 docs→T7.
+- `pruneDangling` skipping closed rings is the one tracer-side rule beyond the spec text; without it the ring road's "ends" (which coincide) could be judged unanchored.
+- Megablock faces: the spec says "ONE building"; lots for the remaining face area are normal rows, so a megablock face is a mix. Infill measures `area − coreArea` so it is not split.

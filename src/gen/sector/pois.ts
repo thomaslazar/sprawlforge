@@ -1,26 +1,40 @@
-import { ringCentroid } from '../geometry'
+import { pointInRings, ringCentroid } from '../geometry'
 import type { FlavorPack } from '../names/names'
 import { generateName } from '../names/names'
 import { hashSeed, mulberry32 } from '../rng'
-import type { Building, District, Poi, SectorParams } from '../types'
+import type { Arcology, Building, District, Megablock, Poi, SectorParams } from '../types'
 
 export function placePois(
   districts: District[],
   buildings: Building[],
   pack: FlavorPack,
   params: SectorParams,
+  landmarks: { arcologies: Arcology[]; megablocks: Megablock[] } = { arcologies: [], megablocks: [] },
 ): Poi[] {
-  // poiDensity <= 0 disables POIs entirely — the per-district count formula
-  // floors at 1, so it can't express "none" on its own; defensive guard, not
-  // currently reachable via any tag (poi visibility is a display-only toggle)
-  if (params.poiDensity <= 0) return []
   const rng = mulberry32(hashSeed(params.seed, 'pois'))
   const pois: Poi[] = []
   let n = 0
+  const id = () => `P${String(++n).padStart(2, '0')}`
+
+  // landmarks first: one POI each at its centre, independent of the lottery
+  for (const [type, list] of [['arcology', landmarks.arcologies], ['megablock', landmarks.megablocks]] as const) {
+    for (const l of list) {
+      const d = districts.find((x) => pointInRings(l.center, [x.poly]))
+      pois.push({ id: id(), buildingId: '', districtId: d?.id ?? '', type, name: l.name, at: l.center })
+    }
+  }
+
+  // poiDensity <= 0 disables the lottery — the per-district count formula
+  // floors at 1, so it can't express "none" on its own; defensive guard, not
+  // currently reachable via any tag (poi visibility is a display-only toggle)
+  if (params.poiDensity <= 0) return pois
+  const plazas = landmarks.arcologies.map((a) => a.plaza)
 
   for (const district of districts) {
-    const candidates = buildings.filter((b) => b.districtId === district.id)
-    const types = pack.poiTypes.filter((t) => t.zones.includes(district.zone))
+    const candidates = buildings.filter((b) => b.districtId === district.id
+      && !plazas.some((p) => pointInRings(ringCentroid(b.footprint), [p]))
+      && !landmarks.megablocks.some((m) => m.footprint.length > 0 && pointInRings(ringCentroid(b.footprint), [m.footprint])))
+    const types = pack.poiTypes.filter((t) => t.zones.includes(district.zone) && t.type !== 'arcology' && t.type !== 'megablock')
     if (types.length === 0 || candidates.length === 0) continue
     const count = Math.min(
       candidates.length,
@@ -32,9 +46,8 @@ export function placePois(
       const idx = rng.int(0, pool.length - 1)
       const building = pool.splice(idx, 1)[0]
       const typeDef = rng.pick(types)
-      n += 1
       pois.push({
-        id: `P${String(n).padStart(2, '0')}`,
+        id: id(),
         buildingId: building.id,
         districtId: district.id,
         type: typeDef.type,

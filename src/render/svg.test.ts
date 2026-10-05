@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { generateSector } from '../gen/sector/generate'
 import type { Pt, Rect } from '../gen/geometry'
 import { GENERATOR_VERSION, type SectorModel, type SectorParams } from '../gen/types'
+import { designShape } from '../gen/landmarks/designs'
 import { renderSector } from './svg'
 import { getTheme, themes } from './theme'
 
@@ -12,7 +13,7 @@ const rectPoly = (r: Rect): Pt[] => [
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
-  landform: 'coastal', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
+  landform: 'coastal', river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon',
 }
 const model = generateSector(base)
 
@@ -74,6 +75,7 @@ describe('renderSector', () => {
     buildings: [],
     pois,
     piers: [],
+    arcologies: [], megablocks: [],
   })
   const poi = (id: string, name: string, x: number, y: number, type = 'x') => ({
     id, buildingId: `BLD${id}`, districtId: 'D01', type, name, at: { x, y },
@@ -112,6 +114,7 @@ describe('renderSector', () => {
     buildings: [],
     pois: [],
     piers: [{ id: 'PR01', points: [{ x: 700, y: 500 }, { x: 760, y: 500 }], width: 6 }],
+    arcologies: [], megablocks: [],
   }
 
   it('scopes the glow filter to highway/arterial road strokes only, never labels or poi markers', () => {
@@ -132,6 +135,7 @@ describe('renderSector', () => {
       buildings: [],
       pois: [poi('P01', 'Alpha Tower', 500, 600)],
       piers: [],
+      arcologies: [], megablocks: [],
     }
     const svg = renderSector(glowModel, theme)
     // highway and arterial polylines carry the glow filter
@@ -287,7 +291,7 @@ describe('renderSector', () => {
     expect(ia).not.toContain('<filter id="glow"')
     expect(ia).not.toContain('<polygon data-id="BLD')
     const sum = (re: RegExp) => [...ia.matchAll(re)].reduce((a, x) => a + Number(x[1]), 0)
-    expect(sum(/<path data-buildings data-count="(\d+)"/g)).toBe(m.buildings.length)
+    expect(sum(/<path data-buildings data-count="(\d+)"/g) + (ia.match(/<polygon points=[^>]*stroke-width="0.5"/g) ?? []).length).toBe(m.buildings.length)
     expect(cnt(ia, 'data-streets')).toBe(m.roads.filter((r) => r.class === 'street' && !r.bridge).length)
     expect(cnt(ia, 'data-ramps')).toBe(m.roads.filter((r) => r.class === 'ramp' && !r.bridge).length)
     expect(cnt(ia, 'data-junctions')).toBe(junctions)
@@ -316,5 +320,79 @@ describe('alleys', () => {
     const svg = renderSector(model, getTheme('neon'), { interactive: true })
     expect(svg.match(/<path data-alleys/g)!.length).toBe(1)
     expect(svg.indexOf('data-alleys')).toBeLessThan(svg.indexOf('data-streets'))
+  })
+})
+
+describe('landmarks', () => {
+  const corp = generateSector({ ...base, landform: 'inland', corpDominance: 0.85 })
+  const fringe = generateSector({ ...base, seed: 7, landform: 'bay', corpDominance: 0.15 })
+  it('landmark names print once as text (no duplicate POI label)', { timeout: 90000 }, () => {
+    const a = renderSector(corp, getTheme('neon'), { interactive: false })
+    const k = corp.arcologies[0]
+    const esc = k.name.replace(/&/g, '&amp;')
+    expect(a.split(`>${esc}</text>`).length - 1).toBe(1)
+  })
+  it('every design renders', () => {
+    const designs = ['rings', 'ziggurat', 'cluster', 'satellites', 'twins', 'crescent', 'stack'] as const
+    const counts = [0, 4, 6, 5, 0, 0, 3]
+    const arcologies = designs.map((design, i) => {
+      const center = { x: 150 + i * 150, y: 500 }
+      const detail = { count: counts[i], twist: 0.2 }
+      const s = designShape(design, center, 60, 0.3, detail)
+      return { id: `ARC${i + 1}`, name: design, design, angle: 0.3, center, radius: 60, footprint: s.outline, plaza: s.outline, ringRoadId: `K${i + 1}`, access: 'ring' as const, detail }
+    })
+    const withArc = { ...model, arcologies, megablocks: [] }
+    const svg = renderSector(withArc, getTheme('neon'))
+    const count = (d: string, tag: string) => {
+      const k = designs.indexOf(d as never)
+      const start = svg.indexOf(`data-arcology="ARC${k + 1}"`)
+      const end = k === designs.length - 1 ? start + svg.slice(start).search(/<(path|polyline|text)/) : svg.indexOf(`data-arcology="ARC${k + 2}"`)
+      return (svg.slice(start, end).match(new RegExp(`<${tag} `, 'g')) ?? []).length
+    }
+    for (const d of designs) expect(svg).toContain(`data-design="${d}"`)
+    expect(svg).toContain(`data-access="ring"`)
+    // slice starts inside the outline tag; a non-last slice also holds the next plaza and the next outline tag (2 extra polygons)
+    const polys = (d: string) => count(d, 'polygon') - (d === 'stack' ? 0 : 2)
+    expect(polys('rings')).toBe(2)
+    expect(polys('ziggurat')).toBe(4)
+    expect(count('ziggurat', 'line')).toBe(4)
+    expect(polys('cluster')).toBe(7)
+    expect(polys('satellites')).toBe(6)
+    expect(count('satellites', 'line')).toBe(5)
+    expect(polys('twins')).toBe(2)
+    expect(count('twins', 'line')).toBe(1)
+    expect(polys('crescent')).toBe(2)
+    expect(polys('stack')).toBe(3)
+  })
+  it('renders arcology and megablock marks', { timeout: 90000 }, () => {
+    expect(corp.arcologies.length).toBeGreaterThan(0)
+    expect(fringe.megablocks.length).toBeGreaterThan(0)
+    for (const interactive of [false, true]) {
+      const a = renderSector(corp, getTheme('neon'), { interactive })
+      for (const k of corp.arcologies) {
+        expect(a).toContain(`data-arcology="${k.id}"`)
+        expect(a).toContain(k.name.replace(/&/g, '&amp;'))
+      }
+      expect(a.match(/<polygon[^>]*data-arcology/g)!.length).toBe(corp.arcologies.length)
+      expect(a.indexOf('data-arcology')).toBeLessThan(a.indexOf('<polyline'))
+      const m = renderSector(fringe, getTheme('neon'), { interactive })
+      for (const k of fringe.megablocks) expect(m).toContain(`data-megablock="${k.id}"`)
+      expect(m).toMatch(/<polygon data-megablock="MEG\d+"[^>]*stroke-width="2"/)
+      // hive cells are drawn by the landmark pass, not the generic building draw
+      const hiveIds = new Set(fringe.blocks.filter((b) => b.flags.megablock).map((b) => b.id))
+      const hive = fringe.buildings.filter((b) => hiveIds.has(b.blockId))
+      expect(hive.length).toBeGreaterThan(0)
+      if (!interactive) expect(m.match(/<polygon data-id="BLD/g)!.length).toBe(fringe.buildings.length) // each once: hive cells only in the landmark draw
+      else {
+        const generic = m.match(/<path data-buildings[^>]*>/g)!.join('')
+        expect(generic.split('M').length - 1).toBe(fringe.buildings.length - hive.length)
+        expect(m).not.toContain('<polygon data-id="BLD')
+      }
+      const alleyPaths = m.match(/<path data-alleys[^>]*>/g) ?? []
+      expect(alleyPaths.length).toBeGreaterThan(0)
+      const generic = alleyPaths.join('')
+      expect(generic).not.toContain(getTheme('neon').megablock.alley)
+      expect(m).toContain('data-landmark-label=""') // valueless attrs are invalid XML, which breaks PNG export
+    }
   })
 })

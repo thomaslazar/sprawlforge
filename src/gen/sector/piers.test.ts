@@ -11,7 +11,7 @@ const rectPoly = (r: Rect): Pt[] => [
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
-  landform: 'coastal', river: false, lakes: false, islands: false, piers: true, pack: 'generic', theme: 'neon',
+  landform: 'coastal', river: false, lakes: false, islands: false, piers: true, arcology: false, megablock: false, pack: 'generic', theme: 'neon',
 }
 const eastWater: Terrain = {
   landform: 'coastal', river: false, lakes: false, islands: false, metroSeed: 1,

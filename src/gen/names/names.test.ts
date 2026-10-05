@@ -36,11 +36,20 @@ describe('flavor packs', () => {
       const allPatterns = [
         ...pack.districtPatterns,
         ...pack.streetPatterns,
+        ...pack.arcologyPatterns,
+        ...pack.megablockPatterns,
         ...pack.poiTypes.flatMap((p) => p.namePatterns),
       ]
       for (const pattern of allPatterns) {
         expect(() => generateName(pattern, pack.tables, rng)).not.toThrow()
       }
+    })
+    it(`${pack.id}: has landmark patterns and poi types`, () => {
+      expect(pack.arcologyPatterns.length).toBeGreaterThanOrEqual(4)
+      expect(pack.megablockPatterns.length).toBeGreaterThanOrEqual(4)
+      const types = pack.poiTypes.map((p) => p.type)
+      expect(types).toContain('arcology')
+      expect(types).toContain('megablock')
     })
     it(`${pack.id}: every zone type has at least one poi type`, () => {
       const zones = new Set(pack.poiTypes.flatMap((p) => p.zones))

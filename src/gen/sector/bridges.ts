@@ -1,5 +1,5 @@
 import { pointAtT, polylineLength, ringsContainsFn, slicePolyline, type Pt } from '../geometry'
-import { distToPolyline } from '../terrain/rivers'
+import { distToPolyline, nearestOnPolyline } from '../terrain/rivers'
 import type { Road, Terrain } from '../types'
 
 const SAMPLE = 10
@@ -20,6 +20,66 @@ export const inWater = (terrain: Terrain, p: Pt): boolean => {
     waterIndexCache.set(terrain, fns)
   }
   return fns.some((f) => f(p))
+}
+
+// water polygons as closed polylines, flagged `open` when one touches the window edge (sea, or the river where it leaves the window)
+const shoreCache = new WeakMap<Terrain, Array<{ rings: Pt[][]; open: boolean }>>()
+const RIVER_SLACK = 60 // the contoured river edge sits up to ~a grid cell (47 m at 6 km) off width/2
+
+/**
+ * A lake shore: the nearest water polygon is closed (touches no window edge) and p is not
+ * within the river's band. Sea and river shores are the rest. ponytail: the river is told apart
+ * by distance to its course, so a lake merged into the river's polygon counts as river.
+ */
+export function isLakeShore(terrain: Terrain, p: Pt, sizeM: number, weld = 6): boolean {
+  const r = terrain.riverSlice
+  if (r && distToPolyline(p, r.course) <= r.width / 2 + RIVER_SLACK + weld) return false
+  let polys = shoreCache.get(terrain)
+  if (!polys) {
+    const edge = (q: [number, number]) => q[0] < 2 || q[1] < 2 || q[0] > sizeM - 2 || q[1] > sizeM - 2
+    polys = terrain.water.map((poly) => ({
+      rings: poly.map((ring) => [...ring, ring[0]].map(([x, y]) => ({ x, y }))),
+      open: poly.some((ring) => ring.some(edge)),
+    }))
+    shoreCache.set(terrain, polys)
+  }
+  let best: { d: number; open: boolean } | null = null
+  for (const poly of polys) for (const ring of poly.rings) {
+    const d = nearestOnPolyline(p, ring).dist
+    if (!best || d < best.d) best = { d, open: poly.open }
+  }
+  return !!best && !best.open
+}
+
+/** the dry runs of a street's points as separate pieces: wet points are cut, streets never bridge (ponytail: a thin stream crossed between two dry points is missed) */
+export function dryStreetPieces(roads: Road[], terrain: Terrain): Road[] {
+  if (terrain.water.length === 0) return roads
+  return roads.flatMap((r) => {
+    const runs: Pt[][] = [[]]
+    for (const q of r.points) {
+      if (inWater(terrain, q)) { if (runs.at(-1)!.length) runs.push([]) } else runs.at(-1)!.push(q)
+    }
+    const keep = runs.filter((run) => run.length >= 2)
+    if (keep.length === 1 && keep[0].length === r.points.length) return [r]
+    return keep.map((points, i) => ({ ...r, id: keep.length > 1 ? `${r.id}-${i + 1}` : r.id, points }))
+  })
+}
+
+/**
+ * The dry runs of segment p-q, sampled every 10 m: a run ends at its last dry sample, so a cut stops up to
+ * 10 m short of the shore. ponytail: 10 m sampling, a pond narrower than that is missed.
+ */
+export function dryRuns(terrain: Terrain, p: Pt, q: Pt, skip?: (pt: Pt) => boolean): Array<[Pt, Pt]> {
+  const n = Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) / 10))
+  const at = (i: number) => ({ x: p.x + ((q.x - p.x) * i) / n, y: p.y + ((q.y - p.y) * i) / n })
+  const out: Array<[Pt, Pt]> = []
+  let start = -1
+  for (let i = 0; i <= n + 1; i++) {
+    const dry = i <= n && !inWater(terrain, at(i)) && !skip?.(at(i))
+    if (dry && start < 0) start = i
+    if (!dry && start >= 0) { if (i - 1 > start) out.push([at(start), at(i - 1)]); start = -1 }
+  }
+  return out
 }
 
 /**

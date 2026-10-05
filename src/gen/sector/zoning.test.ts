@@ -10,7 +10,7 @@ const rectPoly = (r: Rect): Pt[] => [
 
 const params: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
-  landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
+  landform: 'inland', river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon',
 }
 const rects: Rect[] = Array.from({ length: 12 }, (_, i) => ({
   x: (i % 4) * 1000, y: Math.floor(i / 4) * 1000, w: 900, h: 900,
@@ -111,5 +111,21 @@ describe('assignZones', () => {
     const [d] = assignZones([poly], params, dryTerrain)
     expect(d.poly).toEqual(poly)
     expect(d.bounds).toEqual({ x: 10, y: 20, w: 100, h: 100 })
+  })
+  it('forced zones win the lottery', () => {
+    const base = assignZones(polys, params, dryTerrain)
+    const at = (i: number): Pt => ringCentroid(polys[i])
+    const forced = assignZones(polys, params, dryTerrain, [
+      { at: at(0), zone: 'corp', flag: { arcology: 'A1' } },
+      { at: at(5), zone: 'slum', flag: { megablock: 'M1' } },
+    ])
+    const idOf = (i: number) => base.find((d) => d.poly === polys[i])!.id
+    const get = (ds: typeof forced, i: number) => ds.find((d) => d.id === idOf(i))!
+    expect(get(forced, 0)).toMatchObject({ zone: 'corp', flags: { arcology: 'A1' } })
+    expect(get(forced, 5)).toMatchObject({ zone: 'slum', flags: { megablock: 'M1' } })
+    for (const i of [1, 2, 3, 4, 6, 7, 8, 9, 10, 11]) {
+      expect(get(forced, i).zone).toBe(get(base, i).zone)
+      expect(get(forced, i).flags).toEqual({})
+    }
   })
 })

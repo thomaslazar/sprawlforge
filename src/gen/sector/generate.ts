@@ -16,7 +16,7 @@ import { HIGHWAY_WIDTH } from '../streets/highway'
 import { GENERATOR_VERSION, type Block, type District, type Road, type SectorModel, type SectorParams, type Terrain } from '../types'
 import { placePiers } from './piers'
 import { placePois } from './pois'
-import { inWater, markWetSpans } from './bridges'
+import { dryRuns, inWater, markWetSpans } from './bridges'
 import { traceRoads } from './streets'
 import { assignZones } from './zoning'
 
@@ -89,23 +89,34 @@ const INFILL_NEAR_M = 150
 const INFILL_PASSES = 3
 
 /**
- * Safety net for voids the tracer leaves: every land face over MAX_BLOCK_M2 (unless its centroid is
- * within INFILL_NEAR_M of water or the window edge) is BSP-split into ~100 m cells; the cut
+ * Safety net for voids the tracer leaves: every face over MAX_BLOCK_M2 of LAND (water sampled out; skipped when its centroid is
+ * within INFILL_NEAR_M of the window edge) is BSP-split into ~100 m cells; the cut
  * centrelines, clipped to the face, become ordinary street-class roads (ids continue the S counter).
  * A cut ending on the highway is dropped (a street never ends there). Only the split face is re-faced (its own ring is the boundary), and a piece still too big goes
  * round again, so the cost stays local instead of re-running the whole planar graph.
  */
-function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road | undefined, terrain: Terrain, sizeM: number): { faces: Face[]; infill: Road[]; dropped: Set<string> } {
+function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road | undefined, terrain: Terrain, sizeM: number, centres: Pt[], cores: Pt[][]): { faces: Face[]; infill: Road[]; dropped: Set<string> } {
   const dropped = new Set<string>()
   let next = Math.max(0, ...roads.map((r) => Number(/^S(\d+)/.exec(r.id)?.[1] ?? 0)))
   const rng = mulberry32(hashSeed(terrain.metroSeed, 'infill'))
   const infill: Road[] = []
+  // ponytail: land area on a 20 m sample grid (called only for faces over MAX_BLOCK_M2 raw), so +-1 % noise at the threshold
+  const landM2 = (ring: Pt[]) => {
+    const b = bboxOf(ring)
+    let land = 0
+    for (let x = b.x; x < b.x + b.w; x += 20) for (let y = b.y; y < b.y + b.h; y += 20) {
+      const s = { x: x + 10, y: y + 10 }
+      if (pointInRings(s, [ring]) && !inWater(terrain, s)) land += 400
+    }
+    return land
+  }
   const tooBig = (f: Face) => {
     if (Math.abs(ringArea(f.footprint)) <= MAX_BLOCK_M2) return false
+    // a face holding an arcology / megablock centre is the landmark's ground: nothing is split there
+    if (centres.some((c) => pointInRings(c, [f.footprint]))) return false
     const c = ringCentroid(f.footprint)
-    return !(Math.min(c.x, c.y, sizeM - c.x, sizeM - c.y) < INFILL_NEAR_M
-      || inWater(terrain, c)
-      || [0, 1, 2, 3, 4, 5, 6, 7].some((k) => inWater(terrain, { x: c.x + INFILL_NEAR_M * Math.cos((k * Math.PI) / 4), y: c.y + INFILL_NEAR_M * Math.sin((k * Math.PI) / 4) })))
+    if (Math.min(c.x, c.y, sizeM - c.x, sizeM - c.y) < INFILL_NEAR_M) return false
+    return landM2(f.footprint) > MAX_BLOCK_M2
   }
   let work = faces
   for (let pass = 0; pass < INFILL_PASSES; pass++) {
@@ -118,7 +129,11 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
       const ctr = ringCentroid(ring)
       const { cuts } = bspSplit(bboxOf(ring.map((p) => rotatePt(p, -theta, ctr))), { minCell: 100, gap: 9, jitter: 0.25, rng })
       const pieces: Road[] = []
+      const gaps: Pt[][] = []
+      // a face that only overlaps a core (or a non-ring arcology's plaza) keeps its split, minus the cuts that would run through the core
+      const inCore = (p: Pt, q: Pt) => [0, 0.25, 0.5, 0.75, 1].some((t) => cores.some((core) => pointInRings({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t }, [core])))
       const add = (p: Pt, q: Pt) => {
+        if (inCore(p, q)) return
         next += 1
         pieces.push({ id: `S${String(next).padStart(3, '0')}`, class: 'street', points: [p, q], width: 9, name: null })
       }
@@ -129,7 +144,14 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
         const [a, b] = axis === 'x'
           ? [{ x: strip.x + strip.w / 2, y: strip.y }, { x: strip.x + strip.w / 2, y: strip.y + strip.h }]
           : [{ x: strip.x, y: strip.y + strip.h / 2 }, { x: strip.x + strip.w, y: strip.y + strip.h / 2 }]
-        for (let [p, q] of clipSegmentToRing(rotatePt(a, theta, ctr), rotatePt(b, theta, ctr), f.footprint)) {
+        for (const [u, v] of clipSegmentToRing(rotatePt(a, theta, ctr), rotatePt(b, theta, ctr), f.footprint)) {
+          const runs = dryRuns(terrain, u, v)
+          // the wet stretches between runs are not roads but still divide the face, so a lake never joins its two shores
+          let from = u
+          for (const [r0, r1] of runs) { if (Math.hypot(r0.x - from.x, r0.y - from.y) > 1) gaps.push([from, r0]); from = r1 }
+          if (Math.hypot(v.x - from.x, v.y - from.y) > 1) gaps.push([from, v])
+          for (const [p0, q0] of runs) {
+          let p = p0, q = q0
           // stop a cut that would end on the highway at the frontage street; none there: drop it
           let ok = true
           for (const end of [0, 1]) {
@@ -139,6 +161,7 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
             if (hit) { if (end) q = hit; else p = hit } else ok = false
           }
           if (ok && Math.hypot(q.x - p.x, q.y - p.y) > 5) add(p, q)
+          }
         }
       }
       // the BSP box is the ring's bbox, so on a concave face a cut can stop short of the ring: run a loose end on
@@ -156,13 +179,16 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
         for (const o of pieces) if (o !== self) consider(o.points[0], o.points[1], false)
         return best
       }
-      const looseAt = (e: Pt, self: Road) => !pieces.some((o) => o !== self && distToPolyline(e, o.points) <= 8) && distToPolyline(e, [...f.footprint, f.footprint[0]]) > 6
+      // a cut trimmed at the shore ends up to 10 m short of the water: that end is anchored (the shore is the block edge)
+      const shore = (e: Pt) => [0, 1, 2, 3, 4, 5, 6, 7].some((k) => inWater(terrain, { x: e.x + 12 * Math.cos((k * Math.PI) / 4), y: e.y + 12 * Math.sin((k * Math.PI) / 4) }))
+      const looseAt = (e: Pt, self: Road) => !shore(e) && !pieces.some((o) => o !== self && distToPolyline(e, o.points) <= 8) && distToPolyline(e, [...f.footprint, f.footprint[0]]) > 6
       for (const r of pieces) {
         for (const end of [0, 1]) {
           const e = r.points[end], o = r.points[1 - end]
           if (!looseAt(e, r)) continue
           const hit = reach(e, o, r)
-          if (hit) r.points[end] = hit
+          // a ring crossing inside a lake is no junction: the run-on would end the street in water
+          if (hit && !inWater(terrain, hit)) r.points[end] = hit
         }
       }
       // weld each end that stops within 8 m of another piece onto it exactly (the highway test wants <= 6 m)
@@ -182,9 +208,12 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
           if (best) r.points[end] = best
         }
       }
+      // loose ends were run on above: one that now reaches into a core goes
+      for (let i = pieces.length - 1; i >= 0; i--) if (inCore(pieces[i].points[0], pieces[i].points[1])) pieces.splice(i, 1)
       // a piece must be anchored at both ends (another piece, or the face ring away from the highway); dead ends go
       const closed = [...f.footprint, f.footprint[0]]
-      const anchored = (e: Pt, self: Road) => (!(highway && distToPolyline(e, highway.points) <= 8) && distToPolyline(e, closed) <= 6)
+      // an end near the highway is anchored by another piece only: the face ring there is the corridor edge, and a shore beside it is no junction
+      const anchored = (e: Pt, self: Road) => (!nearHw(e) && (shore(e) || distToPolyline(e, closed) <= 6))
         || pieces.some((o) => o !== self && distToPolyline(e, o.points) <= 8)
       for (let again = true; again;) {
         again = false
@@ -193,8 +222,8 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
           if (!anchored(r.points[0], r) || !anchored(r.points[1], r)) { pieces.splice(i, 1); again = true }
         }
       }
-      // the sub-faces lie inside f.footprint, which is already land: no land clipping needed
-      const sub: Face[] = pieces.length ? dropSlivers(facesOf(pruneDanglers(buildPlanarGraph(pieces, [f.footprint])))).map((poly) => ({ poly, footprint: poly })) : []
+      // footprints may contain water: sub-faces with no land are dropped (landM2 > 0), the rest keep their footprint
+      const sub: Face[] = pieces.length ? dropSlivers(facesOf(pruneDanglers(buildPlanarGraph(pieces, [f.footprint, ...gaps])))).map((poly) => ({ poly, footprint: poly })).filter((x) => landM2(x.footprint) > 0) : []
       if (sub.length < 2) { out.push(f); continue }
       infill.push(...pieces)
       // a dead-end street stranded inside the split face would now cross a sub-block: it goes
@@ -256,11 +285,14 @@ export function generateSector(params: SectorParams): SectorModel {
   const pack = getPack(params.pack)
 
   const terrain = sampleTerrain(params, sizeM)
-  const { highway, arterials, streets } = traceRoads(params, terrain, sizeM)
+  const { highway, arterials, streets, arcologies, megablocks } = traceRoads(params, terrain, sizeM)
   const boundaries = [windowRing(sizeM), ...terrain.land.map((poly) => poly[0].map(([x, y]) => ({ x, y })))]
 
   const districtFaces = facesFor([...(highway ? [highway] : []), ...arterials], boundaries, terrain)
-  const districts = assignZones(districtFaces.map((f) => f.poly), params, terrain)
+  const districts = assignZones(districtFaces.map((f) => f.poly), params, terrain, [
+    ...arcologies.map((a) => ({ at: a.center, zone: 'corp' as const, flag: { arcology: a.id } })),
+    ...megablocks.map((m) => ({ at: m.center, zone: 'slum' as const, flag: { megablock: m.id } })),
+  ])
 
   // highway levels decide where streets stop at the ground-level highway
   const levelRng = mulberry32(hashSeed(params.seed, 'highway-levels'))
@@ -272,7 +304,7 @@ export function generateSector(params: SectorParams): SectorModel {
     : { crossings, ramps: [] as Road[] }
   const hw = highway ? [{ ...highway, segments, crossings: finalCrossings }] : []
 
-  const { faces, infill, dropped } = infillFaces(facesFor([...hw, ...arterials, ...minorAll], boundaries, terrain), minorAll, arterials, highway, terrain, sizeM)
+  const { faces, infill, dropped } = infillFaces(facesFor([...hw, ...arterials, ...minorAll], boundaries, terrain), minorAll, arterials, highway, terrain, sizeM, [...arcologies.filter((a) => a.access === 'ring'), ...megablocks].map((l) => l.center), [...megablocks.map((k) => k.core), ...arcologies.filter((a) => a.access !== 'ring').map((a) => a.plaza)])
   const minor = minorAll.filter((r) => !dropped.has(r.id))
   const rawBlocks = toBlocks(faces, districts)
 
@@ -292,12 +324,17 @@ export function generateSector(params: SectorParams): SectorModel {
     return { ...r, name: roadNames.get(base)! }
   })
 
-  const { buildings, blocks } = fillLots(namedDistricts, rawBlocks, params, terrain, [
+  // last draws on the names stream, so district and street names stay as they were
+  const namedArcologies = arcologies.map((a) => ({ ...a, name: generateName(nameRng.pick(pack.arcologyPatternsByDesign[a.design] ?? pack.arcologyPatterns), pack.tables, nameRng) }))
+  const namedMegablocks = megablocks.map((m) => ({ ...m, name: generateName(nameRng.pick(pack.megablockPatterns), pack.tables, nameRng) }))
+
+  const { buildings, blocks, megablockFootprints } = fillLots(namedDistricts, rawBlocks, params, terrain, [
     ...(highway ? noBuildStrips(highway, segments) : []),
     ...roads.filter((r) => r.class !== 'highway').flatMap((r) => corridorRects(r.points, r.width / 2 + SIDEWALK)),
-  ])
+  ], undefined, { arcologies, megablocks })
+  const megablocksOut = namedMegablocks.map((m) => ({ ...m, footprint: megablockFootprints.get(m.id) ?? [] }))
   const finalDistricts = deriveDistricts(namedDistricts, blocks)
-  const pois = placePois(finalDistricts, buildings, pack, params)
+  const pois = placePois(finalDistricts, buildings, pack, params, { arcologies: namedArcologies, megablocks: megablocksOut })
   const piers = placePiers(finalDistricts, terrain, params)
 
   return {
@@ -315,5 +352,7 @@ export function generateSector(params: SectorParams): SectorModel {
     buildings,
     pois,
     piers,
+    arcologies: namedArcologies,
+    megablocks: megablocksOut,
   }
 }

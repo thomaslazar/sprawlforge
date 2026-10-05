@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { polylineLength, type Pt } from '../geometry'
+import { pointInRings, polylineLength, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
-import { inWater, waterIntervals } from '../sector/bridges'
+import { dryStreetPieces, inWater, isLakeShore, waterIntervals } from '../sector/bridges'
 import { effectiveIrregularity } from '../sector/zoning'
 import { sampleTerrain } from '../terrain'
 import { nearestOnPolyline } from '../terrain/rivers'
@@ -15,7 +15,7 @@ import {
 
 const params = (over: Partial<SectorParams> = {}): SectorParams => ({
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
-  landform: 'coastal', river: true, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon', ...over,
+  landform: 'coastal', river: true, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon', ...over,
 })
 
 function setup(over: Partial<SectorParams> = {}) {
@@ -454,6 +454,46 @@ describe('pruneDangling', () => {
     const out = run([B, ...chain], dry, { accept: () => true, interiorOnly: true, minLength: 50 })
     expect(out.map((r) => r.id)).toEqual(['B'])
   })
+  it('pruneDangling keeps side streets anchored on a trunk that is cut back', () => {
+    const st = (id: string, a: Pt, b: Pt) => road(id, [a, b], 'street')
+    const ar = [
+      road('AR1', [{ x: 0, y: 100 }, { x: 1000, y: 100 }]),
+      road('AR2', [{ x: 700, y: 0 }, { x: 700, y: 1000 }]),
+    ]
+    const trunk = st('T', { x: 500, y: 100 }, { x: 500, y: 800 }) // free end at y=800
+    const rungs = [st('R1', { x: 500, y: 300 }, { x: 700, y: 300 }), st('R2', { x: 500, y: 500 }, { x: 700, y: 500 })]
+    const out = run([...ar, trunk, ...rungs], dry, { accept: () => true, interiorOnly: true, minLength: 60 })
+    expect(out.map((r) => r.id).sort()).toEqual(['AR1', 'AR2', 'R1', 'R2', 'T'])
+    const t = out.find((r) => r.id === 'T')!
+    expect(t.points.at(-1)!.y).toBeCloseTo(500, 0)
+  })
+  describe('water ends (streets)', () => {
+    const st = (id: string, pts: Pt[]) => road(id, pts, 'street')
+    const rect = (x0: number, y0: number, x1: number, y1: number) => [[[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]]
+    const sopts = { accept: (c: Road['class']) => c !== 'highway', interiorOnly: true, minLength: 60 }
+    // lake: closed rect off the window edge; river: band across the window with a riverSlice
+    const lake = { water: [rect(400, 420, 600, 600)] } as unknown as Terrain
+    const river = { water: [rect(-10, 400, 1010, 600)], riverSlice: { course: [{ x: -10, y: 500 }, { x: 1010, y: 500 }], width: 200 } } as unknown as Terrain
+    const anchor = (t: Terrain) => ({ ...sopts, waterAnchor: (p: Pt, stub: number) => stub >= 150 && !isLakeShore(t, p, 1000) })
+    it('a street end inside water is cut back to the bank', () => {
+      const S = st('S', [{ x: 500, y: 100 }, { x: 500, y: 390 }, { x: 500, y: 450 }, { x: 500, y: 500 }])
+      const out = dryStreetPieces([S], river)
+      expect(out).toHaveLength(1)
+      expect(out[0].points.at(-1)).toEqual({ x: 500, y: 390 })
+    })
+    it('a 100 m stub to a lake shore is pruned', () => {
+      const cross = (y: number) => road('AR', [{ x: 0, y }, { x: 1000, y }])
+      const stub = (y: number) => st('S', [{ x: 500, y }, { x: 500, y: 415 }]) // ends 5 m short of the bank at y=420
+      expect(run([cross(315), stub(315)], lake, anchor(lake)).map((r) => r.id)).toEqual(['AR'])
+      expect(run([cross(100), stub(100)], lake, anchor(lake)).map((r) => r.id)).toEqual(['AR']) // even a long one
+    })
+    it('a 200 m stub to the river shore is kept, a 95 m one is pruned', () => {
+      const cross = (y: number) => road('AR', [{ x: 0, y }, { x: 1000, y }])
+      const stub = (y: number) => st('S', [{ x: 300, y }, { x: 300, y: 395 }]) // ends 5 m short of the bank at y=400
+      expect(run([cross(195), stub(195)], river, anchor(river)).map((r) => r.id)).toEqual(['AR', 'S'])
+      expect(run([cross(300), stub(300)], river, anchor(river)).map((r) => r.id)).toEqual(['AR'])
+    })
+  })
   it('pruneDangling keeps a decay cul-de-sac', () => {
     const A = road('A', [{ x: 0, y: 500 }, { x: 600, y: 500 }])
     const out = run([A, B], dry, { ...opts, keep: new Set([endKey({ x: 600, y: 500 })]) })
@@ -506,5 +546,34 @@ describe('snap behind the walker', () => {
       const t = Math.atan2(pts[i].y - pts[i - 1].y, pts[i].x - pts[i - 1].x) - Math.atan2(pts[i - 1].y - pts[i - 2].y, pts[i - 1].x - pts[i - 2].x)
       expect(Math.abs(Math.atan2(Math.sin(t), Math.cos(t)))).toBeLessThanOrEqual((60 * Math.PI) / 180 + 1e-9)
     }
+  })
+})
+
+describe('obstacles', () => {
+  const square: Pt[] = [{ x: 600, y: 450 }, { x: 700, y: 450 }, { x: 700, y: 550 }, { x: 600, y: 550 }]
+
+  it('a streamline stops at an obstacle', () => {
+    const { terrain, irregularityAt } = setup({ landform: 'inland', river: false, lakes: false, irregularity: 0.05 })
+    const field = {
+      sizeM: 2000, patches: [],
+      sample: () => ({ major: { x: 1, y: 0 }, minor: { x: 0, y: 1 } }),
+    } as unknown as RoadField
+    const pts = traceStreamline(
+      field, 'major', { at: { x: 100, y: 500 }, dir: { x: 1, y: 0 } }, terrain, 2000, new RoadIndex(200),
+      { ...MAJOR, obstacles: [square] }, mulberry32(1), irregularityAt,
+    )!
+    const last = pts[pts.length - 1]
+    expect(pointInRings(last, [square])).toBe(false)
+    expect(last.x).toBeLessThanOrEqual(600)
+    expect(600 - last.x).toBeLessThanOrEqual(MAJOR.step)
+  })
+
+  it('seedsAlong rejects seeds inside obstacles', () => {
+    const line: Pt[] = [{ x: 0, y: 500 }, { x: 1000, y: 500 }]
+    const all = seedsAlong(line, 100, false)
+    const kept = seedsAlong(line, 100, false, (p) => pointInRings(p, [square]))
+    expect(all.some((s) => pointInRings(s.at, [square]))).toBe(true)
+    expect(kept.length).toBeLessThan(all.length)
+    expect(kept.some((s) => pointInRings(s.at, [square]))).toBe(false)
   })
 })

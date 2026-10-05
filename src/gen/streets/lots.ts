@@ -2,8 +2,9 @@ import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
 import { BOX_MARGIN, boxOf, bboxOf, bspSplit, makeNearTieCheck, pointInRings, segTouchesBox, simplifyPolyline, type Box, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import { fractalNoise2D } from '../terrain/noise'
-import { inWater } from '../sector/bridges'
+import { dryRuns, inWater } from '../sector/bridges'
 import type { Block, BlockStyle, Building, District, SectorParams, Terrain, ZoneType } from '../types'
+import type { Landmarks } from '../landmarks/place'
 
 export const ZONE_BUILD: Record<ZoneType, { minCell: number; fill: number }> = {
   corp: { minCell: 60, fill: 0.7 },
@@ -145,6 +146,19 @@ function lineIntersect(p1: Pt, d1: Pt, p2: Pt, d2: Pt): Pt {
   return { x: p1.x + d1.x * t, y: p1.y + d1.y * t }
 }
 
+/** true when two non-adjacent edges of the ring properly cross (O(n^2); rings here are < ~60 vertices) */
+function selfIntersects(r: Pt[]): boolean {
+  const n = r.length
+  const o = (a: Pt, b: Pt, c: Pt) => Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x))
+  for (let i = 0; i < n; i++)
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue
+      const a = r[i], b = r[(i + 1) % n], c = r[j], d = r[(j + 1) % n]
+      if (o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0) return true
+    }
+  return false
+}
+
 /**
  * Edge-offset inset: push every edge inward by `d`, then re-intersect each
  * pair of consecutive offset lines for the new vertices. Works for either
@@ -189,6 +203,9 @@ export function insetRing(ring: Pt[], d: number): Pt[] | null {
   if (Math.sign(outArea) !== sign) return null
   // a ring thinner than 2d inverts through a point reflection, keeping its area sign
   if (out.some((v) => !pointInRings(v, [ring]))) return null
+  // a concave ring's offset can fold over itself with every vertex still inside: feeding that
+  // to polygon-clipping crawls (seed 4280430344 coastal+river+lakes corp 0.85, 4 km)
+  if (selfIntersects(out)) return null
   return out
 }
 
@@ -293,7 +310,7 @@ export function insetByClipping(full: Pt[], d: number): Pt[][] {
   }).filter((r) => r.length >= 3 && Math.abs(ringArea(r)) >= MIN_BLOCK_AREA)
 }
 
-const NOTCH_P: Record<BlockStyle, number> = { plaza: 0.5, courtyard: 0.35, rows: 0.1, sheds: 0 }
+const NOTCH_P: Record<BlockStyle, number> = { plaza: 0.5, courtyard: 0.35, rows: 0.1, sheds: 0, megablock: 0 }
 
 /**
  * Notch to cut from rect `r`: a corner square (L) or a side slot (U), 30-45 %
@@ -361,19 +378,47 @@ export function clipSegmentToRing(a: Pt, b: Pt, ring: Pt[]): Array<[Pt, Pt]> {
   return out
 }
 
+/** a megablock's hive: the block footprint inset by the sidewalk, packed BSP cells clipped to it, and its three longest BSP cuts as alleys */
+function megablockHive(blockFootprint: Pt[], rng: ReturnType<typeof mulberry32>, subtract: (clipped: MultiPolygon) => MultiPolygon): { footprint: Pt[] | null; cells: Pt[][]; alleys: Array<[Pt, Pt]> } {
+  const hive = insetRing(blockFootprint, SIDEWALK) ?? insetByClipping(blockFootprint, SIDEWALK).sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)))[0] ?? null
+  if (!hive) return { footprint: null, cells: [], alleys: [] }
+  const theta = longestEdgeAngle(hive)
+  const c = ringCentroid(hive)
+  const bsp = bspSplit(bboxOf(hive.map((p) => rotatePt(p, -theta, c))), { minCell: 30, gap: 2, jitter: 0.3, rng })
+  const cells: Pt[][] = []
+  for (const r of bsp.cells) {
+    const lot = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }].map((p) => rotatePt(p, theta, c))
+    const pts = largestRing(safeClip(lot, (ring) => subtract(polygonClipping.intersection([ring], [toRing(hive)]))))
+    if (pts && Math.abs(ringArea(pts)) >= MIN_BUILDING_AREA) cells.push(pts)
+  }
+  const cuts = bsp.cuts.map(({ axis, strip }) => {
+    const [a, b] = axis === 'x'
+      ? [{ x: strip.x + strip.w / 2, y: strip.y }, { x: strip.x + strip.w / 2, y: strip.y + strip.h }]
+      : [{ x: strip.x, y: strip.y + strip.h / 2 }, { x: strip.x + strip.w, y: strip.y + strip.h / 2 }]
+    const segs = clipSegmentToRing(rotatePt(a, theta, c), rotatePt(b, theta, c), hive)
+    return { segs, len: segs.reduce((t, [p, q]) => t + Math.hypot(q.x - p.x, q.y - p.y), 0) }
+  })
+  const alleys = cuts.sort((x, y) => y.len - x.len).slice(0, 3).flatMap((k) => k.segs)
+  return { footprint: hive, cells, alleys }
+}
+
 export function fillLots(
   districts: District[],
   blocks: Block[],
   params: SectorParams,
   terrain: Terrain,
-  noBuild: Pt[][],
+  noBuildIn: Pt[][],
   forceStyle?: BlockStyle,
-): { buildings: Building[]; blocks: Block[] } {
+  landmarks?: Landmarks,
+): { buildings: Building[]; blocks: Block[]; megablockFootprints: Map<string, Pt[]> } {
   const rng = mulberry32(hashSeed(params.seed, 'buildings'))
   // own stream: notches must not reshuffle the lots the main stream lays out
   const notchRng = mulberry32(hashSeed(params.seed, 'notches'))
   const neighbourhood = fractalNoise2D(hashSeed(params.seed, 'neighbourhood'), 2)
   const districtById = new Map(districts.map((d) => [d.id, d]))
+  // a non-ring arcology sits in an ordinary face: its plaza is ground nobody builds on (ring plazas are their own block)
+  const noBuild = [...noBuildIn, ...(landmarks?.arcologies ?? []).filter((a) => a.access !== 'ring').map((a) => a.plaza)]
+  const megaRng = mulberry32(hashSeed(params.seed, 'megablocks'))
   const noBuildPolys = noBuild.map((nb) => [toRing(nb)])
   const noBuildBoxes = noBuild.map(boxOf)
   const convexNb = noBuild.map(isConvex)
@@ -397,13 +442,31 @@ export function fillLots(
   const nearTie = makeNearTieCheck(noBuild.flat().map((p) => [p.x, p.y] as const))
   const buildings: Building[] = []
   const outBlocks: Block[] = []
+  const megablockFootprints = new Map<string, Pt[]>()
   let n = 0
 
   for (const block of blocks) {
     const district = districtById.get(block.districtId)
     if (!district) { outBlocks.push(block); continue }
     const cc = ringCentroid(block.footprint)
-    const chosen = forceStyle ?? chooseStyle(district.zone, params.density, neighbourhood(cc.x / 500, cc.y / 500))
+    const arc = landmarks?.arcologies.find((a) => a.access === 'ring' && pointInRings(cc, [a.plaza]))
+    if (arc) { outBlocks.push({ ...block, style: 'plaza', alleys: [], flags: { ...block.flags, arcology: arc.id } }); continue }
+    // a second megablock centred in the same block gets no hive (placement keeps them >= 700 m apart)
+    const mega = landmarks?.megablocks.find((m) => pointInRings(m.center, [block.footprint]))
+    if (mega) {
+      const hive = megablockHive(block.footprint, megaRng, (clipped) => (noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, near, convexNb, nearTie) : clipped))
+      for (const footprint of hive.cells) {
+        n += 1
+        buildings.push({ id: `BLD${String(n).padStart(4, '0')}`, blockId: block.id, districtId: district.id, footprint })
+      }
+      if (hive.footprint) megablockFootprints.set(mega.id, hive.footprint)
+      outBlocks.push({ ...block, style: 'megablock', alleys: hive.alleys, flags: { ...block.flags, megablock: mega.id } })
+      continue
+    }
+    const home = landmarks?.arcologies.find((a) => a.access !== 'ring' && pointInRings(a.center, [block.footprint]))
+    // a 'plaza'-style block keeps only its 1-2 biggest cells, which here would sit in the arcology plaza: build rows around it instead
+    const picked = chooseStyle(district.zone, params.density, neighbourhood(cc.x / 500, cc.y / 500))
+    const chosen = forceStyle ?? (home && picked === 'plaza' ? 'rows' : picked)
     let blockStyle: BlockStyle = 'rows'
     const alleys: Array<[Pt, Pt]> = []
     const fast = insetRing(block.footprint, SIDEWALK)
@@ -436,6 +499,7 @@ export function fillLots(
       courtyard: { cell, gap: 3, fill: 0.9 },
       plaza: { cell: Math.max(profile.minCell * 1.6, 0.4 * short), gap: 12, fill: 0.6 },
       sheds: { cell: profile.minCell, gap: 10, fill: 0.65 },
+      megablock: { cell, gap: 3, fill },
     }[style]
     // courtyard: only the band between the inset and a deeper inset is buildable
     let inner: Pt[][] = []
@@ -453,7 +517,7 @@ export function fillLots(
           ? [{ x: strip.x + strip.w / 2, y: strip.y }, { x: strip.x + strip.w / 2, y: strip.y + strip.h }]
           : [{ x: strip.x, y: strip.y + strip.h / 2 }, { x: strip.x + strip.w, y: strip.y + strip.h / 2 }]
         const [wa, wb] = [rotatePt(a, theta, c), rotatePt(b, theta, c)]
-        for (const piece of clipSegmentToRing(wa, wb, inset)) alleys.push(piece)
+        for (const piece of clipSegmentToRing(wa, wb, inset)) alleys.push(...dryRuns(terrain, piece[0], piece[1], (pt) => !!landmarks?.arcologies.some((a) => a.access !== 'ring' && pointInRings(pt, [a.plaza]))))
       }
     // BSP leftovers too thin to be a building
     let cells = bsp.cells.filter((r) => r.w >= 0.5 * st.cell && r.h >= 0.5 * st.cell)
@@ -525,8 +589,8 @@ export function fillLots(
         })
     }
     }
-    outBlocks.push({ ...block, style: blockStyle, alleys })
+    outBlocks.push({ ...block, style: blockStyle, alleys, ...(home ? { flags: { ...block.flags, arcology: home.id } } : {}) })
   }
 
-  return { buildings, blocks: outBlocks }
+  return { buildings, blocks: outBlocks, megablockFootprints }
 }

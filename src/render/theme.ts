@@ -14,6 +14,8 @@ export interface Theme {
   poi: { marker: string; label: string }
   bridge: { deck: string; shadow: string }
   highway: { trench: string; column: string; hatch: string }
+  arcology: { fill: string; stroke: string; ring: string }
+  megablock: { fill: string; alley: string }
   scaleBar: string
   glow: boolean
 }
@@ -43,6 +45,8 @@ const neon: Theme = {
   poi: { marker: '#ffb454', label: '#ffdca8' },
   bridge: { deck: '#8a93a6', shadow: '#04060a' },
   highway: { trench: '#080a0f', column: '#04060a', hatch: '#8a93a6' },
+  arcology: { fill: '#2c3d66', stroke: '#4fc9d9', ring: '#2f7f8c' },
+  megablock: { fill: '#0f1424', alley: '#d08a45' },
   scaleBar: '#9fb8c8',
   glow: true,
 }
@@ -68,6 +72,8 @@ const print: Theme = {
   poi: { marker: '#b03030', label: '#222222' },
   bridge: { deck: '#e8e8e2', shadow: '#b5b5b0' },
   highway: { trench: '#d9d9d9', column: '#b5b5b0', hatch: '#e8e8e2' },
+  arcology: { fill: '#d5dbe8', stroke: '#555555', ring: '#9a9a9a' },
+  megablock: { fill: '#8c8c88', alley: '#2a2a2a' },
   scaleBar: '#222222',
   glow: false,
 }
@@ -97,6 +103,8 @@ const blueprint: Theme = {
   poi: { marker: '#eaf7ff', label: '#dff3ff' },
   bridge: { deck: '#e4f4ff', shadow: '#071c38' },
   highway: { trench: '#09274c', column: '#071c38', hatch: '#e4f4ff' },
+  arcology: { fill: '#2a6aa8', stroke: '#f1fbff', ring: '#7fb0d8' },
+  megablock: { fill: '#061f3f', alley: '#bfe3ff' },
   scaleBar: '#dff3ff',
   glow: false,
 }
@@ -122,6 +130,8 @@ const synthwave: Theme = {
   poi: { marker: '#ffe14d', label: '#fff2cc' },
   bridge: { deck: '#a893c9', shadow: '#0c0616' },
   highway: { trench: '#11081a', column: '#0c0616', hatch: '#a893c9' },
+  arcology: { fill: '#3d2766', stroke: '#33c2e6', ring: '#2a7894' },
+  megablock: { fill: '#150d24', alley: '#e8a070' },
   scaleBar: '#d9b8ff',
   glow: true,
 }
@@ -147,6 +157,8 @@ const tokyoNight: Theme = {
   poi: { marker: '#e0af68', label: '#f0c894' },
   bridge: { deck: '#a9b1d6', shadow: '#0d0e14' },
   highway: { trench: '#161720', column: '#0d0e14', hatch: '#a9b1d6' },
+  arcology: { fill: '#34406a', stroke: '#7dcfff', ring: '#4f7f9f' },
+  megablock: { fill: '#0a0b10', alley: '#e0af68' },
   scaleBar: '#c0caf5',
   glow: false,
 }

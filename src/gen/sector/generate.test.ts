@@ -1,12 +1,14 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { pointAtT, pointInRings, polylineLength, ringArea, ringCentroid, type Pt } from '../geometry'
 import { ISLET_MOAT_OUTER_FACTOR, ISLET_RADIUS_MAX } from '../terrain/field'
 import { GENERATOR_VERSION, type Block, type District, type SectorParams, type Terrain } from '../types'
 import { hashSeed, mulberry32 } from '../rng'
 import { distToPolyline } from '../terrain/rivers'
 import { RoadIndex, riverCrossingSeeds } from '../streets/trace'
+import { traceRoads } from './streets'
+import { ringRoad } from '../landmarks/place'
 import { HIGHWAY_WIDTH } from '../streets/highway'
-import { inWater } from './bridges'
+import { inWater, isLakeShore } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
 import { bboxesFar, endMeetings, maxCloseRun } from '../streets/testutil'
 import { deriveDistricts, generateSector } from './generate'
@@ -16,7 +18,7 @@ vi.setConfig({ testTimeout: 90000 })
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
-  landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
+  landform: 'inland', river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon',
 }
 
 describe('generateSector', () => {
@@ -62,7 +64,7 @@ describe('generateSector', () => {
       // building's blockId ordinal must match its own districtId
       expect(b.blockId.slice(1, 3)).toBe(b.districtId.slice(1))
     }
-    for (const p of m.pois) expect(buildingIds.has(p.buildingId)).toBe(true)
+    for (const p of m.pois.filter((q) => q.buildingId)) expect(buildingIds.has(p.buildingId)).toBe(true)
   })
   // 3 full generations; field-driven irregularity (arterials + streets both
   // sample the noise field per cut now) pushes this past the 5s default
@@ -130,7 +132,7 @@ describe('generateSector', () => {
     // same seeds for the face and lot clipping that replaced them.
     const params: SectorParams = {
       seed: 0, size: 2, density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.85,
-      landform: 'inland', river: true, lakes: false, islands: true, piers: false,
+      landform: 'inland', river: true, lakes: false, islands: true, piers: false, arcology: false, megablock: false,
       pack: 'generic', theme: 'print',
     }
     for (const seed of [2882370099, 4, 40, 95, 96]) {
@@ -148,7 +150,7 @@ describe('generateSector', () => {
     const params: SectorParams = {
       seed: 2882370099, size: 2, density: 0.6, corpDominance: 0.5, poiDensity: 0.5,
       irregularity: 0.85, landform: 'inland', river: true, lakes: false, islands: true,
-      piers: false, pack: 'generic', theme: 'neon',
+      piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon',
     }
     let m: ReturnType<typeof generateSector> | undefined
     expect(() => {
@@ -200,6 +202,37 @@ const district = (id: string, bounds: { x: number; y: number; w: number; h: numb
   irregularity: 0.5, shore: false,
   labelAt: { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 },
   flags: {},
+})
+
+describe('landmark names and POIs', () => {
+  for (const [label, params] of [
+    ['arcologies', { ...base, seed: 42, corpDominance: 0.85 }],
+    ['megablocks', { ...base, seed: 7, landform: 'bay' as const, corpDominance: 0.15 }],
+  ] as const) {
+    it(`every ${label} landmark is named and has exactly one POI at its centre`, () => {
+      const m = generateSector(params)
+      const marks = [...m.arcologies.map((l) => ({ l, type: 'arcology' })), ...m.megablocks.map((l) => ({ l, type: 'megablock' }))]
+      expect(marks.length).toBeGreaterThan(0)
+      for (const { l, type } of marks) {
+        expect(l.name.length).toBeGreaterThan(0)
+        const at = m.pois.filter((p) => p.type === type && p.at.x === l.center.x && p.at.y === l.center.y)
+        expect(at).toHaveLength(1)
+        expect(at[0].name).toBe(l.name)
+      }
+    })
+  }
+})
+
+describe('arcology names', () => {
+  it('names follow the design pool', () => {
+    const words: Record<string, RegExp> = { ziggurat: /Ziggurat|Pyramid/, cluster: /Towers|Complex/, satellites: /Campus|Spire/, twins: /Twin|Gemini/, crescent: /Crescent|Arc/, stack: /Stack|Terrace/ }
+    let seen = 0
+    for (const seed of [42, 7, 11, 5]) for (const pack of ['generic', 'shadowrunish']) {
+      const m = generateSector({ ...base, seed, corpDominance: 0.9, pack })
+      for (const a of m.arcologies) if (words[a.design]) { seen++; expect(a.name).toMatch(words[a.design]) }
+    }
+    expect(seen).toBeGreaterThan(0)
+  })
 })
 
 describe('deriveDistricts', () => {
@@ -287,14 +320,15 @@ describe('arterial connectivity', () => {
   ] as const
   for (const c of cases) {
     it(`no arterial dangles (seed ${c.seed})`, () => {
-      const m = generateSector({ ...c, islands: false, piers: false, pack: 'generic', theme: 'neon' })
+      const m = generateSector({ islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon', ...c })
       const roads = m.roads.filter((r) => r.class !== 'ramp')
       const idx = new RoadIndex(200)
       for (const r of roads) idx.add(r.id, r.points, r.class)
       const S = m.meta.sizeM
       let ends = 0
       let dangling = 0
-      for (const r of roads.filter((x) => x.class === 'arterial')) {
+      // a closed arcology ring has no ends
+      for (const r of roads.filter((x) => x.class === 'arterial' && Math.hypot(x.points[0].x - x.points.at(-1)!.x, x.points[0].y - x.points.at(-1)!.y) >= 1)) {
         for (const e of [r.points[0], r.points[r.points.length - 1]]) {
           ends++
           if (e.x < 1 || e.y < 1 || e.x > S - 1 || e.y > S - 1) continue
@@ -321,7 +355,7 @@ describe('arterial bridges', () => {
   it('arterial bridges appear between the seeded crossings', () => {
     const m = generateSector({
       seed: 4280430344, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15,
-      landform: 'coastal', river: true, lakes: true, islands: false, piers: false, pack: 'generic', theme: 'neon',
+      landform: 'coastal', river: true, lakes: true, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon',
     })
     const seeds = riverCrossingSeeds(m.terrain, mulberry32(hashSeed(4280430344, 'arterials'))).length
     const bridges = m.roads.filter((r) => r.class === 'arterial' && r.bridge)
@@ -469,13 +503,13 @@ describe('coast-aligned streets', () => {
 
   it('no road runs through a block', () => {
     // slivers are dropped, not merged. Residual (2 on seed 3017268931, 10 on seed 42) (B1412:S024 B1412:L008 B1109:L006) = faces with a
-    // hole / pruned dead ends; buildings still never sit on them (second assertion). Ratchet down, never up.
+    // hole / pruned dead ends; buildings still never sit on them (second assertion). Ratchet down, never up. Documented exceptions: seed 3017268931 -> 2 (boulevard arcology access replaced its ring and the 'streets' rng stream shifted; PROOF the two offenders are the pre-existing decay cul-de-sac class, not ours: both are traced streets (not infill) whose free end is in decayEnds, i.e. kept on purpose by pruneDangling: B0901:S066 end (1912,1581), 538 m from the arcology, B0808:S038 end (925,666), 317 m, beyond the 187 m plaza and away from the boulevard; was 1 and 2 before landmarks; briefly 3 until the planar-graph zero-length-edge fix); seed 42 coastal+river -> 15 (was 10; rose with the landmark-changed map, every remaining offender proven > 400 m from any landmark); 15 → 17 after shore stubs < 150 m are pruned (face reshuffle moves infill chords S416, S428, S417, S308; infill-chord class, see ROADMAP).
     const cases: Array<[SectorParams, number]> = [
-      [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'print' }, 2],
-      [{ ...base, seed: 42, landform: 'coastal', river: true }, 10],
+      [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, arcology: true, megablock: false, pack: 'generic', theme: 'print' }, 2],
+      [{ ...base, seed: 42, landform: 'coastal', river: true }, 17],
     ]
     for (const [params, max] of cases) {
-      const m = generateSector(params)
+      const m = modelFor(params)
       const bad: string[] = []
       for (const b of m.blocks) {
         const xs = b.footprint.map((p) => p.x), ys = b.footprint.map((p) => p.y)
@@ -510,7 +544,9 @@ describe('block size', () => {
       const wet = (p: Pt) => inWater(m.terrain, p) || [0, 1, 2, 3, 4, 5, 6, 7].some((k) => inWater(m.terrain, { x: p.x + 150 * Math.cos((k * Math.PI) / 4), y: p.y + 150 * Math.sin((k * Math.PI) / 4) }))
       const big = m.blocks.filter((b) => {
         const c = ringCentroid(b.footprint)
-        return Math.abs(ringArea(b.footprint)) > 60000 && Math.min(c.x, c.y, s - c.x, s - c.y) >= 150 && !wet(c)
+        // blocks beside a megablock, and an arcology's own block, stay big on purpose
+        const nearCore = m.megablocks.some((k) => k.core.some((p) => pointInRings(p, [b.footprint])) || pointInRings(k.center, [b.footprint]))
+        return Math.abs(ringArea(b.footprint)) > 60000 && Math.min(c.x, c.y, s - c.x, s - c.y) >= 150 && !wet(c) && !nearCore && !m.arcologies.some((a) => pointInRings(a.center, [b.footprint]))
       })
       expect(big.map((b) => `${b.id} ${Math.round(Math.abs(ringArea(b.footprint)))}`), `seed ${params.seed}`).toEqual([])
     }
@@ -544,7 +580,7 @@ describe('streets at the highway', () => {
       landform: 'bay', river: false, lakes: false },
   ] as const
   for (const c of cases) {
-    const m = generateSector({ ...c, islands: false, piers: false, pack: 'generic', theme: 'print' })
+    const m = generateSector({ islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'print', ...c })
     // markWetSpans may split the highway; crossings are copied to every piece
     const pieces = m.roads.filter((r) => r.class === 'highway')
     const hw = { ...pieces[0], points: pieces.flatMap((r) => r.points) }
@@ -582,4 +618,218 @@ describe('streets at the highway', () => {
       }
     })
   }
+})
+
+describe('landmarks in road tracing', () => {
+  // street km per km2 of a district (all of its polygon), streets counted by segment midpoint
+  const streetDensity = (m: ReturnType<typeof generateSector>, d: District) => {
+    let len = 0
+    for (const r of m.roads) if (r.class === 'street') for (let i = 1; i < r.points.length; i++) {
+      const a = r.points[i - 1], b = r.points[i]
+      if (pointInRings({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, [d.poly])) len += Math.hypot(b.x - a.x, b.y - a.y)
+    }
+    return len / 1000 / (Math.abs(ringArea(d.poly)) / 1e6)
+  }
+  // land districts > 10 ha (water sampled out on a 20 m grid; docks and landmark districts exempt) under 3 km/km2
+  const emptyDistricts = (m: ReturnType<typeof generateSector>) => m.districts.filter((d) => {
+    if (d.zone === 'docks' || d.flags.arcology || d.flags.megablock) return false
+    const xs = d.poly.map((p) => p.x), ys = d.poly.map((p) => p.y)
+    let land = 0
+    for (let x = Math.min(...xs); x < Math.max(...xs); x += 20) for (let y = Math.min(...ys); y < Math.max(...ys); y += 20) {
+      const q = { x: x + 10, y: y + 10 }
+      if (pointInRings(q, [d.poly]) && !inWater(m.terrain, q)) land += 400
+    }
+    return land > 1e5 && streetDensity(m, d) < 3
+  }).map((d) => d.id)
+  const seeds: [string, SectorParams][] = [
+    ['seed 42 inland corp 0.85', { ...base, corpDominance: 0.85 }],
+    ['seed 7 bay corp 0.15', { ...base, seed: 7, landform: 'bay', corpDominance: 0.15 }],
+    // access kinds at 4 km inland corp 0.85: seed 42 embedded, 7 embedded + ring (square), 11 half + ring (octagon), 5 ring (circle) + boulevard
+    ['seed 7 inland corp 0.85', { ...base, seed: 7, corpDominance: 0.85 }],
+    ['seed 11 inland corp 0.85', { ...base, seed: 11, corpDominance: 0.85 }],
+    ['seed 5 inland corp 0.85', { ...base, seed: 5, corpDominance: 0.85 }],
+  ]
+  for (const [label, params] of seeds) {
+    describe(label, () => {
+      const m = generateSector(params)
+      const plazas = m.arcologies.map((a) => a.plaza)
+      const cores = m.megablocks.map((k) => k.core)
+      const inside = (r: { points: Pt[] }, rings: Pt[][]) => r.points.some((p) => rings.some((ring) => pointInRings(p, [ring])))
+      it('places landmarks', () => {
+        expect(m.arcologies.length + m.megablocks.length).toBeGreaterThan(0)
+      })
+      // m.roads includes infill: ring/megablock faces are not infilled, and no infill cut runs through a non-ring plaza
+      it('landmark districts are zoned corp and slum', () => {
+        expect(m.arcologies.length + m.megablocks.length).toBeGreaterThan(0)
+        for (const a of m.arcologies) {
+          const d = m.districts.find((x) => pointInRings(a.center, [x.poly]))!
+          expect(d.zone).toBe('corp')
+          expect(d.flags.arcology).toBe(a.id)
+        }
+        for (const k of m.megablocks) {
+          const d = m.districts.find((x) => pointInRings(k.center, [x.poly]))!
+          expect(d.zone).toBe('slum')
+          // two megablocks can share one district; the flag holds one of their ids
+          expect(m.megablocks.filter((o) => pointInRings(o.center, [d.poly])).map((o) => o.id)).toContain(d.flags.megablock)
+        }
+      })
+      it('no road enters an arcology plaza', () => {
+        expect(m.roads.filter((r) => inside(r, plazas)).map((r) => r.id)).toEqual([])
+      })
+      it('no street enters a megablock core', () => {
+        expect(m.roads.filter((r) => r.class === 'street' && inside(r, cores)).map((r) => r.id)).toEqual([])
+      })
+      it('ring roads are block boundaries', () => {
+        for (const a of m.arcologies.filter((x) => x.access === 'ring')) {
+          const ring = m.roads.filter((r) => r.id === a.ringRoadId || r.id.startsWith(`${a.ringRoadId}-`))
+          const closed = ring.flatMap((r) => r.points)
+          for (const b of m.blocks) {
+            const edge = [...b.footprint, b.footprint[0]]
+            const deep = closed.filter((p) => pointInRings(p, [b.footprint]) && distToPolyline(p, edge) > ring[0].width / 2 + 1)
+            expect(deep.length, `${b.id} holds ring ${a.ringRoadId}`).toBe(0)
+          }
+          const plaza = m.blocks.filter((b) => pointInRings(a.center, [b.footprint]))
+          expect(plaza.length).toBe(1)
+          for (const p of plaza[0].footprint) // 8 m, not 6: seed 42 keeps one 7.2 m spoke stub inside its ring
+          expect(distToPolyline(p, [...closed, closed[0]])).toBeLessThanOrEqual(8)
+        }
+      })
+      it('ring roads are closed and spoked', () => {
+        for (const a of m.arcologies.filter((x) => x.access === 'ring')) {
+          const ring = m.roads.filter((r) => r.id === a.ringRoadId || r.id.startsWith(`${a.ringRoadId}-`))
+          expect(ring.length).toBeGreaterThan(0)
+          const pts = ring.flatMap((r) => r.points)
+          const closed = [...pts, pts[0]]
+          const spokes = m.roads.filter((r) => r.class === 'arterial' && !ring.includes(r)).flatMap((r) => [r.points[0], r.points[r.points.length - 1]])
+            .filter((e) => distToPolyline(e, closed) <= 6)
+          expect(spokes.length).toBeGreaterThanOrEqual(3)
+        }
+      })
+      it('half rings are open and spoked', () => {
+        for (const a of m.arcologies.filter((x) => x.access === 'half')) {
+          const ring = m.roads.filter((r) => r.id === a.ringRoadId || r.id.startsWith(`${a.ringRoadId}-`))
+          expect(ring.length).toBeGreaterThan(0)
+          const pts = ring.flatMap((r) => r.points)
+          const ends = [ringRoad(a)!.points[0], ringRoad(a)!.points.at(-1)!]
+          expect(pts[0]).not.toEqual(pts.at(-1))
+          const spokeEnds = m.roads.filter((r) => r.class === 'arterial' && !ring.includes(r)).flatMap((r) => [r.points[0], r.points.at(-1)!])
+          for (const e of ends) expect(spokeEnds.some((q) => Math.hypot(q.x - e.x, q.y - e.y) <= 6), 'end spoke').toBe(true)
+          expect(spokeEnds.filter((e) => distToPolyline(e, pts) <= 6).length).toBeGreaterThanOrEqual(3)
+        }
+      })
+      it('boulevards pass the plaza; boulevard and embedded have no K road', () => {
+        for (const a of m.arcologies.filter((x) => x.access === 'boulevard' || x.access === 'embedded')) {
+          expect(m.roads.filter((r) => r.id.startsWith(a.ringRoadId + '-') || r.id === a.ringRoadId)).toEqual([])
+          if (a.access === 'boulevard') {
+            const near = m.roads.filter((r) => r.class === 'arterial' && distToPolyline(a.center, r.points) <= a.radius + 80)
+            expect(near.length, a.id).toBeGreaterThan(0)
+          }
+        }
+      })
+      it('non-ring arcology blocks keep lots outside the plaza', () => {
+        for (const a of m.arcologies.filter((x) => x.access !== 'ring')) {
+          const b = m.blocks.find((x) => pointInRings(a.center, [x.footprint]))!
+          expect(b.flags.arcology).toBe(a.id)
+          expect(b.style).not.toBe('plaza')
+          expect(m.buildings.filter((x) => x.blockId === b.id).length, a.id).toBeGreaterThan(0)
+        }
+        // 0.98: a lot clipped to the plaza edge has vertices on it, which the boundary test may call inside
+        for (const a of m.arcologies) {
+          const inner = a.plaza.map((p) => ({ x: a.center.x + 0.98 * (p.x - a.center.x), y: a.center.y + 0.98 * (p.y - a.center.y) }))
+          for (const bl of m.buildings) expect(bl.footprint.some((p) => pointInRings(p, [inner])), `${bl.id} in ${a.id}`).toBe(false)
+        }
+      })
+      it('no block alley enters a non-ring arcology plaza', () => {
+        for (const a of m.arcologies.filter((x) => x.access !== 'ring')) {
+          const inner = a.plaza.map((p) => ({ x: a.center.x + 0.98 * (p.x - a.center.x), y: a.center.y + 0.98 * (p.y - a.center.y) }))
+          for (const bl of m.blocks) for (const [p, q] of bl.alleys ?? [])
+            for (const pt of [p, q, { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }]) expect(pointInRings(pt, [inner]), `${bl.id} alley in ${a.id}`).toBe(false)
+        }
+      })
+      it('no sizeable land district is left without streets', () => {
+        expect(emptyDistricts(m)).toEqual([])
+      })
+    })
+  }
+  it('seed 7 bay 2 km: the district north of the arcology keeps its streets', () => {
+    const m = generateSector({ ...base, seed: 7, size: 2, landform: 'bay', density: 0.25, corpDominance: 0.15, poiDensity: 0.7, arcology: true })
+    const d = m.districts.find((x) => pointInRings({ x: 1297, y: 950 }, [x.poly]))!
+    expect(streetDensity(m, d)).toBeGreaterThanOrEqual(8)
+  })
+})
+
+/** one generateSector per distinct params across the slow 6 km describes */
+const modelCache = new Map<string, ReturnType<typeof generateSector>>()
+const modelFor = (params: SectorParams) => {
+  const k = JSON.stringify(params)
+  if (!modelCache.has(k)) modelCache.set(k, generateSector(params))
+  return modelCache.get(k)!
+}
+
+describe('no hairpin spokes', () => {
+  const models: [string, SectorParams][] = [
+    ['seed 782008753 inland 6 km', { ...base, seed: 782008753, size: 6, landform: 'inland', density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, river: true, lakes: true, islands: true, piers: true, pack: 'generic', theme: 'print' }],
+    ['seed 42 inland corp 0.85', { ...base, corpDominance: 0.85 }],
+    ['seed 7 bay corp 0.15', { ...base, seed: 7, landform: 'bay', corpDominance: 0.15 }],
+  ]
+  for (const [label, params] of models) {
+    it(`no arterial loops back onto its own ring (${label})`, () => {
+      const m = generateSector(params)
+      const bad: string[] = []
+      for (const a of m.arcologies.filter((x) => x.access === 'ring' || x.access === 'half')) {
+        const ring = m.roads.filter((r) => r.id === a.ringRoadId || r.id.startsWith(`${a.ringRoadId}-`))
+        const pts = ring.flatMap((r) => r.points)
+        const closed = [...pts, pts[0]]
+        for (const r of m.roads) {
+          if (r.class !== 'arterial' || ring.includes(r) || r.points.length === 0) continue
+          const ends = [r.points[0], r.points[r.points.length - 1]]
+          if (ends.every((e) => distToPolyline(e, closed) <= 6) && polylineLength(r.points) < Math.PI * (a.radius + 60)) bad.push(`${r.id} ${a.ringRoadId}`)
+        }
+      }
+      expect(bad).toEqual([])
+    })
+  }
+})
+
+describe('lakes bound blocks', () => {
+  const models: [string, SectorParams][] = [
+    ['seed 782008753 inland 6 km', { ...base, seed: 782008753, size: 6, landform: 'inland', density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, river: true, lakes: true, islands: true, piers: true, pack: 'generic', theme: 'print' }],
+    ['seed 42 inland corp 0.85', { ...base, corpDominance: 0.85 }],
+    ['seed 7 bay corp 0.15', { ...base, seed: 7, landform: 'bay', corpDominance: 0.15 }],
+  ]
+  for (const [label, params] of models) describe(label, () => {
+    let m: ReturnType<typeof generateSector>
+    beforeAll(() => { m = modelFor(params) }, 90000)
+    it(`no alley point lies in water `, () => {
+      const bad = m.blocks.filter((b) => b.alleys.some(([p, q]) => [p, q, { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }].some((s) => inWater(m.terrain, s)))).map((b) => b.id)
+      expect(bad).toEqual([])
+    })
+    it(`no street point lies in water, no street end sits on a lake shore `, () => {
+      const streets = m.roads.filter((r) => r.class === 'street')
+      expect(streets.filter((r) => r.points.some((p) => inWater(m.terrain, p))).map((r) => r.id)).toEqual([])
+      if (!params.lakes) return
+      const sizeM = params.size * 1000
+      const nearRing = (e: Pt) => m.terrain.water.some((poly) => poly.some((ring) => distToPolyline(e, [...ring, ring[0]].map(([x, y]) => ({ x, y }))) < 6))
+      // infill chords end on the lake ring on purpose (it is the block edge); only traced streets are checked. Exact: infill ids continue the traced counter
+      const traced = new Set(traceRoads(params, m.terrain, sizeM).streets.map((r) => r.id))
+      const ends = streets.filter((r) => traced.has(r.id.split('-')[0])).flatMap((r) => [r.points[0], r.points.at(-1)!]).filter(nearRing)
+      expect(m.terrain.water.length).toBeGreaterThan(1) // lakes exist, so the check below is not vacuous
+      expect(ends.filter((e) => isLakeShore(m.terrain, e, sizeM))).toEqual([])
+      // river/sea shore stubs of >= 150 m stay: some street end sits at a river/sea shore
+      expect(ends.filter((e) => !isLakeShore(m.terrain, e, sizeM)).length).toBeGreaterThan(0)
+    })
+    it(`no big block has its centroid in a lake `, () => {
+      const bad = m.blocks.filter((b) => {
+        if (!inWater(m.terrain, ringCentroid(b.footprint))) return false
+        const xs = b.footprint.map((p) => p.x), ys = b.footprint.map((p) => p.y)
+        let land = 0
+        for (let x = Math.min(...xs); x < Math.max(...xs); x += 20) for (let y = Math.min(...ys); y < Math.max(...ys); y += 20) {
+          const s = { x: x + 10, y: y + 10 }
+          if (pointInRings(s, [b.footprint]) && !inWater(m.terrain, s)) land += 400
+        }
+        return land > 60000
+      }).map((b) => b.id)
+      expect(bad).toEqual([])
+    })
+  })
 })

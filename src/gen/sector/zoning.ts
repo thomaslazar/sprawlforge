@@ -3,7 +3,7 @@ import { bboxOf, pointInRings, ringCentroid } from '../geometry'
 import { irregularityField } from '../streets/irregularity'
 import { distToPolyline } from '../terrain/rivers'
 import { hashSeed, mulberry32 } from '../rng'
-import type { District, SectorParams, Terrain, ZoneType } from '../types'
+import type { District, LandmarkFlags, SectorParams, Terrain, ZoneType } from '../types'
 
 const SHORE_DIST = 150
 
@@ -68,7 +68,9 @@ export function zoneWeights(params: SectorParams, shore: boolean): Record<ZoneTy
   }
 }
 
-export function assignZones(districtPolys: Pt[][], params: SectorParams, terrain: Terrain): District[] {
+export function assignZones(districtPolys: Pt[][], params: SectorParams, terrain: Terrain,
+  forced: Array<{ at: Pt; zone: ZoneType; flag: LandmarkFlags }> = [],
+): District[] {
   const rng = mulberry32(hashSeed(params.seed, 'zones'))
   const effective = effectiveIrregularity(params)
   const withBounds = districtPolys.map((poly) => ({ poly, bounds: bboxOf(poly) }))
@@ -76,7 +78,9 @@ export function assignZones(districtPolys: Pt[][], params: SectorParams, terrain
   return sorted.map(({ poly, bounds }, i) => {
     const shore = isShore(poly, terrain)
     const weights = Object.entries(zoneWeights(params, shore)) as Array<[ZoneType, number]>
-    const zone = rng.weighted(weights)
+    const drawn = rng.weighted(weights) // always drawn so unforced districts keep their sequence
+    const hits = forced.filter((f) => pointInRings(f.at, [poly]))
+    const zone = hits.length ? hits[hits.length - 1].zone : drawn
     // field-primary: spatial coherence (effective field at the district's
     // centroid) dominates, zone base is a secondary bias, jitter only breaks
     // ties — floor > 0 so no district is a perfect grid (spec §4.3)
@@ -88,7 +92,7 @@ export function assignZones(districtPolys: Pt[][], params: SectorParams, terrain
       id: `D${String(i + 1).padStart(2, '0')}`,
       zone, name: '', bounds, poly, shore, irregularity,
       labelAt: { x: bounds.x + bounds.w / 2, y: bounds.y + bounds.h / 2 },
-      flags: {},
+      flags: Object.assign({}, ...hits.map((f) => f.flag)),
     }
   })
 }

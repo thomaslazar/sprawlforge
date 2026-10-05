@@ -25,7 +25,7 @@ const ALL_TAGS = [
   'inland', 'coastal', 'bay', 'river', 'lakes', 'islands',
   'small', 'medium', 'large', 'sparse', 'dense', 'packed',
   'corp-run', 'balanced', 'fringe', 'quiet', 'normal', 'lively',
-  'planned', 'mixed', 'sprawl', 'piers',
+  'planned', 'mixed', 'sprawl', 'piers', 'arcology', 'megablock',
 ]
 // generation now round-trips through a worker (async) — an action that
 // should regenerate the map needs to wait for the new svg, not assume it
@@ -53,6 +53,10 @@ await page.waitForSelector('svg')
 const initialBox = await page.locator('svg').boundingBox()
 if (initialBox.height > 901 || initialBox.width > 1401)
   fail(`map does not fit viewport on load: ${initialBox.width}x${initialBox.height}`)
+
+// the one 6 km generation: big-sector smoke check (scale bar present)
+if (!(await page.locator('svg text').allTextContents()).some((t) => /^[\d.]+ ?(m|km)$/.test(t.trim())))
+  fail('large sector: no scale bar label in svg')
 
 const buildings = await countAttr(page, 'svg [data-buildings]')
 if (buildings < 50) fail(`expected a dense map, got ${buildings} buildings`)
@@ -104,8 +108,8 @@ const baked = await page.locator('.map-viewport').evaluate((el) => {
 if (Math.abs(baked.scale - 1) > 0.01) fail(`zoom not baked into the viewport after settling: scale ${baked.scale}`)
 if (Math.abs(parseFloat(baked.width) - afterZoom.zoom * 100) > 0.01)
   fail(`baked viewport width ${baked.width} != ${afterZoom.zoom * 100}%`)
-// reset pan/zoom for the rest of the checks below (which assume load defaults)
-await page.goto(`${BASE}/?seed=42&tags=coastal,large&pack=generic&theme=neon`)
+// reset pan/zoom (and drop to a 2 km sector: every check below is size-agnostic) for the rest of the checks below (which assume load defaults)
+await page.goto(`${BASE}/?seed=42&tags=coastal,small&pack=generic&theme=neon`)
 await page.waitForSelector('svg')
 
 // Show POIs toggle: instant display filter, no reroll/regeneration — url
@@ -125,8 +129,8 @@ if ((await page.locator('svg circle[data-id^="P"]').count()) < 1)
 // tag chips reflect the URL on load
 if (!(await page.getByRole('button', { name: 'Coastal', pressed: true }).isVisible()))
   fail('coastal chip not pressed from URL tags')
-if (!(await page.getByRole('button', { name: 'Large', pressed: true }).isVisible()))
-  fail('large chip not pressed from URL tags')
+if (!(await page.getByRole('button', { name: 'Small', pressed: true }).isVisible()))
+  fail('small chip not pressed from URL tags')
 
 // click a chip in another group → stages the tag (pressed) but does NOT
 // regenerate: no url change, no map change, until Update
@@ -257,7 +261,7 @@ for (const [label, ext] of [
 // piers chip gates on wet terrain: disabled + auto-unstaged when explicitly
 // dry (inland, no river, no lakes), re-enabled by any water modifier or
 // landform other than inland
-await page.goto(`${BASE}/?seed=42&tags=coastal`)
+await page.goto(`${BASE}/?seed=42&tags=coastal,small`)
 await page.waitForSelector('svg')
 const piersChip = page.getByRole('button', { name: 'Piers' })
 await piersChip.click() // stage piers under coastal
@@ -296,7 +300,8 @@ const TERRAIN_SWEEP = [
   { tags: 'coastal', shot: 'coastal', wet: true, bridge: false },
   { tags: 'bay', shot: 'bay', wet: true, bridge: false },
   { tags: 'coastal,islands', shot: 'coastal-islands', wet: true, bridge: false },
-  { tags: 'coastal,river', shot: 'coastal-river', wet: true, bridge: true },
+  // seed 42 coastal only ever had artefact street decks (no arterials, so no real bridge); seed 20 has a real arterial span
+  { tags: 'coastal,river', shot: 'coastal-river', wet: true, bridge: true, seed: 20 },
   { tags: 'inland,lakes', shot: 'inland-lakes', wet: true, bridge: false },
   // honest bridge geometry (no sideways "pull onto network" hack — see
   // bridges.ts) means not every river/coast crossing is bridgeable; seed 42
@@ -305,7 +310,7 @@ const TERRAIN_SWEEP = [
   { tags: 'bay,river', shot: 'bay-river', wet: true, bridge: true, seed: 12 },
 ]
 for (const { tags, shot, wet, bridge, seed = 42 } of TERRAIN_SWEEP) {
-  await page.goto(`${BASE}/?seed=${seed}&tags=${tags}`)
+  await page.goto(`${BASE}/?seed=${seed}&tags=${tags},small`)
   await page.waitForSelector('svg')
   await page.screenshot({ path: `${OUT}/terrain-${shot}.png` })
 
@@ -330,6 +335,7 @@ for (const { tags, shot, wet, bridge, seed = 42 } of TERRAIN_SWEEP) {
 }
 
 // street-style tags: planned vs sprawl must both render dense fabric and differ
+// 4 km kept: ramps >= 1 and crossroads >= 20 need the larger area (fail at 2 km)
 await page.goto(`${BASE}/?seed=42&tags=coastal,planned`)
 await page.waitForSelector('svg')
 await page.screenshot({ path: `${OUT}/streets-planned.png` })
@@ -341,7 +347,7 @@ if (!(await page.getByRole('button', { name: 'Planned', pressed: true }).isVisib
 if ((await countAttr(page, 'svg [data-ramps]')) < 1) fail('planned: no ramps')
 if ((await countAttr(page, 'svg [data-junctions]')) < 20) fail('planned: too few crossroads')
 
-await page.goto(`${BASE}/?seed=42&tags=coastal,sprawl`)
+await page.goto(`${BASE}/?seed=42&tags=coastal,sprawl,small`)
 await page.waitForSelector('svg')
 await page.screenshot({ path: `${OUT}/streets-sprawl.png` })
 if ((await countAttr(page, 'svg [data-buildings]')) < 50)
@@ -349,8 +355,28 @@ if ((await countAttr(page, 'svg [data-buildings]')) < 50)
 if ((await page.locator('svg').innerHTML()) === svgPlanned)
   fail('planned and sprawl render identically')
 
+// cyberpunk landmarks: corp-run inland has arcologies, fringe bay has megablocks
+await page.goto(`${BASE}/?seed=42&tags=inland,corp-run,arcology`)
+await page.waitForSelector('svg')
+await page.screenshot({ path: `${OUT}/landmarks-arcology.png` })
+if ((await page.locator('svg [data-arcology]').count()) < 1) fail('corp-run: no arcology rendered')
+if ((await page.locator('svg [data-design]').count()) < 1) fail('corp-run: no arcology design attribute')
+if (!(await page.getByRole('button', { name: 'Arcology', pressed: true }).isVisible()))
+  fail('arcology chip not pressed from URL tags')
+const arcSig = (await page.locator('svg [data-arcology]').evaluateAll((els) => els.map((e) => `${e.dataset.design}/${e.dataset.access ?? ''}`))).sort().join()
+
+await page.goto(`${BASE}/?seed=7&tags=bay,fringe,megablock`)
+await page.waitForSelector('svg')
+await page.screenshot({ path: `${OUT}/landmarks-megablock.png` })
+if ((await page.locator('svg [data-megablock]').count()) < 1) fail('fringe: no megablock rendered')
+if (!(await page.getByRole('button', { name: 'Megablock', pressed: true }).isVisible()))
+  fail('megablock chip not pressed from URL tags')
+// the two landmark shots must differ in arcology design/access (megablock map has none, so any arcology there would also differ)
+const megSig = (await page.locator('svg [data-arcology]').evaluateAll((els) => els.map((e) => `${e.dataset.design}/${e.dataset.access ?? ''}`))).sort().join()
+if (arcSig === megSig) fail('landmark shots do not differ in arcology design/access')
+
 // water-heavy organic fabric: crooked streets + bridges coexist
-await page.goto(`${BASE}/?seed=42&tags=coastal,river,sprawl`)
+await page.goto(`${BASE}/?seed=42&tags=coastal,river,sprawl,small`)
 await page.waitForSelector('svg')
 await page.screenshot({ path: `${OUT}/streets-sprawl-river.png` })
 

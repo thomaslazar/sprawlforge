@@ -1,8 +1,9 @@
 import polygonClipping from 'polygon-clipping'
 import { describe, expect, it, vi } from 'vitest'
-import { pointInRings, ringArea, type Pt } from '../geometry'
+import { pointInRings, ringArea, ringCentroid, type Pt } from '../geometry'
 import type { Block, District, SectorParams, Terrain } from '../types'
-import { corridorRects, fillLots as fillLotsFull, insetByClipping, insetRing } from './lots'
+import { generateSector } from '../sector/generate'
+import { SIDEWALK, corridorRects, fillLots as fillLotsFull, insetByClipping, insetRing } from './lots'
 
 // pre-style tests assumed BSP rows everywhere, so the shared helper forces 'rows'
 const fillLots = (...a: Parameters<typeof fillLotsFull>) => fillLotsFull(a[0], a[1], a[2], a[3], a[4], 'rows').buildings
@@ -32,7 +33,7 @@ const strictlyInside = (p: Pt, ring: Pt[], slack = 0.5): boolean =>
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
-  landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
+  landform: 'inland', river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon',
 }
 
 const dryTerrain: Terrain = {
@@ -154,6 +155,13 @@ describe('insetRing', () => {
 
   it('insetRing rejects a ring thinner than the inset', () => {
     expect(insetRing([{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 4 }], 6)).toBeNull()
+  })
+
+  it('insetRing rejects an offset that folds over itself', () => {
+    // seed 4280430344 coastal+river+lakes 4 km: this courtyard inset has every vertex inside the ring yet
+    // self-crosses; polygon-clipping took > 10 min on it. Guard is structural (no wall clock).
+    const ring = ([[3116.32, 1516.05], [3118.87, 1487.67], [3127.8, 1460.39], [3141.89, 1435.0], [3173.79, 1390.7], [3226.63, 1416.48], [3215.17, 1438.6], [3214.24, 1438.31], [3212.61, 1443.54], [3210.09, 1448.4], [3210.96, 1448.84], [3208.05, 1458.17], [3207.25, 1458.04], [3206.37, 1463.54], [3204.72, 1468.85], [3205.49, 1469.09], [3203.93, 1478.94], [3202.75, 1479.01], [3203.07, 1484.35], [3202.23, 1489.63], [3203.39, 1489.82], [3204.6, 1510.24], [3203.29, 1510.67], [3204.92, 1515.63], [3205.23, 1520.84], [3206.61, 1520.76], [3296.9, 1795.67], [3212.81, 1823.27], [3130.14, 1572.66], [3119.24, 1534.69]] as Array<[number, number]>).map(([x, y]) => ({ x, y }))
+    expect(insetRing(ring, 19.81)).toBeNull()
   })
 
   it('insetRing handles a clockwise ring', () => {
@@ -283,6 +291,44 @@ describe('fillLots', () => {
       expect(hit.length).toBe(clean.length - 1)
     } finally {
       spy.mockRestore()
+    }
+  })
+})
+
+describe('landmark blocks', () => {
+  // 4 km generates are slow: one model per seed, shared across the its
+  const arc = generateSector({ ...base, seed: 7, size: 4, corpDominance: 0.85, landform: 'inland' })
+  const mega = generateSector({ ...base, seed: 7, size: 4, corpDominance: 0.15, landform: 'bay' })
+  it('arcology blocks have no buildings', () => {
+    // ring arcologies only: a half/boulevard/embedded one keeps its block's lots (seed 7 4 km corp 0.85: ring)
+    const flagged = arc.blocks.filter((b) => b.flags.arcology && arc.arcologies.find((a) => a.id === b.flags.arcology)!.access === 'ring')
+    expect(flagged.length).toBeGreaterThan(0)
+    for (const b of flagged) {
+      expect(b.alleys).toEqual([])
+      expect(arc.buildings.filter((x) => x.blockId === b.id)).toEqual([])
+    }
+  })
+  it('a megablock block is one hive of packed cells', () => {
+    expect(mega.megablocks.length).toBeGreaterThan(0)
+    for (const m of mega.megablocks) {
+      const block = mega.blocks.find((b) => b.flags.megablock === m.id)!
+      expect(block.style).toBe('megablock')
+      expect(m.footprint.length).toBeGreaterThanOrEqual(3)
+      expect(block.alleys.length).toBeGreaterThanOrEqual(1)
+      const hive = mega.buildings.filter((x) => x.blockId === block.id)
+      expect(hive.length).toBeGreaterThanOrEqual(6)
+      for (const b of hive) {
+        expect(pointInRings(ringCentroid(b.footprint), [m.footprint])).toBe(true)
+        const a = Math.abs(ringArea(b.footprint))
+        expect(a).toBeGreaterThanOrEqual(40)
+        expect(a).toBeLessThanOrEqual(4000) // BSP bound (2 * minCell + gap)^2 = 3844
+      }
+    }
+  })
+  it('megablock footprint hugs its streets', () => {
+    for (const m of mega.megablocks) {
+      const block = mega.blocks.find((b) => b.flags.megablock === m.id)!
+      for (const p of m.footprint) expect(insideOrOnEdge(p, block.footprint, SIDEWALK + 2)).toBe(true)
     }
   })
 })

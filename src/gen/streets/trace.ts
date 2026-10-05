@@ -1,5 +1,6 @@
-import { pointAtT, polylineLength, type Pt } from '../geometry'
+import { bboxOf, pointAtT, pointInRings, polylineLength, type Pt } from '../geometry'
 import type { Rng } from '../rng'
+import { RING_ID_PREFIX } from '../landmarks/place'
 import { inWater } from '../sector/bridges'
 import { distToPolyline } from '../terrain/rivers'
 import type { Road, RoadClass, Terrain } from '../types'
@@ -27,6 +28,8 @@ export interface TraceOpts {
   maxTurn?: number
   /** arterials only: continue across a narrow river corridor as a bridge instead of stopping at the bank */
   bridgeRivers?: boolean
+  /** simple polygons (arcology plazas, megablock cores) no streamline may enter */
+  obstacles?: Pt[][]
 }
 
 export const MAJOR: TraceOpts = { separation: 400, step: 10, maxSteps: 600, minLength: 60, jitter: 0, decay: 0, bridgeRivers: true }
@@ -216,12 +219,16 @@ function traceHalf(
   const ownRank = ownRankFor(axis)
   const sameOrHigher = (c: RoadClass) => CLASS_RANK[c] >= ownRank
   const maxTurn = opts.maxTurn ?? Math.PI
+  const obstacles = (opts.obstacles ?? []).map((ring) => ({ ring, box: bboxOf(ring) }))
+  const inObstacle = (q: Pt) => obstacles.some((o) => q.x >= o.box.x && q.x <= o.box.x + o.box.w && q.y >= o.box.y && q.y <= o.box.y + o.box.h && pointInRings(q, [o.ring]))
   const pts: Pt[] = []
   let p = start
   let dir = initDir
   let bridges = 0
   // parent exclusion (rules 3 and 4): only while the trace is
   // still within 0.35 × sep of the seed; beyond that the parent is ordinary
+  // an arcology ring (id K<n>) is a closed circle: a spoke leaving it is never a twin of the far side
+  const isRing = (id: string) => id.startsWith(RING_ID_PREFIX)
   const isSourceAt = (id: string, at: Pt) =>
     id === sourceId && Math.hypot(at.x - seedAt.x, at.y - seedAt.y) < 0.35 * opts.separation
   for (let i = 0; i < opts.maxSteps; i++) {
@@ -235,6 +242,7 @@ function traceHalf(
       pts.push(clampToWindow(next, sizeM))
       break
     }
+    if (inObstacle(next)) break
     if (inWater(terrain, next) && !(crossWater && inRiverBand(terrain, next, opts.step, corridorWidth))) {
       // arterials bridge a narrow river along their current heading (at most 2 per half)
       const river = terrain.riverSlice
@@ -269,7 +277,7 @@ function traceHalf(
       for (let k = 0; k <= 2 && k <= pts.length && keep < 0; k++) if (aheadAt(pts.length - k)) keep = pts.length - k
       if (keep >= 0) {
         pts.length = keep
-        pts.push(foot)
+        if (!inObstacle(foot)) pts.push(foot)
         break
       }
     }
@@ -285,14 +293,14 @@ function traceHalf(
       next, 25, (hit) => hit.id === sourceId && angleGapLines(Math.atan2(newDir.y, newDir.x), hit.segAngle) < PARALLEL_ANGLE,
     )) return []
     const hitPar = index.nearestMatching(
-      next, 0.7 * sep, (hit) => !isSourceAt(hit.id, next) && angleGapLines(dirAngle, hit.segAngle) < PARALLEL_ANGLE,
+      next, 0.7 * sep, (hit) => !isSourceAt(hit.id, next) && !isRing(hit.id) && angleGapLines(dirAngle, hit.segAngle) < PARALLEL_ANGLE,
     )
     if (hitPar) {
       // a street stopped by a near-parallel road would end free and the prune would drop it (and the
       // void it blocked stays empty): end it on that road instead, if the foot lies ahead of the walker
       const foot = hitPar.at
       const join = angleGapLines(Math.atan2(foot.y - p.y, foot.x - p.x), hitPar.segAngle)
-      if (!opts.bridgeRivers && hitPar.cls !== 'highway' && hitPar.edge >= 6 && join > JOIN_MIN_ANGLE && pts.length * opts.step >= 0.5 * sep && (foot.x - p.x) * dir.x + (foot.y - p.y) * dir.y > 0) pts.push(foot)
+      if (!opts.bridgeRivers && hitPar.cls !== 'highway' && hitPar.edge >= 6 && join > JOIN_MIN_ANGLE && pts.length * opts.step >= 0.5 * sep && (foot.x - p.x) * dir.x + (foot.y - p.y) * dir.y > 0 && !inObstacle(foot)) pts.push(foot)
       break
     }
 
@@ -399,7 +407,7 @@ function tangentAt(points: Pt[], t: number): Pt {
 }
 
 /** seeds every `every` m along a polyline, dir = segment normal, flipping side when alternate */
-export function seedsAlong(points: Pt[], every: number, alternate: boolean): Seed[] {
+export function seedsAlong(points: Pt[], every: number, alternate: boolean, reject?: (p: Pt) => boolean): Seed[] {
   const len = polylineLength(points)
   const seeds: Seed[] = []
   let flip = false
@@ -407,7 +415,8 @@ export function seedsAlong(points: Pt[], every: number, alternate: boolean): See
     const t = dist / len
     const tangent = tangentAt(points, t)
     const normal = { x: -tangent.y, y: tangent.x }
-    seeds.push({ at: pointAtT(points, t), dir: flip && alternate ? { x: -normal.x, y: -normal.y } : normal })
+    const at = pointAtT(points, t)
+    if (!reject?.(at)) seeds.push({ at, dir: flip && alternate ? { x: -normal.x, y: -normal.y } : normal })
     flip = !flip
   }
   return seeds
@@ -531,6 +540,8 @@ export interface PruneOpts {
   weld?: number
   /** a junction must be >= weld m of arc from both ends of the other road (end-to-end chains don't anchor) */
   interiorOnly?: boolean
+  /** replaces the plain "near water" acceptance of an end; `stubLength` = arc length from the end to the nearest accepted junction (whole road if none) */
+  waterAnchor?: (p: Pt, stubLength: number) => boolean
 }
 
 /**
@@ -549,7 +560,9 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
     let changed = false
     const next: Road[] = []
     for (const r of cur) {
-      const near = (p: Pt) => index.nearestMatching(p, weld, (h) => h.id !== r.id && opts.accept(h.cls) && (!opts.interiorOnly || h.edge >= weld))
+      // K roads are never pruned: a closed ring has no ends, an open half ring ends on its end spokes
+      if (r.id.startsWith(RING_ID_PREFIX)) { next.push(r); continue }
+      const near = (p: Pt, anyEnd = false) => index.nearestMatching(p, weld, (h) => h.id !== r.id && opts.accept(h.cls) && (anyEnd || !opts.interiorOnly || h.edge >= weld))
       let pts = r.points
       let dead = false
       for (const fromEnd of [false, true]) {
@@ -559,19 +572,28 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
         const dx = end.x - seq[1].x
         const dy = end.y - seq[1].y
         const len = Math.hypot(dx, dy) || 1
-        if (nearWater(terrain, end, 15) || inWater(terrain, { x: end.x + (dx / len) * 15, y: end.y + (dy / len) * 15 })) continue
+        const wet = nearWater(terrain, end, 15) || inWater(terrain, { x: end.x + (dx / len) * 15, y: end.y + (dy / len) * 15 })
+        if (wet && !opts.waterAnchor) continue
         // walk inward in ~5 m samples to the first junction
         let kept: Pt[] | null = null
+        let stub = 0
+        let done = 0 // arc length of seq[0..i-1]
         for (let i = 1; i < seq.length && !kept; i++) {
           const a = seq[i - 1]
           const b = seq[i]
-          const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 5))
+          const seg = Math.hypot(b.x - a.x, b.y - a.y)
+          const n = Math.max(1, Math.ceil(seg / 5))
           for (let k = 1; k <= n; k++) {
             const q = { x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n }
-            const hit = near(q)
-            if (hit) { kept = [hit.at, ...seq.slice(k === n ? i + 1 : i)]; break }
+            stub = done + Math.hypot(q.x - a.x, q.y - a.y)
+            // any end counts here: a trunk cut back to the foot of a side street it carries keeps that street; interiorOnly would drop the whole trunk and cascade
+            const hit = near(q, true)
+            // a wet end that only touches another road's end is a chain, not an anchor: both tails go
+            if (hit && !(opts.interiorOnly && wet && stub <= weld && hit.edge < weld)) { kept = [hit.at, ...seq.slice(k === n ? i + 1 : i)]; break }
           }
+          done += seg
         }
+        if (wet && opts.waterAnchor!(end, kept ? stub : polylineLength(seq))) continue
         if (!kept) { dead = true; break }
         pts = fromEnd ? kept.reverse() : kept
       }

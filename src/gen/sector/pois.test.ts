@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Pt, Rect } from '../geometry'
 import { getPack } from '../names/packs'
 import type { Building, District, SectorParams } from '../types'
+import { generateSector } from './generate'
 import { placePois } from './pois'
 
 const rectPoly = (r: Rect): Pt[] => [
@@ -11,7 +12,7 @@ const rectPoly = (r: Rect): Pt[] => [
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
-  landform: 'inland', river: false, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon',
+  landform: 'inland', river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon',
 }
 const districts: District[] = [
   { id: 'D01', zone: 'corp', name: 'Test Heights', bounds: { x: 0, y: 0, w: 600, h: 600 }, poly: rectPoly({ x: 0, y: 0, w: 600, h: 600 }), irregularity: 0.5, shore: false, labelAt: { x: 300, y: 300 }, flags: {} },
@@ -81,5 +82,42 @@ describe('placePois', () => {
 
   it('poiDensity 0 places no POIs at all', () => {
     expect(placePois(districts, buildings, pack, { ...base, poiDensity: 0 })).toEqual([])
+  })
+
+  describe('landmarks', () => {
+    const sq = (x: number, y: number, r: number): Pt[] => rectPoly({ x: x - r, y: y - r, w: 2 * r, h: 2 * r })
+    const landmarks = {
+      arcologies: [{ id: 'A01', name: 'Aegis Spire', design: 'rings' as const, angle: 0, center: { x: 100, y: 300 }, radius: 80, footprint: sq(100, 300, 60), plaza: sq(100, 300, 80), ringRoadId: 'R1', access: 'ring' as const, detail: { count: 0, twist: 0 } }],
+      megablocks: [{ id: 'M01', name: 'Hive Nine', center: { x: 400, y: 300 }, core: sq(400, 300, 40), footprint: [] }],
+    }
+    it('one POI per landmark with its name', () => {
+      const pois = placePois(districts, buildings, pack, base, landmarks)
+      expect(pois[0]).toEqual({ id: 'P01', type: 'arcology', name: 'Aegis Spire', buildingId: '', districtId: 'D01', at: { x: 100, y: 300 } })
+      expect(pois[1]).toEqual({ id: 'P02', type: 'megablock', name: 'Hive Nine', buildingId: '', districtId: 'D01', at: { x: 400, y: 300 } })
+      expect(pois.filter((p) => p.type === 'arcology' || p.type === 'megablock')).toHaveLength(2)
+      expect(new Set(pois.map((p) => p.id)).size).toBe(pois.length)
+    })
+    it('landmark POIs survive poiDensity 0', () => {
+      expect(placePois(districts, buildings, pack, { ...base, poiDensity: 0 }, landmarks)).toHaveLength(2)
+    })
+    it('lottery never places a POI inside a plaza', () => {
+      // buildings 0..4 (x 0-95, y 0-15) sit inside a plaza covering that strip
+      const plaza = rectPoly({ x: -10, y: -10, w: 110, h: 40 })
+      const lm = { arcologies: [{ ...landmarks.arcologies[0], plaza }], megablocks: [] }
+      for (const seed of [1, 2, 3, 4, 5, 6]) {
+        const pois = placePois(districts, buildings, pack, { ...base, seed, poiDensity: 1 }, lm).filter((p) => p.buildingId)
+        expect(pois.length).toBeGreaterThan(0)
+        for (const p of pois) expect(p.at.x).toBeGreaterThan(100)
+      }
+    })
+  })
+  it('lottery never places a POI inside a megablock hive', { timeout: 90000 }, () => {
+    const m = generateSector({ ...base, seed: 7, corpDominance: 0.15, landform: 'bay' })
+    const hiveIds = new Set(m.blocks.filter((b) => b.flags.megablock).map((b) => b.id))
+    expect(m.megablocks.length).toBeGreaterThan(0)
+    for (const id of hiveIds) expect(m.buildings.filter((b) => b.blockId === id).length).toBeGreaterThanOrEqual(6)
+    const byId = new Map(m.buildings.map((b) => [b.id, b]))
+    for (const p of m.pois) if (p.buildingId) expect(hiveIds.has(byId.get(p.buildingId)!.blockId)).toBe(false)
+    expect(m.pois.filter((p) => p.type === 'megablock')).toHaveLength(m.megablocks.length)
   })
 })

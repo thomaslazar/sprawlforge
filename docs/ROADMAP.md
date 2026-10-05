@@ -3,8 +3,31 @@
 ## Build order
 
 1. **Sector generator** — v1 per `docs/specs/2026-08-03-sprawlforge-design.md` ✅
-2. **Terrain v2 + organic map redesign** — phases 1+2 ✅; phase 3 (organic
-   streets) ✅; see below
+2. **Terrain v2 + organic map redesign** — all phases ✅; see below
+2b. **Tensor-field streets** ✅ — `docs/specs/2026-09-29-tensor-streets-design.md`
+   (PR #6): highway levels, field streamlines, planar-graph faces, block
+   styles. Open follow-ups below.
+2c. **Cyberpunk layer, part 1** (arcologies, megablocks) ✅ —
+   `docs/specs/2026-10-02-cyberpunk-layer-design.md`.
+   Variation round done: landmark frequency table (power x size) with `arcology`/`megablock` toggles, four surroundings (ring / half ring / boulevard / embedded), seven designs with randomised details and name pools; more designs welcome.
+   Known limitations / follow-ups:
+   - obstacle and plaza/core tests check road vertices only (10 m step); a segment can clip a corner
+   - two megablocks centred in one block face: only the first gets a core building
+   - an arterial may cross a megablock core (core clipped to its block, other half gets normal lots)
+   - spoke invariant sits at 3 on seed 7
+   - `megablock.alley` colour overlaps other theme colours in print/blueprint/tokyo-night
+   - obstacle bboxes are rebuilt per streamline half (perf)
+   - landmark tests cover two seeds only
+   - ring spokes may fall to 1-2 on dense seeds
+   - the `no road runs through a block` ratchet counts infill chords and is chaotic under face reshuffles; replace by a per-cause metric (seed 42 cap 17 masks up to 4 hidden regressions)
+   - hive cells are individual polygons in interactive mode (batch if hives get huge)
+   - `dryStreetPieces` has no length filter
+   - `svg.test` design counts are slice-based
+   - a dangling half-ring end if its end spoke dies later (K roads are never pruned)
+   - boulevard may still meet the plaza when neither side is tangential
+   - design/detail/access tests cover a handful of seeds
+2d. **Cyberpunk layer, part 2** — *next, wanted:* highway frontage strips
+   and walled corporate compounds.
 3. **Metroplex generator** — parent of sectors, proves linkage chain.
    Candidate metroplex-scale landform: **city on an island** — a whole
    metro occupying an island, distinct from the sector-scale `islands`
@@ -108,28 +131,35 @@ core (clipping, insetting, filling non-rectangular shapes).
   commerce, underworld — exact categories to be worked out). Flavor-pack
   poi types get a category field; the UI gets per-category visibility
   toggles. Display-layer only, no generation change.
-- **Street-fabric performance** — the remaining floor is `polygon-clipping`
-  in lot generation and coastal face clipping. Measured in the dev container
-  (~2x slower than a laptop, seed 42 coastal+river): 4 km ≈ 3.6 s,
-  6 km ≈ 5.7 s vs the laptop budget of 1.5 s / 4 s
-  (`src/gen/sector/perf.test.ts`, `PERF_SLACK` scales it). Profile before
-  optimizing.
 - **Improved building placement** — lots now follow graph faces (blocks are
   street-bounded faces, lots a rotated grid clipped to them), so organic
   blocks no longer produce huge leftovers from a district-wide partition.
-  What remains: building size/shape does not yet respond to block character
-  (courtyards, gap-toothed rows tracing the street edge), and POI assignment
+  Block styles with courtyards, plazas, sheds, alleys and L/U footprints
+  shipped (tensor-streets). What remains: gap-toothed rows tracing the
+  street edge, and POI assignment
   ignores footprint size, so e.g. bars can land in enormous buildings.
   Size/shape-aware building semantics is the follow-up spec's core question.
-- **Cyberpunk street layer** — megablocks, arcology hubs, radial fields and
-  an elevated-highway-as-attractor field (hooks: the basis-field list in
-  `streets/field.ts`, face `flags`).
+
+## Street generator follow-ups (from tensor-streets, §14)
+
+- **Perf budget unverified** — target 4 km ≤ 1.5 s, 6 km ≤ 4 s on a laptop
+  worker; never measured on real hardware. Devcontainer: 3.5-10 s / 13-28 s.
+  `src/gen/sector/perf.test.ts` is red at `PERF_SLACK=1` and skipped on CI.
+  Floor: `polygon-clipping` in the lot pass and face clipping, plus tracing.
+  Measure on a laptop and profile before optimizing.
+- **Infill streets are a crutch** — they split blocks the tracer leaves
+  > 60 000 m² (hundreds on some seeds). The tracer should cover them.
+- **Odd 90° arterial bends** at orientation-patch seams.
+- **`tools/streets-toy`** still runs the old two-pass streets; port to the
+  current tracer or delete.
+- **`dangerouslyIgnoreUnhandledErrors`** in `vite.config.ts` hides vitest's
+  worker heartbeat noise; revisit on a vitest upgrade.
+- **uicheck speed** — run independent blocks in 2-3 parallel Playwright
+  pages (4 cores).
 - **Highway v2** — a second highway, highway-to-highway junctions and
-  cloverleafs; a tag to force one highway level; ground-level highway noise
-  walls as geometry (render-only today).
-- **Reroll loading feedback** ✅ — generation moved to a Web Worker; a
-  dimmed "Generating…" overlay covers the map while busy and pan/zoom stay
-  interactive throughout (see `src/app/genWorker.ts`, `MapView.tsx`).
+  cloverleafs; a tag to force one highway level; ground-level noise walls
+  as geometry (render-only today).
+- **Tributaries and confluences** — see Deferred.
 
 ## Cross-cutting
 
@@ -154,5 +184,5 @@ core (clipping, insetting, filling non-rectangular shapes).
 
 ## Open questions
 
-- Custom domain (sprawlforge.*) — decide when Pages deploy exists.
+- Custom domain (sprawlforge.*) — Pages deploy exists now (`.github/workflows/deploy.yml`); decide.
 - Community flavor packs — loading third-party pack JSON from file/URL.

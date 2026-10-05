@@ -1,6 +1,7 @@
 import type { SectorModel } from '../gen/types'
 import type { Theme } from './theme'
 import { renderHighway, renderJunctionMarkers } from './highway'
+import { hiveBuildingIds, renderLandmarks } from './landmarks'
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -176,9 +177,11 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   }
   out.push('</g>')
 
+  const hive = hiveBuildingIds(model)
+  const generic = hive.size ? model.buildings.filter((b) => !hive.has(b.id)) : model.buildings
   if (interactive) {
     const byDistrict = new Map<string, string[]>()
-    for (const b of model.buildings) {
+    for (const b of generic) {
       const ring = `M${b.footprint.map((p) => `${n(p.x)},${n(p.y)}`).join('L')}Z`
       const l = byDistrict.get(b.districtId)
       if (l) l.push(ring)
@@ -189,7 +192,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
         `<path data-buildings data-count="${rings.length}" d="${rings.join(' ')}" fill="${theme.building.fill}" stroke="${theme.building.stroke}" stroke-width="1"/>`,
       )
   } else {
-    for (const b of model.buildings) {
+    for (const b of generic) {
       const pts = b.footprint.map((p) => `${n(p.x)},${n(p.y)}`).join(' ')
       out.push(
         `<polygon data-id="${b.id}" points="${pts}" fill="${theme.building.fill}" stroke="${theme.building.stroke}" stroke-width="1"/>`,
@@ -197,13 +200,17 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     }
   }
 
+  renderLandmarks(model, theme, out, interactive)
+
   // alleys: thin translucent strokes between buildings, under the streets
   const alleyPath = (blocks: typeof model.blocks) => {
     const d = blocks.flatMap((b) => b.alleys.map(([a, c]) => `M${n(a.x)},${n(a.y)}L${n(c.x)},${n(c.y)}`)).join(' ')
     return d ? `<path data-alleys="1" d="${d}" fill="none" stroke="${theme.road.street}" stroke-width="2" stroke-opacity="0.5"/>` : ''
   }
-  if (interactive) out.push(alleyPath(model.blocks))
-  else for (const b of model.blocks) out.push(alleyPath([b]))
+  // megablock blocks' alleys are drawn by renderLandmarks in their own colour
+  const plain = model.blocks.filter((b) => !b.flags.megablock)
+  if (interactive) out.push(alleyPath(plain))
+  else for (const b of plain) out.push(alleyPath([b]))
 
   // streets → arterials → ramps; the highway itself is drawn per level by
   // renderHighway once it has segments
@@ -281,6 +288,8 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   const placedLabels: Box[] = []
 
   for (const d of model.districts) {
+    // a landmark district's label is replaced by the landmark name below
+    if (d.flags.arcology || d.flags.megablock) continue
     const cx = d.labelAt.x
     const cy = d.labelAt.y
     // district labels always render — they anchor the map — but still
@@ -290,6 +299,18 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     placedLabels.push({ ...raw, x: raw.x + dx, y: raw.y + dy })
     out.push(
       `<text x="${n(cx + dx)}" y="${n(cy + dy)}" fill="${theme.districtLabel}" font-size="${n(fontD)}" text-anchor="middle" opacity="0.85">${esc(d.name)}</text>`,
+    )
+  }
+
+  // landmark names at their centres, always shown, one size up; registered
+  // before the poi contest so poi labels avoid them
+  for (const l of [...model.arcologies, ...model.megablocks]) {
+    const fs = fontD * 1.25
+    const raw = textBox(l.center.x, l.center.y, l.name, fs, 'middle')
+    const { dx, dy } = clampShift(raw, S)
+    placedLabels.push({ ...raw, x: raw.x + dx, y: raw.y + dy })
+    out.push(
+      `<text data-landmark-label="" x="${n(l.center.x + dx)}" y="${n(l.center.y + dy)}" fill="${theme.districtLabel}" font-size="${n(fs)}" text-anchor="middle" opacity="0.85">${esc(l.name)}</text>`,
     )
   }
 
@@ -308,6 +329,8 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   )
   const off = (S * 0.006) / labelZoom
   for (const p of byRank) {
+    // landmark label already prints this name at the same spot
+    if (p.type === 'arcology' || p.type === 'megablock') continue
     const candidates: Array<{ x: number; y: number; anchor: Anchor }> = [
       { x: p.at.x + off, y: p.at.y - markerR, anchor: 'start' },
       { x: p.at.x - off, y: p.at.y - markerR, anchor: 'end' },

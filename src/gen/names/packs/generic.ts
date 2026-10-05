@@ -14,6 +14,16 @@ export const generic: FlavorPack = {
   },
   districtPatterns: ['{adj} {place}', '{street} {place}'],
   streetPatterns: ['{street} {streetType}', '{adj} {streetType}'],
+  arcologyPatterns: ['{corpA} Arcology', '{corpA}-{corpB} Spire', '{corpA} Hive', 'The {corpB} Ziggurat'],
+  arcologyPatternsByDesign: {
+    ziggurat: ['The {corpA} Ziggurat', '{corpA} Pyramid', '{corpA}-{corpB} Step Pyramid'],
+    cluster: ['{corpA} Towers', '{corpA}-{corpB} Complex', 'The {corpB} Towers'],
+    satellites: ['{corpA} Campus', '{corpA}-{corpB} Spire Campus', 'The {corpB} Spire'],
+    twins: ['{corpA} Twin Towers', 'The {corpA}-{corpB} Gemini', 'Gemini {corpB} Towers'],
+    crescent: ['{corpA} Crescent', 'The {corpB} Arc', '{corpA}-{corpB} Crescent Complex'],
+    stack: ['{corpA} Stack', 'The {corpB} Terraces', '{corpA}-{corpB} Terraces'],
+  },
+  megablockPatterns: ['{place} Block', 'The {adj} Hive', '{place} Stacks', '{adj} Warren'],
   poiTypes: [
     { type: 'corp_hq', label: 'Corporate HQ', zones: ['corp'], namePatterns: ['{corpA} {corpB} HQ'] },
     { type: 'corp_office', label: 'Corporate office', zones: ['corp', 'entertainment'], namePatterns: ['{corpA} {corpB}'] },
@@ -23,5 +33,7 @@ export const generic: FlavorPack = {
     { type: 'safehouse', label: 'Safehouse', zones: ['slum', 'residential', 'industrial', 'docks'], namePatterns: ['{street} Den', '{adj} Hole'] },
     { type: 'warehouse', label: 'Warehouse', zones: ['industrial', 'docks'], namePatterns: ['{corpA} Storage {streetType}', 'Depot {street}'] },
     { type: 'bar', label: 'Bar', zones: ['slum', 'entertainment', 'docks', 'industrial', 'residential', 'corp'], namePatterns: ['The {street}', '{venue} Bar'] },
+    { type: 'arcology', label: 'Arcology', zones: ['corp'], namePatterns: ['{corpA} Arcology', '{corpA}-{corpB} Spire', '{corpA} Hive', 'The {corpB} Ziggurat'] },
+    { type: 'megablock', label: 'Megablock', zones: ['slum'], namePatterns: ['{place} Block', 'The {adj} Hive', '{place} Stacks', '{adj} Warren'] },
   ],
 }

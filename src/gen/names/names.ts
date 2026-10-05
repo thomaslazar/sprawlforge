@@ -1,5 +1,5 @@
 import type { Rng } from '../rng'
-import type { ZoneType } from '../types'
+import type { ArcologyDesign, ZoneType } from '../types'
 
 export interface PoiTypeDef {
   type: string
@@ -14,6 +14,9 @@ export interface FlavorPack {
   tables: Record<string, string[]>
   districtPatterns: string[]
   streetPatterns: string[]
+  arcologyPatterns: string[]
+  arcologyPatternsByDesign: Partial<Record<ArcologyDesign, string[]>>
+  megablockPatterns: string[]
   poiTypes: PoiTypeDef[]
 }
 

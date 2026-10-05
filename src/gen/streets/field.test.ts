@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest'
 import type { Pt } from '../geometry'
 import { sampleTerrain } from '../terrain'
 import type { SectorParams } from '../types'
-import { buildPatches, buildRoadField, shoreTangent } from './field'
+import { buildPatches, buildRoadField, radialBasis, shoreTangent } from './field'
 
 const params = (over: Partial<SectorParams> = {}): SectorParams => ({
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
-  landform: 'coastal', river: true, lakes: false, islands: false, piers: false, pack: 'generic', theme: 'neon', ...over,
+  landform: 'coastal', river: true, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon', ...over,
 })
 const lineAngleDiff = (a: number, b: number) => {
   const d = Math.abs(a - b) % Math.PI
@@ -126,5 +126,19 @@ describe('streets/field', () => {
         expect(major.x * minor.x + major.y * minor.y).toBeCloseTo(0, 5)
       }
     }
+  })
+})
+
+describe('radialBasis', () => {
+  it('radial basis points at the centre', () => {
+    const c = { x: 1000, y: 1000 }
+    const b = radialBasis(c, 100, 500)
+    expect(b.name).toBe('radial')
+    expect(lineAngleDiff(b.angle({ x: c.x + 300, y: c.y })!, 0)).toBeLessThan(1e-9)
+    expect(lineAngleDiff(b.angle({ x: c.x, y: c.y + 300 })!, Math.PI / 2)).toBeLessThan(1e-9)
+    expect(b.weight({ x: c.x + 50, y: c.y })).toBe(0)
+    expect(b.weight({ x: c.x + 100, y: c.y })).toBeCloseTo(1.5)
+    expect(b.weight({ x: c.x + 300, y: c.y })).toBeCloseTo(0.75)
+    expect(b.weight({ x: c.x + 600, y: c.y })).toBe(0)
   })
 })
