@@ -115,6 +115,24 @@ describe('placeLandmarks', () => {
     expect(kinds.size).toBeGreaterThanOrEqual(2)
     expect([...kinds].sort()).toEqual(['boulevard', 'embedded', 'half', 'ring'])
   }, 600000)
+  it('details vary and stay in range', () => {
+    const RANGE: Record<string, [number, number]> = { ziggurat: [3, 4], cluster: [5, 8], satellites: [4, 7], stack: [3, 4] }
+    const all = [7, 11, 5, 13, 21, 42].flatMap((seed) => run(mk({ seed, size: 6, corpDominance: 0.9 })).out.arcologies)
+    for (const a of all) {
+      expect(a.detail.twist).toBeGreaterThanOrEqual(0)
+      expect(a.detail.twist).toBeLessThan(Math.PI / 4)
+      const r = RANGE[a.design]
+      if (r) { expect(a.detail.count).toBeGreaterThanOrEqual(r[0]); expect(a.detail.count).toBeLessThanOrEqual(r[1]) }
+    }
+    const keys = new Set(all.map((a) => `${a.detail.count}/${a.detail.twist.toFixed(3)}`))
+    expect(keys.size).toBeGreaterThan(1)
+    expect(new Set(all.map((a) => a.design)).size).toBeGreaterThanOrEqual(4)
+    // same design, different seeds: differs in count or twist
+    const by = new Map<string, typeof all>()
+    for (const a of all) by.set(a.design, [...(by.get(a.design) ?? []), a])
+    const same = [...by.values()].find((v) => v.length >= 2)!
+    expect(same.some((a) => a.detail.count !== same[0].detail.count || a.detail.twist !== same[0].detail.twist)).toBe(true)
+  }, 600000)
   it('ring shapes: closed, vertex counts per shape; half ring open; boulevard/embedded none', () => {
     const base = run(mk({ seed: 42, corpDominance: 0.85 })).out.arcologies[0]
     const R = base.radius + 60

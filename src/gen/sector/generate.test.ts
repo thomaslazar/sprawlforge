@@ -225,7 +225,7 @@ describe('landmark names and POIs', () => {
 
 describe('arcology names', () => {
   it('names follow the design pool', () => {
-    const words: Record<string, RegExp> = { ziggurat: /Ziggurat|Pyramid/, cluster: /Towers|Complex/, satellites: /Campus|Spire/ }
+    const words: Record<string, RegExp> = { ziggurat: /Ziggurat|Pyramid/, cluster: /Towers|Complex/, satellites: /Campus|Spire/, twins: /Twin|Gemini/, crescent: /Crescent|Arc/, stack: /Stack|Terrace/ }
     let seen = 0
     for (const seed of [42, 7, 11, 5]) for (const pack of ['generic', 'shadowrunish']) {
       const m = generateSector({ ...base, seed, corpDominance: 0.9, pack })

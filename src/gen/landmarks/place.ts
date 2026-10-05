@@ -4,12 +4,12 @@ import { effectiveIrregularity } from '../sector/zoning'
 import { inWater } from '../sector/bridges'
 import type { RoadField } from '../streets/field'
 import { distToPolyline } from '../terrain/rivers'
-import { designShape } from './designs'
+import { designShape, openingOf } from './designs'
 import type { Arcology, ArcologyAccess, ArcologyDesign, Megablock, RingShape, Road, SectorParams, Terrain } from '../types'
 
 export interface Landmarks { arcologies: Arcology[]; megablocks: Megablock[] }
 
-const DESIGNS: ArcologyDesign[] = ['rings', 'ziggurat', 'cluster', 'satellites']
+const DESIGNS: ArcologyDesign[] = ['rings', 'ziggurat', 'cluster', 'satellites', 'twins', 'crescent', 'stack']
 const LATTICE = 300
 const JITTER = 90
 const EDGE_MARGIN = 350
@@ -146,16 +146,23 @@ export function placeLandmarks(
     }
     return { access, ringShape, side }
   })
+  // details: drawn after the access draws, two per arcology whatever the design
+  const COUNTS: Record<ArcologyDesign, [number, number]> = { rings: [0, 0], twins: [0, 0], crescent: [0, 0], ziggurat: [3, 4], cluster: [5, 8], satellites: [4, 7], stack: [3, 4] }
+  const details = arcCentres.map((_, i) => {
+    const [lo, hi] = COUNTS[order[i % order.length]]
+    const count = lo + Math.floor(rng.next() * (hi - lo + 1))
+    return { count, twist: rng.next() * (Math.PI / 4) }
+  })
   const arcologies: Arcology[] = arcCentres.map((center, i) => {
     const radius = radii[i]
     const angle = angleOf[i]
     const design = order[i % order.length]
     return {
       id: `ARC${i + 1}`, name: '', design, angle, center, radius,
-      footprint: designShape(design, center, radius, angle).outline,
+      footprint: designShape(design, center, radius, angle, details[i], openingOf(angle, accessOf[i].side, details[i].twist)).outline,
       plaza: octagon(center, radius + 40, angle),
       ringRoadId: `${RING_ID_PREFIX}${i + 1}`,
-      ...accessOf[i],
+      ...accessOf[i], detail: details[i],
     }
   })
 

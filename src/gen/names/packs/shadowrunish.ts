@@ -16,6 +16,9 @@ export const shadowrunish: FlavorPack = {
     ziggurat: ['The {corpA} Ziggurat', '{corpA} Pyramid', '{corpA} Step Pyramid'],
     cluster: ['{corpA} Towers', '{corpA} Corporate Complex', 'The {corpA} Complex'],
     satellites: ['{corpA} Campus', '{corpA} Spire Campus', 'The {corpA} Spire Annex'],
+    twins: ['{corpA} Twin Towers', 'The {corpA} Gemini Towers', 'Gemini {corpA} Complex'],
+    crescent: ['{corpA} Crescent', 'The {corpA} Arc', '{corpA} Crescent Complex'],
+    stack: ['{corpA} Stack', 'The {corpA} Terraces', '{corpA} Terrace Complex'],
   },
   megablockPatterns: ['{adj} Sprawl Block', 'The {adj} Warrens', '{adj} Housing Stack', '{adj} Barrens Tower'],
   poiTypes: [

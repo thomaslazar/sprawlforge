@@ -333,27 +333,35 @@ describe('landmarks', () => {
     expect(a.split(`>${esc}</text>`).length - 1).toBe(1)
   })
   it('every design renders', () => {
-    const designs = ['rings', 'ziggurat', 'cluster', 'satellites'] as const
+    const designs = ['rings', 'ziggurat', 'cluster', 'satellites', 'twins', 'crescent', 'stack'] as const
+    const counts = [0, 4, 6, 5, 0, 0, 3]
     const arcologies = designs.map((design, i) => {
-      const center = { x: 200 + i * 200, y: 500 }
-      const s = designShape(design, center, 100, 0.3)
-      return { id: `ARC${i + 1}`, name: design, design, angle: 0.3, center, radius: 100, footprint: s.outline, plaza: s.outline, ringRoadId: `K${i + 1}`, access: 'ring' as const }
+      const center = { x: 150 + i * 150, y: 500 }
+      const detail = { count: counts[i], twist: 0.2 }
+      const s = designShape(design, center, 60, 0.3, detail)
+      return { id: `ARC${i + 1}`, name: design, design, angle: 0.3, center, radius: 60, footprint: s.outline, plaza: s.outline, ringRoadId: `K${i + 1}`, access: 'ring' as const, detail }
     })
     const withArc = { ...model, arcologies, megablocks: [] }
     const svg = renderSector(withArc, getTheme('neon'))
     const count = (d: string, tag: string) => {
-      const start = svg.indexOf(`data-arcology="ARC${designs.indexOf(d as never) + 1}"`)
-      const end = designs.indexOf(d as never) === 3 ? start + svg.slice(start).search(/<(path|polyline|text)/) : svg.indexOf(`data-arcology="ARC${designs.indexOf(d as never) + 2}"`)
+      const k = designs.indexOf(d as never)
+      const start = svg.indexOf(`data-arcology="ARC${k + 1}"`)
+      const end = k === designs.length - 1 ? start + svg.slice(start).search(/<(path|polyline|text)/) : svg.indexOf(`data-arcology="ARC${k + 2}"`)
       return (svg.slice(start, end).match(new RegExp(`<${tag} `, 'g')) ?? []).length
     }
     for (const d of designs) expect(svg).toContain(`data-design="${d}"`)
     // slice starts inside the outline tag; a non-last slice also holds the next plaza and the next outline tag (2 extra polygons)
-    expect(count('ziggurat', 'polygon') - 2).toBe(4)
+    const polys = (d: string) => count(d, 'polygon') - (d === 'stack' ? 0 : 2)
+    expect(polys('rings')).toBe(2)
+    expect(polys('ziggurat')).toBe(4)
     expect(count('ziggurat', 'line')).toBe(4)
-    expect(count('cluster', 'polygon') - 2).toBe(7)
-    expect(count('satellites', 'polygon')).toBe(6)
+    expect(polys('cluster')).toBe(7)
+    expect(polys('satellites')).toBe(6)
     expect(count('satellites', 'line')).toBe(5)
-    expect(count('rings', 'polygon') - 2).toBe(2)
+    expect(polys('twins')).toBe(2)
+    expect(count('twins', 'line')).toBe(1)
+    expect(polys('crescent')).toBe(2)
+    expect(polys('stack')).toBe(3)
   })
   it('renders arcology and megablock marks', { timeout: 90000 }, () => {
     expect(corp.arcologies.length).toBeGreaterThan(0)
