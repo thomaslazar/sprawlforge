@@ -54,6 +54,9 @@ describe('placeLandmarks', () => {
     expect(zero).toBeDefined()
     const { out } = run(mk({ seed: zero.seed, size: zero.size, corpDominance: zero.corp, arcology: true }))
     expect(out.arcologies.length).toBe(1)
+    const zeroM = cells().find(({ seed, size, corp }) => run(mk({ seed, size, corpDominance: corp })).out.megablocks.length === 0)!
+    expect(zeroM).toBeDefined()
+    expect(run(mk({ seed: zeroM.seed, size: zeroM.size, corpDominance: zeroM.corp, megablock: true })).out.megablocks.length).toBe(1)
   }, 1_800_000)
   it('a 2 km sector has at most one of each', () => {
     for (const c of [0.85, 0.5, 0.15]) {

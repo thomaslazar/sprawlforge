@@ -263,7 +263,9 @@ every arcology sits in the same round ring road, structures too uniform.
    | fringe | 1 | 1–3 | 2–4 |
 
    A toggle that is on raises its count to at least 1 (if a candidate spot
-   exists). Spacing rules are unchanged.
+   exists). Spacing rules are unchanged. A toggle that raises a count also
+   changes the later draws (radii, jitters), so a toggled map differs from
+   the untoggled one beyond the extra landmark; by design.
 2. **Surroundings.** `Arcology.access: 'ring' | 'half' | 'boulevard' |
    'embedded'`, weights 40 / 20 / 20 / 20, drawn at the end of the
    `'landmarks'` stream (after the design draws). No two arcologies in a

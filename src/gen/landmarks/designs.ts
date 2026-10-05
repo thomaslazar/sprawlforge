@@ -68,11 +68,11 @@ export function designShape(design: ArcologyDesign, c: Pt, r: number, rot: numbe
   }
   if (design === 'crescent') {
     const mid = opening + Math.PI, half = (125 * Math.PI) / 180
-    const arc = (k: number, dir: number) => Array.from({ length: 13 }, (_, i) => {
-      const a = mid + dir * (-half + (i * 2 * half) / 12)
+    const arc = (k: number) => Array.from({ length: 13 }, (_, i) => {
+      const a = mid + (-half + (i * 2 * half) / 12)
       return { x: c.x + k * r * Math.cos(a), y: c.y + k * r * Math.sin(a) }
     })
-    const band = [...arc(1, 1), ...arc(0.55, 1).reverse()]
+    const band = [...arc(1), ...arc(0.55).reverse()]
     return { outline: convexHull(band), polys: [band, poly(c, 8, 0.2 * r, angle)], lines: [] }
   }
   if (design === 'stack') {
