@@ -146,6 +146,19 @@ function lineIntersect(p1: Pt, d1: Pt, p2: Pt, d2: Pt): Pt {
   return { x: p1.x + d1.x * t, y: p1.y + d1.y * t }
 }
 
+/** true when two non-adjacent edges of the ring properly cross (O(n^2); rings here are < ~60 vertices) */
+function selfIntersects(r: Pt[]): boolean {
+  const n = r.length
+  const o = (a: Pt, b: Pt, c: Pt) => Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x))
+  for (let i = 0; i < n; i++)
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue
+      const a = r[i], b = r[(i + 1) % n], c = r[j], d = r[(j + 1) % n]
+      if (o(a, b, c) * o(a, b, d) < 0 && o(c, d, a) * o(c, d, b) < 0) return true
+    }
+  return false
+}
+
 /**
  * Edge-offset inset: push every edge inward by `d`, then re-intersect each
  * pair of consecutive offset lines for the new vertices. Works for either
@@ -190,6 +203,9 @@ export function insetRing(ring: Pt[], d: number): Pt[] | null {
   if (Math.sign(outArea) !== sign) return null
   // a ring thinner than 2d inverts through a point reflection, keeping its area sign
   if (out.some((v) => !pointInRings(v, [ring]))) return null
+  // a concave ring's offset can fold over itself with every vertex still inside: feeding that
+  // to polygon-clipping crawls (seed 4280430344 coastal+river+lakes corp 0.85, 4 km)
+  if (selfIntersects(out)) return null
   return out
 }
 

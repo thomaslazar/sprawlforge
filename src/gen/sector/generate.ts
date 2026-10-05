@@ -211,7 +211,8 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
       for (let i = pieces.length - 1; i >= 0; i--) if (inCore(pieces[i].points[0], pieces[i].points[1])) pieces.splice(i, 1)
       // a piece must be anchored at both ends (another piece, or the face ring away from the highway); dead ends go
       const closed = [...f.footprint, f.footprint[0]]
-      const anchored = (e: Pt, self: Road) => shore(e) || (!(highway && distToPolyline(e, highway.points) <= 8) && distToPolyline(e, closed) <= 6)
+      // an end near the highway is anchored by another piece only: the face ring there is the corridor edge, and a shore beside it is no junction
+      const anchored = (e: Pt, self: Road) => (!nearHw(e) && (shore(e) || distToPolyline(e, closed) <= 6))
         || pieces.some((o) => o !== self && distToPolyline(e, o.points) <= 8)
       for (let again = true; again;) {
         again = false

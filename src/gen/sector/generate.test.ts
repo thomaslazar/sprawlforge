@@ -313,7 +313,7 @@ describe('generateSector invariants', () => {
 describe('arterial connectivity', () => {
   const cases = [
     { seed: 4280430344, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15,
-      landform: 'coastal', river: true, lakes: true, megablock: true },
+      landform: 'coastal', river: true, lakes: true },
     { seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, poiDensity: 0.5, irregularity: 0.85,
       landform: 'bay', river: false, lakes: false },
   ] as const
@@ -354,7 +354,7 @@ describe('arterial bridges', () => {
   it('arterial bridges appear between the seeded crossings', () => {
     const m = generateSector({
       seed: 4280430344, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15,
-      landform: 'coastal', river: true, lakes: true, islands: false, piers: false, arcology: false, megablock: true, pack: 'generic', theme: 'neon',
+      landform: 'coastal', river: true, lakes: true, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon',
     })
     const seeds = riverCrossingSeeds(m.terrain, mulberry32(hashSeed(4280430344, 'arterials'))).length
     const bridges = m.roads.filter((r) => r.class === 'arterial' && r.bridge)
@@ -533,7 +533,7 @@ describe('coast-aligned streets', () => {
 describe('block size', () => {
   const cases: SectorParams[] = [
     { ...base, seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, irregularity: 0.85, landform: 'bay', pack: 'generic', theme: 'print' },
-    { ...base, seed: 4280430344, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15, landform: 'coastal', river: true, lakes: true, megablock: true },
+    { ...base, seed: 4280430344, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15, landform: 'coastal', river: true, lakes: true },
     base,
   ]
   it('every land block is street-sized', () => {
@@ -573,9 +573,8 @@ describe('density tags', () => {
 
 describe('streets at the highway', () => {
   const cases = [
-    // size 3, not 4: at 4 km the landmark-table layout leaves street S499 (142 m) ending at the highway (latent, not landmark-related)
-    { seed: 4280430344, size: 3, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15,
-      landform: 'coastal', river: true, lakes: true, megablock: true },
+    { seed: 4280430344, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15,
+      landform: 'coastal', river: true, lakes: true },
     { seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, poiDensity: 0.5, irregularity: 0.85,
       landform: 'bay', river: false, lakes: false },
   ] as const

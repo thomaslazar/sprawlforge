@@ -157,6 +157,13 @@ describe('insetRing', () => {
     expect(insetRing([{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 4 }], 6)).toBeNull()
   })
 
+  it('insetRing rejects an offset that folds over itself', () => {
+    // seed 4280430344 coastal+river+lakes 4 km: this courtyard inset has every vertex inside the ring yet
+    // self-crosses; polygon-clipping took > 10 min on it. Guard is structural (no wall clock).
+    const ring = ([[3116.32, 1516.05], [3118.87, 1487.67], [3127.8, 1460.39], [3141.89, 1435.0], [3173.79, 1390.7], [3226.63, 1416.48], [3215.17, 1438.6], [3214.24, 1438.31], [3212.61, 1443.54], [3210.09, 1448.4], [3210.96, 1448.84], [3208.05, 1458.17], [3207.25, 1458.04], [3206.37, 1463.54], [3204.72, 1468.85], [3205.49, 1469.09], [3203.93, 1478.94], [3202.75, 1479.01], [3203.07, 1484.35], [3202.23, 1489.63], [3203.39, 1489.82], [3204.6, 1510.24], [3203.29, 1510.67], [3204.92, 1515.63], [3205.23, 1520.84], [3206.61, 1520.76], [3296.9, 1795.67], [3212.81, 1823.27], [3130.14, 1572.66], [3119.24, 1534.69]] as Array<[number, number]>).map(([x, y]) => ({ x, y }))
+    expect(insetRing(ring, 19.81)).toBeNull()
+  })
+
   it('insetRing handles a clockwise ring', () => {
     const ccw = insetRing(rectPoly(0, 0, 100, 100), 6)!
     const cw = insetRing(rectPoly(0, 0, 100, 100).reverse(), 6)!
