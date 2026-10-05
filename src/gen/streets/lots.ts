@@ -517,7 +517,7 @@ export function fillLots(
           ? [{ x: strip.x + strip.w / 2, y: strip.y }, { x: strip.x + strip.w / 2, y: strip.y + strip.h }]
           : [{ x: strip.x, y: strip.y + strip.h / 2 }, { x: strip.x + strip.w, y: strip.y + strip.h / 2 }]
         const [wa, wb] = [rotatePt(a, theta, c), rotatePt(b, theta, c)]
-        for (const piece of clipSegmentToRing(wa, wb, inset)) alleys.push(...dryRuns(terrain, piece[0], piece[1]))
+        for (const piece of clipSegmentToRing(wa, wb, inset)) alleys.push(...dryRuns(terrain, piece[0], piece[1], (pt) => !!landmarks?.arcologies.some((a) => a.access !== 'ring' && pointInRings(pt, [a.plaza]))))
       }
     // BSP leftovers too thin to be a building
     let cells = bsp.cells.filter((r) => r.w >= 0.5 * st.cell && r.h >= 0.5 * st.cell)

@@ -739,6 +739,13 @@ describe('landmarks in road tracing', () => {
           for (const bl of m.buildings) expect(bl.footprint.some((p) => pointInRings(p, [inner])), `${bl.id} in ${a.id}`).toBe(false)
         }
       })
+      it('no block alley enters a non-ring arcology plaza', () => {
+        for (const a of m.arcologies.filter((x) => x.access !== 'ring')) {
+          const inner = a.plaza.map((p) => ({ x: a.center.x + 0.98 * (p.x - a.center.x), y: a.center.y + 0.98 * (p.y - a.center.y) }))
+          for (const bl of m.blocks) for (const [p, q] of bl.alleys ?? [])
+            for (const pt of [p, q, { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }]) expect(pointInRings(pt, [inner]), `${bl.id} alley in ${a.id}`).toBe(false)
+        }
+      })
       it('no sizeable land district is left without streets', () => {
         expect(emptyDistricts(m)).toEqual([])
       })
