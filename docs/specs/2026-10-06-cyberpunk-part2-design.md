@@ -27,9 +27,11 @@ sunken, regardless of zone or density.
 - Built in `traceRoads` after the highway and after `placeLandmarks`, before
   the arterial passes (like ring roads): for every highway segment whose
   level is `elevated` or `ground`, two polylines offset from the highway
-  centreline by `FRONTAGE_OFF = STRIP_HALF + 8` m (one per side; `STRIP_HALF`
+  centreline by `FRONTAGE_OFF = STRIP_HALF + 22` m (one per side; `STRIP_HALF`
   is the existing no-build half-width in `streets/highway.ts`), sampled
-  every 10 m along the segment and simplified like other roads.
+  every 10 m along the segment and simplified like other roads. The band
+  left for lots is `FRONTAGE_OFF − 4.5 (half street) − 6 (sidewalk) −
+  STRIP_HALF` ≈ 11.5 m deep.
 - Class `street`, width 9, ids `F<n>L` / `F<n>R` per segment `n`, `name:
   null` (named by the street-name pass like any street).
 - Cut where they are not wanted: wet stretches removed (`dryRuns`), parts
