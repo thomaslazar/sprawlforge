@@ -6,6 +6,8 @@ import { distToPolyline } from '../terrain/rivers'
 import type { Road, RoadClass, Terrain } from '../types'
 import type { RoadField } from './field'
 
+export const FRONTAGE_ID_PREFIX = 'F'
+
 export interface Seed {
   at: Pt
   dir?: Pt
@@ -560,8 +562,9 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
     let changed = false
     const next: Road[] = []
     for (const r of cur) {
+      // F roads end on water, obstacles or the window by construction
       // K roads are never pruned: a closed ring has no ends, an open half ring ends on its end spokes
-      if (r.id.startsWith(RING_ID_PREFIX)) { next.push(r); continue }
+      if (r.id.startsWith(RING_ID_PREFIX) || r.id.startsWith(FRONTAGE_ID_PREFIX)) { next.push(r); continue }
       const near = (p: Pt, anyEnd = false) => index.nearestMatching(p, weld, (h) => h.id !== r.id && opts.accept(h.cls) && (anyEnd || !opts.interiorOnly || h.edge >= weld))
       let pts = r.points
       let dead = false

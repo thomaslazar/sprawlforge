@@ -1,4 +1,4 @@
-import { pointAtT, pointInRings, polylineLength, slicePolyline, type Pt } from '../geometry'
+import { pointAtT, pointInRings, polylineLength, simplifyPolyline, slicePolyline, type Pt } from '../geometry'
 import { hashSeed, mulberry32, type Rng } from '../rng'
 import { effectiveIrregularity } from '../sector/zoning'
 import { inWater } from '../sector/bridges'
@@ -7,7 +7,7 @@ import type {
   District, HighwayCrossing, HighwayLevel, HighwaySegment, Road, SectorParams, Terrain, ZoneType,
 } from '../types'
 import { buildRoadField, type BasisField, type RoadField } from './field'
-import { MAJOR, RoadIndex, measureCorridorWidth, traceStreamline, type TraceOpts } from './trace'
+import { FRONTAGE_ID_PREFIX, MAJOR, RoadIndex, measureCorridorWidth, traceStreamline, type TraceOpts } from './trace'
 
 export const HIGHWAY_WIDTH = 32
 
@@ -539,7 +539,7 @@ export function buildInterchanges(
 
 // -------------------------------------------------------------- no-build
 
-const STRIP_HALF = HIGHWAY_WIDTH / 2 + 10
+export const STRIP_HALF = HIGHWAY_WIDTH / 2 + 10
 
 export function noBuildStrips(highway: Road, segments: HighwaySegment[]): Pt[][] {
   return segments.filter((s) => s.level !== 'sunken').map((s) => {
@@ -551,5 +551,90 @@ export function noBuildStrips(highway: Road, segments: HighwaySegment[]): Pt[][]
       return { x: p.x - n.y * STRIP_HALF * sign, y: p.y + n.x * STRIP_HALF * sign }
     })
     return [...off(1), ...off(-1).reverse()]
+  })
+}
+
+// -------------------------------------------------------------- frontage
+
+export { FRONTAGE_ID_PREFIX }
+const FRONTAGE_OFF = STRIP_HALF + 22
+const FRONTAGE_WIDTH = 9
+const FRONTAGE_MIN_M = 60
+const EXTEND_N = 6
+
+/** the runs of `pts` (dense samples) satisfying `keep`, ends bisected onto the boundary, each >= FRONTAGE_MIN_M long and simplified to 1 m */
+function cutPieces(pts: Pt[], keep: (p: Pt) => boolean): Pt[][] {
+  const onEdge = (good: Pt, bad: Pt): Pt => {
+    let lo = good
+    let hi = bad
+    for (let i = 0; i < 5; i++) {
+      const mid = { x: (lo.x + hi.x) / 2, y: (lo.y + hi.y) / 2 }
+      if (keep(mid)) lo = mid
+      else hi = mid
+    }
+    return lo
+  }
+  // a cut that runs against the line's own direction (a fold) is not refined
+  const ahead = (from: Pt, to: Pt, ref: Pt | undefined) => !ref || (to.x - from.x) * (from.x - ref.x) + (to.y - from.y) * (from.y - ref.y) > 0
+  const runs: Pt[][] = [[]]
+  pts.forEach((p, i) => {
+    if (keep(p)) {
+      if (!runs.at(-1)!.length && i > 0 && ahead(p, pts[i - 1], pts[i + 1])) runs.at(-1)!.push(onEdge(p, pts[i - 1]))
+      runs.at(-1)!.push(p)
+    } else if (runs.at(-1)!.length) {
+      if (ahead(pts[i - 1], p, pts[i - 2])) runs.at(-1)!.push(onEdge(pts[i - 1], p))
+      runs.push([])
+    }
+  })
+  return runs.filter((r) => r.length >= 2 && polylineLength(r) >= FRONTAGE_MIN_M).map((r) => simplifyPolyline(r, 1))
+}
+
+/**
+ * A street offset FRONTAGE_OFF from each side of the whole highway (levels are not known yet, trimFrontage
+ * removes the sunken stretches), cut at water, obstacles and the window. ponytail: 10 m sampling, a pond narrower than that is missed.
+ */
+export function frontageRoads(highway: Road, terrain: Terrain, sizeM: number, obstacles: Pt[][]): Road[] {
+  const hp = highway.points
+  if (hp.length < 2) return []
+  const n0 = Math.max(1, Math.ceil(polylineLength(hp) / SAMPLE_M))
+  const core = Array.from({ length: n0 + 1 }, (_, i) => pointAtT(hp, i / n0))
+  // run the end tangents on past the window so the offset lines reach the edge instead of stopping short of it
+  const ext = (a: Pt, b: Pt) => {
+    const u = normalize({ x: b.x - a.x, y: b.y - a.y })
+    return Array.from({ length: EXTEND_N }, (_, k) => ({ x: b.x + u.x * SAMPLE_M * (k + 1), y: b.y + u.y * SAMPLE_M * (k + 1) }))
+  }
+  const samples = [...ext(core[1], core[0]).reverse(), ...core, ...ext(core[n0 - 1] ?? core[0], core[n0])]
+  const n = samples.length - 1
+  // distToPolyline: an offset point folded in on the inside of a sharp highway bend sits closer than FRONTAGE_OFF
+  const ok = (p: Pt) => p.x >= 0 && p.x <= sizeM && p.y >= 0 && p.y <= sizeM && !inWater(terrain, p) && !pointInRings(p, obstacles)
+    && distToPolyline(p, hp) >= FRONTAGE_OFF - 2
+  return ([['L', 1], ['R', -1]] as const).flatMap(([tag, sign]) => {
+    const off = samples.map((p, i) => {
+      const a = samples[Math.max(0, i - 1)]
+      const b = samples[Math.min(n, i + 1)]
+      const nm = normalize({ x: b.x - a.x, y: b.y - a.y })
+      return { x: p.x - nm.y * FRONTAGE_OFF * sign, y: p.y + nm.x * FRONTAGE_OFF * sign }
+    })
+    // a sample whose step runs against the highway's own direction is a fold at a kink: drop it
+    const folded = new Set(off.filter((q, i) => i > 0 && (q.x - off[i - 1].x) * (samples[i].x - samples[i - 1].x) + (q.y - off[i - 1].y) * (samples[i].y - samples[i - 1].y) <= 0))
+    return cutPieces(off, (q) => ok(q) && !folded.has(q)).map((points, i): Road => ({
+      id: `${FRONTAGE_ID_PREFIX}${i + 1}${tag}`, class: 'street', width: FRONTAGE_WIDTH, name: null, points,
+    }))
+  })
+}
+
+/** drop the frontage stretches whose nearest highway point lies on a sunken segment; split roads get a letter suffix */
+export function trimFrontage(frontage: Road[], highway: Road, segments: HighwaySegment[]): Road[] {
+  return frontage.flatMap((r) => {
+    const dense: Pt[] = [r.points[0]]
+    for (let i = 1; i < r.points.length; i++) {
+      const a = r.points[i - 1]
+      const b = r.points[i]
+      const k = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / DENSE_M)
+      for (let s = 1; s <= k; s++) dense.push({ x: a.x + ((b.x - a.x) * s) / k, y: a.y + ((b.y - a.y) * s) / k })
+    }
+    const keep = (p: Pt) => levelAt(segments, nearestT(p, highway.points).t) !== 'sunken'
+    if (dense.every(keep)) return [r]
+    return cutPieces(dense, keep).map((points, i) => ({ ...r, id: r.id + String.fromCharCode(97 + i), points }))
   })
 }

@@ -2,7 +2,7 @@ import { pointInRings, polylineLength, simplifyPolyline, type Pt } from '../geom
 import { hashSeed, mulberry32 } from '../rng'
 import { placeLandmarks, ringRoad } from '../landmarks/place'
 import { buildRoadField, radialBasis, type RoadField } from '../streets/field'
-import { traceHighway } from '../streets/highway'
+import { frontageRoads, traceHighway } from '../streets/highway'
 import {
   MAJOR, MINOR, RoadIndex, endKey, poissonSeeds, pruneDangling, riverCrossingSeeds, seedsAlong, traceLayer, trimStubs, type Seed,
 } from '../streets/trace'
@@ -21,6 +21,8 @@ export interface TracedRoads {
   megablocks: Megablock[]
   /** one queue-grown street set (S prefix), all class 'street' */
   streets: Road[]
+  /** highway frontage roads (F prefix, class street, whole highway); also present in `streets` */
+  frontage: Road[]
 }
 
 const SIMPLIFY_M = 1
@@ -84,6 +86,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     ? ringsOrNull[i]!.points.map((p) => ({ x: a.center.x + 0.95 * (p.x - a.center.x), y: a.center.y + 0.95 * (p.y - a.center.y) })) : a.plaza))
   const cores = megablocks.map((k) => k.core)
 
+  const frontage = highway ? frontageRoads(highway, terrain, sizeM, [...plazas, ...cores]) : []
   let index = new RoadIndex(200)
   if (highway) index.add(highway.id, highway.points, 'highway')
   ringRoads.forEach((r) => index.add(r.id, r.points, r.class))
@@ -112,6 +115,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   const indexOf = (rs: Road[]) => {
     const idx = new RoadIndex(200)
     if (highway) idx.add(highway.id, highway.points, 'highway')
+    frontage.forEach((r) => idx.add(r.id, r.points, r.class))
     rs.forEach((r) => idx.add(r.id, r.points, r.class))
     return idx
   }
@@ -140,6 +144,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     ringRoads,
     arcologies,
     megablocks,
-    streets: pruned,
+    streets: [...pruned, ...frontage],
+    frontage,
   }
 }

@@ -12,12 +12,12 @@ import { RoadIndex, endKey, pruneDangling } from '../streets/trace'
 import { distToPolyline } from '../terrain/rivers'
 import { SIDEWALK, clipSegmentToRing, corridorRects, fillLots, insetRing, longestEdgeAngle } from '../streets/lots'
 import { sampleTerrain } from '../terrain'
-import { HIGHWAY_WIDTH } from '../streets/highway'
-import { GENERATOR_VERSION, type Block, type District, type Road, type SectorModel, type SectorParams, type Terrain } from '../types'
+import { HIGHWAY_WIDTH, trimFrontage } from '../streets/highway'
+import { GENERATOR_VERSION, type Block, type District, type HighwaySegment, type Road, type SectorModel, type SectorParams, type Terrain } from '../types'
 import { placePiers } from './piers'
 import { placePois } from './pois'
 import { dryRuns, inWater, markWetSpans } from './bridges'
-import { traceRoads } from './streets'
+import { streetWaterAnchor, traceRoads } from './streets'
 import { assignZones } from './zoning'
 
 /**
@@ -280,12 +280,36 @@ function pruneCutStreets(streets: Road[], arterials: Road[], highway: Road, terr
   return pruneDangling(streets, index, terrain, sizeM, { accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, keep })
 }
 
+/**
+ * Frontage roads were traced along the whole highway; drop the stretches beside sunken segments, then cut back
+ * streets that ended on a dropped stretch. ponytail: the decay cul-de-sac set is not available here, so every
+ * street end not resting on a dropped stretch is kept as is.
+ */
+function withTrimmedFrontage(
+  traced: Road[], frontage: Road[], highway: Road, segments: HighwaySegment[], arterials: Road[], terrain: Terrain, sizeM: number,
+): Road[] {
+  const kept = trimFrontage(frontage, highway, segments)
+  const fids = new Set(frontage.map((r) => r.id))
+  const streets = traced.filter((r) => !fids.has(r.id))
+  const onAny = (rs: Road[], p: Pt) => rs.some((r) => distToPolyline(p, r.points) <= 6)
+  const orphan = (p: Pt) => onAny(frontage, p) && !onAny(kept, p)
+  const ends = streets.flatMap((r) => [r.points[0], r.points[r.points.length - 1]])
+  if (!ends.some(orphan)) return [...streets, ...kept]
+  const index = new RoadIndex(200)
+  for (const r of [...arterials, ...streets, ...kept]) index.add(r.id, r.points, r.class)
+  const pruned = pruneDangling(streets, index, terrain, sizeM, {
+    accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60,
+    keep: new Set(ends.filter((p) => !orphan(p)).map(endKey)), waterAnchor: streetWaterAnchor(terrain, sizeM),
+  })
+  return [...pruned, ...kept]
+}
+
 export function generateSector(params: SectorParams): SectorModel {
   const sizeM = params.size * 1000
   const pack = getPack(params.pack)
 
   const terrain = sampleTerrain(params, sizeM)
-  const { highway, arterials, streets, arcologies, megablocks } = traceRoads(params, terrain, sizeM)
+  const { highway, arterials, streets: tracedStreets, frontage, arcologies, megablocks } = traceRoads(params, terrain, sizeM)
   const boundaries = [windowRing(sizeM), ...terrain.land.map((poly) => poly[0].map(([x, y]) => ({ x, y })))]
 
   const districtFaces = facesFor([...(highway ? [highway] : []), ...arterials], boundaries, terrain)
@@ -297,6 +321,7 @@ export function generateSector(params: SectorParams): SectorModel {
   // highway levels decide where streets stop at the ground-level highway
   const levelRng = mulberry32(hashSeed(params.seed, 'highway-levels'))
   const segments = highway ? assignHighwayLevels(highway, districts, terrain, levelRng) : []
+  const streets = highway ? withTrimmedFrontage(tracedStreets, frontage, highway, segments, arterials, terrain, sizeM) : tracedStreets
   const minorAll = highway ? pruneCutStreets(cutStreetsAtGround(streets, highway, segments), arterials, highway, terrain, sizeM) : streets
   const crossings = highway ? highwayCrossings(highway, [...arterials, ...minorAll], segments, levelRng) : []
   const { crossings: finalCrossings, ramps } = highway
