@@ -38,11 +38,17 @@ sunken, regardless of zone or density.
   inside an arcology plaza or megablock core removed (obstacle test),
   parts outside the window removed; pieces shorter than 60 m dropped.
   Nothing is built along `sunken` segments.
-- Frontage roads are added to the `RoadIndex` before the arterial passes
-  (arterials and streets snap onto them and stop on them) and returned in
+- Frontage roads enter the `RoadIndex` at the street stage, after the
+  arterial passes: streets snap onto them and stop on them. Arterials must
+  not see them, or an arterial approaching the highway would snap onto the
+  frontage road and stop there instead of crossing (interchanges need
+  arterials that continue across). They are returned in
   `streets`; they are not used as seeds for the street queue. They are
-  exempt from `pruneDangling` (their ends sit on segment boundaries or at
-  cuts; prefix `F`, same mechanism as `K` roads).
+  exempt from `pruneDangling` inside `traceRoads` (their ends sit on the
+  window, water or obstacle cuts; prefix `F`, same mechanism as `K` roads).
+  After the sunken stretches are trimmed, the generate.ts street prune
+  treats them as ordinary streets, so a remnant hanging at a sunken boundary
+  is cut back to its last junction.
 - Interchange ramps are built later and may cross a frontage road; the
   crossing renders like any ramp over a street. No cut.
 - The existing infill helper `frontageOf` stays for faces along `sunken`

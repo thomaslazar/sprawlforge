@@ -1,4 +1,5 @@
 import { bboxOf, bspSplit, pointInRings, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
+import { RING_ID_PREFIX } from '../landmarks/place'
 import { generateName } from '../names/names'
 import { getPack } from '../names/packs'
 import { hashSeed, mulberry32 } from '../rng'
@@ -289,19 +290,23 @@ function withTrimmedFrontage(
   traced: Road[], frontage: Road[], highway: Road, segments: HighwaySegment[], arterials: Road[], terrain: Terrain, sizeM: number,
 ): Road[] {
   const kept = trimFrontage(frontage, highway, segments)
+  // frontage is exempt from pruning inside traceRoads (ends on window/water/obstacle cuts), but here a trimmed remnant is an ordinary street
   const fids = new Set(frontage.map((r) => r.id))
   const streets = traced.filter((r) => !fids.has(r.id))
   const onAny = (rs: Road[], p: Pt) => rs.some((r) => distToPolyline(p, r.points) <= 6)
   const orphan = (p: Pt) => onAny(frontage, p) && !onAny(kept, p)
-  const ends = streets.flatMap((r) => [r.points[0], r.points[r.points.length - 1]])
-  if (!ends.some(orphan)) return [...streets, ...kept]
+  const endsOf = (rs: Road[]) => rs.flatMap((r) => [r.points[0], r.points[r.points.length - 1]])
+  const origEnds = endsOf(frontage)
+  const cutEnd = (p: Pt) => !origEnds.some((q) => Math.hypot(p.x - q.x, p.y - q.y) < 1) // a trim made this end: it hangs at a sunken boundary
+  if (!endsOf(streets).some(orphan) && !endsOf(kept).some(cutEnd)) return [...streets, ...kept]
+  const all = [...streets, ...kept]
   const index = new RoadIndex(200)
-  for (const r of [...arterials, ...streets, ...kept]) index.add(r.id, r.points, r.class)
-  const pruned = pruneDangling(streets, index, terrain, sizeM, {
-    accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60,
-    keep: new Set(ends.filter((p) => !orphan(p)).map(endKey)), waterAnchor: streetWaterAnchor(terrain, sizeM),
+  for (const r of [...arterials, ...all]) index.add(r.id, r.points, r.class)
+  // ponytail: decay cul-de-sacs are not protected here (the decay set is not available), so a pass may cut one back
+  return pruneDangling(all, index, terrain, sizeM, {
+    accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, exemptPrefixes: [RING_ID_PREFIX],
+    keep: new Set([...endsOf(streets).filter((p) => !orphan(p)), ...endsOf(kept).filter((p) => !cutEnd(p))].map(endKey)), waterAnchor: streetWaterAnchor(terrain, sizeM),
   })
-  return [...pruned, ...kept]
 }
 
 export function generateSector(params: SectorParams): SectorModel {
