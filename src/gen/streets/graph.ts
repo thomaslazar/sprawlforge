@@ -380,26 +380,31 @@ export function isPalindromeSpan(ring: Pt[], i: number, j: number): boolean {
 }
 
 /**
- * A face walk can cross a bridge edge out to a positive-area island loop and
- * back; polygon-clipping hangs on that. Excise such loops (innermost first);
- * the island is still its own face. Pure filaments (palindromic spans) stay:
- * their zero-width spike keeps lots off that street after the block inset.
- * Pinch vertices (loop whose outside neighbours differ) are left alone.
+ * Safety net for polygon-clipping, which hangs on overlapping collinear edges:
+ * excise zero-area zig-zags (a ring that runs forward, back and forward again
+ * along one line), innermost first. Spans with real area and palindromic
+ * filaments (cul-de-sacs, bridge streets) are never touched.
  */
 export function simplifyFace(ring: Pt[]): Pt[] {
-  const out = [...ring]
-  for (;;) {
-    const n = out.length
-    let best: [number, number] | null = null
-    for (const [i, j] of repeatSpans(out)) {
-      if (best && j - i >= best[1] - best[0]) continue
-      if (isPalindromeSpan(out, i, j) || !samePt(out[(i - 1 + n) % n], out[(j + 1) % n])) continue
-      // the island is the smaller lobe; never excise the face body
-      if (Math.abs(ringArea(out.slice(i, j))) >= Math.abs(ringArea([...out.slice(0, i + 1), ...out.slice(j + 1)]))) continue
-      best = [i, j]
+  let out = [...ring]
+  search: for (;;) {
+    if (!repeatSpans(out).length) return out
+    // spans may wrap the ring start, so look from every rotation
+    for (let r = 0; r < out.length; r++) {
+      const rot = [...out.slice(r), ...out.slice(0, r)]
+      let best: [number, number] | null = null
+      for (const [i, j] of repeatSpans(rot)) {
+        if (best && j - i >= best[1] - best[0]) continue
+        if (isPalindromeSpan(rot, i, j) || Math.abs(ringArea(rot.slice(i, j))) >= 1) continue
+        best = [i, j]
+      }
+      if (best) {
+        rot.splice(best[0] + 1, best[1] - best[0])
+        out = rot
+        continue search
+      }
     }
-    if (!best) return out
-    out.splice(best[0] + 1, best[1] - best[0])
+    return out
   }
 }
 

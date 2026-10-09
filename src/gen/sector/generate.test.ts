@@ -533,11 +533,11 @@ describe('coast-aligned streets', () => {
 })
 
 describe('block size', () => {
-  it('does not hang on seed 7 coastal,small (bridge island loop)', { timeout: 120000 }, () => {
+  it('does not hang on seed 7 coastal,small (zero-area zig-zag face)', { timeout: 120000 }, () => {
     const params = { ...resolveTags(materializeTags(7, ['coastal', 'small'] as any)), seed: 7, pack: 'generic', theme: 'neon' } as SectorParams
     const model = generateSector(params)
     expect(model.blocks.length).toBeGreaterThan(0)
-    for (const b of model.blocks) expect(repeatSpans(b.footprint).every(([i, j]) => isPalindromeSpan(b.footprint, i, j))).toBe(true)
+    for (const b of model.blocks) expect(repeatSpans(b.footprint).every(([i, j]) => isPalindromeSpan(b.footprint, i, j) || Math.abs(ringArea(b.footprint.slice(i, j))) >= 1)).toBe(true)
   })
 
   const cases: SectorParams[] = [
