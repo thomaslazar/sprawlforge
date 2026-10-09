@@ -3,7 +3,7 @@ import { ringArea, type Pt } from '../geometry'
 import { sampleTerrain } from '../terrain'
 import type { Road, SectorParams } from '../types'
 import {
-  buildPlanarGraph, clipFacesToLand, degree4Vertices, facesOf, dropSlivers, pruneDanglers, windowRing,
+  buildPlanarGraph, clipFacesToLand, degree4Vertices, facesOf, dropSlivers, pruneDanglers, simplifyFace, windowRing,
 } from './graph'
 
 const road = (id: string, points: Pt[]): Road => ({ id, class: 'street', points, width: 9, name: null })
@@ -15,7 +15,34 @@ const coastalParams: SectorParams = {
 
 const totalArea = (faces: Pt[][]): number => faces.reduce((s, f) => s + Math.abs(ringArea(f)), 0)
 
+const SEED7_RING: Pt[] = ([[0,1236.214],[40.834,1239.875],[70.225,1245.833],[156.112,1272.689],[377.551,1334.838],[386.232,1336.995],[371.77,1366.376],[312.109,1349.64],[120.57,1295.913],[120.778,1295.168],[102.466,1290.505],[0,1264.41],[96.382,1283.786],[95.146,1288.641],[89.705,1287.255],[102.466,1290.505],[95.146,1288.641],[96.382,1283.786],[0,1264.41]] as Array<[number, number]>).map(([x, y]) => ({ x, y }))
+const distinct = (r: Pt[]): number => new Set(r.map((p) => `${p.x.toFixed(6)},${p.y.toFixed(6)}`)).size
+
 describe('streets/graph', () => {
+  it('simplifyFace excises a bridge excursion', () => {
+    const out = simplifyFace(SEED7_RING)
+    expect(out.length).toBe(12)
+    expect(distinct(out)).toBe(12)
+    expect(Math.abs(Math.abs(ringArea(out)) - Math.abs(ringArea(SEED7_RING))) / 12694).toBeLessThan(0.01)
+    expect(Math.abs(Math.abs(ringArea(out)) - 12694) / 12694).toBeLessThan(0.01)
+  })
+
+  it('simplifyFace leaves a simple ring unchanged', () => {
+    const sq = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }]
+    expect(simplifyFace(sq)).toEqual(sq)
+  })
+
+  it('a bridge road to an island loop leaves no repeated vertex in any face', () => {
+    const roads = [
+      road('sq', [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 0, y: 200 }, { x: 0, y: 0 }]),
+      road('br', [{ x: 100, y: 200 }, { x: 100, y: 170 }]),
+      road('loop', [{ x: 100, y: 170 }, { x: 107.5, y: 155 }, { x: 92.5, y: 155 }, { x: 100, y: 170 }]),
+    ]
+    const faces = facesOf(pruneDanglers(buildPlanarGraph(roads, [])))
+    expect(faces.length).toBeGreaterThan(1)
+    for (const f of faces) expect(distinct(f)).toBe(f.length)
+  })
+
   it('two crossing roads on a square give four faces', () => {
     const roads = [
       road('r1', [{ x: 500, y: 0 }, { x: 500, y: 1000 }]),

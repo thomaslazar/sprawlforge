@@ -11,6 +11,7 @@ import { FRONTAGE_ID_PREFIX, HIGHWAY_WIDTH, STRIP_HALF } from '../streets/highwa
 import { inWater, isLakeShore } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
 import { bboxesFar, endMeetings, maxCloseRun } from '../streets/testutil'
+import { materializeTags, resolveTags } from '../../app/tags'
 import { deriveDistricts, generateSector } from './generate'
 
 // full pipeline is ~3-10 s per 4 km generation (tracing + land clipping dominate)
@@ -532,6 +533,13 @@ describe('coast-aligned streets', () => {
 })
 
 describe('block size', () => {
+  it('does not hang on seed 7 coastal,small (bridge-excursion face)', { timeout: 120000 }, () => {
+    const params = { ...resolveTags(materializeTags(7, ['coastal', 'small'] as any)), seed: 7, pack: 'generic', theme: 'neon' } as SectorParams
+    const model = generateSector(params)
+    expect(model.blocks.length).toBeGreaterThan(0)
+    for (const b of model.blocks) expect(new Set(b.footprint.map((p) => `${p.x.toFixed(6)},${p.y.toFixed(6)}`)).size).toBe(b.footprint.length)
+  })
+
   const cases: SectorParams[] = [
     { ...base, seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, irregularity: 0.85, landform: 'bay', pack: 'generic', theme: 'print' },
     { ...base, seed: 4280430344, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15, landform: 'coastal', river: true, lakes: true },

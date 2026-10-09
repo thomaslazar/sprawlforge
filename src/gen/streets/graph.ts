@@ -361,7 +361,28 @@ export function facesOf(g: PlanarGraph): Pt[][] {
   // so drop every ring that isn't strictly positive-area instead of hunting
   // for "the" outer ring. Do not try to subtract hole rings (an isolated
   // loop's own footprint) from the faces around it — out of scope here.
-  return rings.filter((r) => new Set(r.map((p) => `${p.x},${p.y}`)).size >= 3 && ringArea(r) > 0)
+  return rings.map(simplifyFace).filter((r) => r.length >= 3 && ringArea(r) > 0)
+}
+
+/**
+ * A face walk crosses a bridge edge out to an island loop and back, repeating
+ * vertices; polygon-clipping hangs on such non-simple rings. Excise each
+ * excursion (the island is still its own face from the same walk).
+ */
+export function simplifyFace(ring: Pt[]): Pt[] {
+  const out = [...ring]
+  for (;;) {
+    // widest repeat first, so nested excursions go in one cut
+    let bi = -1
+    let bj = -1
+    for (let i = 0; i < out.length; i++) {
+      for (let j = out.length - 1; j > i && j - i > bj - bi; j--) {
+        if (Math.hypot(out[i].x - out[j].x, out[i].y - out[j].y) < 1e-6) { bi = i; bj = j; break }
+      }
+    }
+    if (bi < 0) return out
+    out.splice(bi + 1, bj - bi)
+  }
 }
 
 /** vertices with exactly four incident edges, all belonging to roads (not boundary pseudo-edges) */
