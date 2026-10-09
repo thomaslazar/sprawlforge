@@ -96,9 +96,15 @@ sunken, regardless of zone or density.
   edge whose midpoint is nearest to the widest road within 15 m (ties: the
   first in road order); the gap is centred on that edge's midpoint and
   stored as `gate`.
-- Buildings: inner area = fence inset by 10 m; BSP `minCell: 40`, `gap: 10`,
-  `jitter: 0.2`, rng `'compounds'`; cells clipped to the inner area; the
-  2 to 4 largest cells (each ≥ 400 m²) become `Building`s; the rest is lawn.
+- Buildings: inner area = block footprint inset by 14 m (fence 4 m + 10 m;
+  insetting the many-vertex fence again can stall polygon-clipping); BSP
+  `minCell: 40`, `gap: 10`, `jitter: 0.2`, on its own rng stream
+  `'compound-lots'` (so selection draws stay fixed when geometry falls
+  back); cells clipped to the inner area; the 2 to 4 largest cells (each
+  ≥ 400 m² and mean width 2A/P ≥ `COMPOUND_MIN_WIDTH` = 14 m, which drops
+  slivers shaved by the highway strip) become `Building`s; the rest is
+  lawn. The gate edge is the nearest-to-the-road fence edge among those
+  ≥ 14 m long (longest edge if none).
   No alleys. The compound centre = fence centroid.
 - No normal lots in a compound block.
 

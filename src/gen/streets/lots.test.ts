@@ -2,10 +2,11 @@ import polygonClipping from 'polygon-clipping'
 import { describe, expect, it, vi } from 'vitest'
 import { pointInRings, ringArea, ringCentroid, type Pt } from '../geometry'
 import type { Block, District, SectorParams, Terrain } from '../types'
+import { selectCompounds } from '../landmarks/compounds'
 import { generateSector } from '../sector/generate'
 import { FRONTAGE_OFF, STRIP_HALF } from './highway'
 import { distToPolyline } from '../terrain/rivers'
-import { SIDEWALK, corridorRects, fillLots as fillLotsFull, insetByClipping, insetRing, isStripBlock } from './lots'
+import { SIDEWALK, corridorRects, fillLots as fillLotsFull, insetByClipping, insetRing, isLandmarkBlock, isStripBlock } from './lots'
 
 // pre-style tests assumed BSP rows everywhere, so the shared helper forces 'rows'
 const fillLots = (...a: Parameters<typeof fillLotsFull>) => fillLotsFull(a[0], a[1], a[2], a[3], a[4], 'rows').buildings
@@ -379,6 +380,7 @@ describe('compounds', () => {
       const block = m.blocks.find((b) => b.id === c.blockId)!
       expect(block.style).toBe('compound')
       expect(block.flags.compound).toBe(c.id)
+      expect(c.id).toMatch(/^CMP\d+$/)
       expect(block.alleys.length).toBe(0)
       for (const p of c.fence) expect(insideOrOnEdge(p, block.footprint, 0.5)).toBe(true)
       const len = Math.hypot(c.gate[1].x - c.gate[0].x, c.gate[1].y - c.gate[0].y)
@@ -390,16 +392,61 @@ describe('compounds', () => {
       for (const b of blds) for (const p of b.footprint) {
         expect(insideOrOnEdge(p, c.fence, 0.5)).toBe(true)
         expect(distToSegment(p, c.gate[0], c.gate[1])).toBeGreaterThan(2)
+        expect(distToPolyline(p, [...c.fence, c.fence[0]])).toBeGreaterThanOrEqual(8)
       }
+      expect(distToPolyline({ x: (c.gate[0].x + c.gate[1].x) / 2, y: (c.gate[0].y + c.gate[1].y) / 2 }, [...c.fence, c.fence[0]])).toBeLessThan(1)
     }
   })
   it('compounds never sit on strip or landmark blocks', () => {
     const hw = m.roads.find((r) => r.class === 'highway')
     const fr = m.roads.filter((r) => r.id.startsWith('F'))
     for (const c of m.compounds) {
-      const b = m.blocks.find((x) => x.id === c.blockId)!
-      expect(b.flags.arcology ?? b.flags.megablock).toBeUndefined()
+      const b = { ...m.blocks.find((x) => x.id === c.blockId)!, flags: {} }
+      expect(isLandmarkBlock(b, { arcologies: m.arcologies, megablocks: m.megablocks })).toBe(false)
       expect(isStripBlock(b, hw, fr)).toBe(false)
     }
+  })
+})
+
+describe('compound geometry edge cases', () => {
+  const pick = (blockId: string, x: number, y: number) => [{ blockId, gateToward: { x, y } }]
+  const run = (fp: Pt[], x = 0, y = 0) => {
+    const block: Block = { ...makeBlock('D01'), poly: fp, footprint: fp }
+    return fillLotsFull([corpDistrict], [block], base, dryTerrain, [], undefined, undefined, undefined, [], pick(block.id, x, y))
+  }
+  it('an L-shaped block still gets a valid fence and 2+ buildings', () => {
+    const L = [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 80 }, { x: 80, y: 80 }, { x: 80, y: 200 }, { x: 0, y: 200 }]
+    const r = run(L, 100, 0)
+    expect(r.compounds.length).toBe(1)
+    const f = r.compounds[0].fence
+    const cross = (a: Pt, b: Pt, c: Pt, d: Pt) => {
+      const o = (p: Pt, q: Pt, r: Pt) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x))
+      return o(a, b, c) !== o(a, b, d) && o(c, d, a) !== o(c, d, b)
+    }
+    for (let i = 0; i < f.length; i++) for (let j = i + 2; j < f.length; j++) {
+      if (i === 0 && j === f.length - 1) continue
+      expect(cross(f[i], f[i + 1], f[j], f[(j + 1) % f.length])).toBe(false)
+    }
+    expect(r.buildings.length).toBeGreaterThanOrEqual(2)
+    // gate faces the toward point: the edge along y = 4
+    expect(Math.abs(r.compounds[0].gate[0].y - 4)).toBeLessThan(1)
+  })
+  it('a block too small for 2 buildings stays a normal block', () => {
+    const r = run(rectPoly(0, 0, 60, 60))
+    expect(r.compounds).toEqual([])
+    expect(r.blocks[0].style).not.toBe('compound')
+    expect(r.blocks[0].flags.compound).toBeUndefined()
+    expect(r.buildings.length).toBeGreaterThan(0)
+  })
+  it('selectCompounds skips strip blocks and megablock blocks', () => {
+    const big = (id: string): Block => ({ ...makeBlock('D01', id), poly: rectPoly(0, 0, 200, 200), footprint: rectPoly(0, 0, 200, 200) })
+    const params = { ...base, corpDominance: 1 }
+    // find a seed whose draw hits so the exclusions are what keeps the list empty
+    let seed = 0
+    while (selectCompounds([corpDistrict], [big('B1')], { ...params, seed }, dryTerrain, () => false, []).length === 0) seed++
+    const p = { ...params, seed }
+    expect(selectCompounds([corpDistrict], [big('B1')], p, dryTerrain, () => true, [])).toEqual([])
+    const lm = { arcologies: [], megablocks: [{ id: 'M01', name: '', center: { x: 100, y: 100 }, core: [], footprint: [] }] }
+    expect(selectCompounds([corpDistrict], [big('B1')], p, dryTerrain, () => false, [], lm)).toEqual([])
   })
 })

@@ -917,13 +917,17 @@ describe('compounds', () => {
   const corp = [0.85, 0.5, 0.15]
   const runs = [42, 7, 11].flatMap((seed) => corp.map((c) => [seed, c] as const))
   it('compound counts follow the power band', { timeout: 900000 }, () => {
+    const total: Record<number, number> = { 0.85: 0, 0.5: 0, 0.15: 0 }
     for (const [seed, corpDominance] of runs) {
       const m = generateSector({ ...base, seed, corpDominance })
       const corpDistricts = m.districts.filter((d) => d.zone === 'corp' && !d.flags.arcology).length
       expect(m.compounds.length, `seed ${seed} corp ${corpDominance}`).toBeLessThanOrEqual(2 * corpDistricts)
       if (seed === 42 && corpDominance === 0.85) expect(m.compounds.length).toBeGreaterThanOrEqual(1)
-      console.log('COMPOUNDS', seed, corpDominance, m.compounds.length, corpDistricts)
+      total[corpDominance] += m.compounds.length
     }
+    expect(total[0.85]).toBeGreaterThanOrEqual(total[0.5])
+    expect(total[0.5]).toBeGreaterThanOrEqual(total[0.15])
+    expect(total[0.85]).toBeGreaterThan(total[0.15])
   })
   it('same seed gives the same compounds', { timeout: 300000 }, () => {
     const p = { ...base, corpDominance: 0.85 }

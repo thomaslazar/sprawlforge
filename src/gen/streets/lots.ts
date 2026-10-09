@@ -412,7 +412,15 @@ export function isStripBlock(block: Block, highway: Road | undefined, frontage: 
   return hwDist <= FRONTAGE_OFF + 1 && hwDist > STRIP_HALF && frontage.some((f) => distToPolyline(cc, f.points) <= FRONTAGE_OFF + 10)
 }
 
+/** the landmark predicates fillLots branches on; selectCompounds uses isLandmarkBlock so it never picks a block fillLots would give to a landmark */
+const ringArcologyOf = (block: Block, landmarks?: Landmarks) => landmarks?.arcologies.find((a) => a.access === 'ring' && pointInRings(ringCentroid(block.footprint), [a.plaza]))
+const megablockOf = (block: Block, landmarks?: Landmarks) => landmarks?.megablocks.find((m) => pointInRings(m.center, [block.footprint]))
+export const isLandmarkBlock = (block: Block, landmarks?: Landmarks): boolean => !!(ringArcologyOf(block, landmarks) ?? megablockOf(block, landmarks))
+
 const COMPOUND_GATE = 12
+/** cells (and so buildings) thinner than this mean width 2A/P are slivers the highway strip shaved */
+const COMPOUND_MIN_WIDTH = 14
+const ringPerimeter = (r: Pt[]): number => r.reduce((t, p, i) => t + Math.hypot(r[(i + 1) % r.length].x - p.x, r[(i + 1) % r.length].y - p.y), 0)
 const largestPiece = (pieces: Pt[][]): Pt[] | null => pieces.sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)))[0] ?? null
 const insetOrLargest = (ring: Pt[], d: number): Pt[] | null => insetRing(ring, d) ?? largestPiece(insetByClipping(ring, d))
 
@@ -423,8 +431,9 @@ function compoundLots(footprint: Pt[], gateToward: Pt, rng: ReturnType<typeof mu
   const edges = fence.map((p, i) => ({ a: p, b: fence[(i + 1) % fence.length] }))
   const len = (e: { a: Pt; b: Pt }) => Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y)
   const mid = (e: { a: Pt; b: Pt }) => ({ x: (e.a.x + e.b.x) / 2, y: (e.a.y + e.b.y) / 2 })
-  let edge = edges.reduce((best, e) => (Math.hypot(mid(e).x - gateToward.x, mid(e).y - gateToward.y) < Math.hypot(mid(best).x - gateToward.x, mid(best).y - gateToward.y) ? e : best))
-  if (len(edge) < COMPOUND_GATE + 2) edge = edges.reduce((best, e) => (len(e) > len(best) ? e : best))
+  const d2 = (e: { a: Pt; b: Pt }) => Math.hypot(mid(e).x - gateToward.x, mid(e).y - gateToward.y)
+  const wide = edges.filter((e) => len(e) >= COMPOUND_GATE + 2)
+  const edge = (wide.length > 0 ? wide : edges).reduce((best, e) => (wide.length > 0 ? (d2(e) < d2(best) ? e : best) : len(e) > len(best) ? e : best))
   const m = mid(edge)
   const L = len(edge)
   const ux = (edge.b.x - edge.a.x) / L
@@ -440,8 +449,7 @@ function compoundLots(footprint: Pt[], gateToward: Pt, rng: ReturnType<typeof mu
   for (const r of bsp.cells) {
     const lot = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }].map((p) => rotatePt(p, theta, c))
     const pts = largestRing(safeClip(lot, (ring) => subtract(polygonClipping.intersection([ring], [toRing(inner)]))))
-    // a cell the highway strip shaved to a sliver (mean width 2A/P < 14 m) is no campus building
-    if (pts && Math.abs(ringArea(pts)) >= 400 && (2 * Math.abs(ringArea(pts))) / pts.reduce((t, p, i) => t + Math.hypot(pts[(i + 1) % pts.length].x - p.x, pts[(i + 1) % pts.length].y - p.y), 0) >= 14) cells.push(pts)
+    if (pts && Math.abs(ringArea(pts)) >= 400 && (2 * Math.abs(ringArea(pts))) / ringPerimeter(pts) >= COMPOUND_MIN_WIDTH) cells.push(pts)
   }
   cells.sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)))
   return cells.length < 2 ? null : { fence, gate, cells: cells.slice(0, 4) }
@@ -457,7 +465,7 @@ export function fillLots(
   landmarks?: Landmarks,
   highway?: Road,
   frontage: Road[] = [],
-  compoundsIn: Array<{ id: string; blockId: string; gateToward: Pt }> = [],
+  compoundsIn: Array<{ blockId: string; gateToward: Pt }> = [],
 ): { buildings: Building[]; blocks: Block[]; megablockFootprints: Map<string, Pt[]>; compounds: Compound[] } {
   const rng = mulberry32(hashSeed(params.seed, 'buildings'))
   // own stream: notches must not reshuffle the lots the main stream lays out
@@ -500,10 +508,10 @@ export function fillLots(
     const district = districtById.get(block.districtId)
     if (!district) { outBlocks.push(block); continue }
     const cc = ringCentroid(block.footprint)
-    const arc = landmarks?.arcologies.find((a) => a.access === 'ring' && pointInRings(cc, [a.plaza]))
+    const arc = ringArcologyOf(block, landmarks)
     if (arc) { outBlocks.push({ ...block, style: 'plaza', alleys: [], flags: { ...block.flags, arcology: arc.id } }); continue }
     // a second megablock centred in the same block gets no hive (placement keeps them >= 700 m apart)
-    const mega = landmarks?.megablocks.find((m) => pointInRings(m.center, [block.footprint]))
+    const mega = megablockOf(block, landmarks)
     if (mega) {
       const hive = megablockHive(block.footprint, megaRng, (clipped) => (noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, near, convexNb, nearTie) : clipped))
       for (const footprint of hive.cells) {
@@ -522,8 +530,9 @@ export function fillLots(
           n += 1
           buildings.push({ id: `BLD${String(n).padStart(4, '0')}`, blockId: block.id, districtId: district.id, footprint })
         }
-        compounds.push({ id: comp.id, name: '', blockId: block.id, districtId: district.id, center: ringCentroid(res.fence), fence: res.fence, gate: res.gate })
-        outBlocks.push({ ...block, style: 'compound', alleys: [], flags: { ...block.flags, compound: comp.id } })
+        const cid = `CMP${compounds.length + 1}`
+        compounds.push({ id: cid, name: '', blockId: block.id, districtId: district.id, center: ringCentroid(res.fence), fence: res.fence, gate: res.gate })
+        outBlocks.push({ ...block, style: 'compound', alleys: [], flags: { ...block.flags, compound: cid } })
         continue
       }
     }
