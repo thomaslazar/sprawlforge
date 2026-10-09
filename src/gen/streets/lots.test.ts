@@ -4,7 +4,6 @@ import { pointInRings, ringArea, ringCentroid, type Pt } from '../geometry'
 import type { Block, District, SectorParams, Terrain } from '../types'
 import { selectCompounds } from '../landmarks/compounds'
 import { generateSector } from '../sector/generate'
-import { simplifyFace } from './graph'
 import { FRONTAGE_OFF, STRIP_HALF } from './highway'
 import { distToPolyline } from '../terrain/rivers'
 import { SIDEWALK, corridorRects, fillLots as fillLotsFull, insetByClipping, insetRing, isLandmarkBlock, isStripBlock } from './lots'
@@ -287,7 +286,7 @@ describe('fillLots', () => {
   })
 
   it('insetByClipping terminates on the seed-7 face', () => {
-    expect(insetByClipping(simplifyFace(SEED7_RING), 6).length).toBeGreaterThanOrEqual(1)
+    expect(insetByClipping(SEED7_RING, 6).length).toBeGreaterThanOrEqual(1)
   })
 
   it('a clipping failure drops the lot instead of throwing', () => {

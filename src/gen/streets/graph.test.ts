@@ -54,17 +54,6 @@ describe('streets/graph', () => {
     expect(simplifyFace(sq)).toEqual(sq)
   })
 
-  it('a bridge road to an island loop leaves no repeated vertex in any face', () => {
-    const roads = [
-      road('sq', [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 200 }, { x: 0, y: 200 }, { x: 0, y: 0 }]),
-      road('br', [{ x: 100, y: 200 }, { x: 100, y: 170 }]),
-      road('loop', [{ x: 100, y: 170 }, { x: 107.5, y: 155 }, { x: 92.5, y: 155 }, { x: 100, y: 170 }]),
-    ]
-    const faces = facesOf(pruneDanglers(buildPlanarGraph(roads, [])))
-    expect(faces.length).toBeGreaterThan(1)
-    for (const f of faces) expect(noLoops(f)).toBe(true)
-  })
-
   it('two crossing roads on a square give four faces', () => {
     const roads = [
       road('r1', [{ x: 500, y: 0 }, { x: 500, y: 1000 }]),

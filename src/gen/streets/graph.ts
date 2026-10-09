@@ -361,7 +361,7 @@ export function facesOf(g: PlanarGraph): Pt[][] {
   // so drop every ring that isn't strictly positive-area instead of hunting
   // for "the" outer ring. Do not try to subtract hole rings (an isolated
   // loop's own footprint) from the faces around it — out of scope here.
-  return rings.map(simplifyFace).filter((r) => new Set(r.map((p) => `${p.x},${p.y}`)).size >= 3 && ringArea(r) > 0)
+  return rings.filter((r) => new Set(r.map((p) => `${p.x},${p.y}`)).size >= 3 && ringArea(r) > 0)
 }
 
 const samePt = (a: Pt, b: Pt): boolean => Math.hypot(a.x - b.x, a.y - b.y) < 1e-6

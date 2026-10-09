@@ -3,6 +3,7 @@ import { BOX_MARGIN, boxOf, bboxOf, bspSplit, makeNearTieCheck, pointInRings, se
 import { hashSeed, mulberry32 } from '../rng'
 import { fractalNoise2D } from '../terrain/noise'
 import { distToPolyline } from '../terrain/rivers'
+import { simplifyFace } from './graph'
 import { FRONTAGE_OFF, STRIP_HALF } from './highway'
 import { dryRuns, inWater } from '../sector/bridges'
 import type { Block, Compound, Road, BlockStyle, Building, District, SectorParams, Terrain, ZoneType } from '../types'
@@ -277,6 +278,7 @@ function subtractNoBuild(
 export function insetByClipping(full: Pt[], d: number): Pt[][] {
   // dense near-collinear vertices (curved streets) make polygon-clipping crawl
   // or hang on the overlapping strips; 0.5 m is far below the inset itself
+  full = simplifyFace(full) // zero-area zig-zags (overlapping collinear edges) hang polygon-clipping
   const ring = simplifyPolyline([...full, full[0]], 0.5).slice(0, -1)
   const strips: [number, number][][][] = []
   for (let i = 0; i < ring.length; i++) {
