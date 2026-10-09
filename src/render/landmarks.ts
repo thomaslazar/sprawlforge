@@ -40,7 +40,7 @@ export function renderLandmarks(model: SectorModel, theme: Theme, out: string[],
   const strip = stripBuildingIds(model)
   if (strip.size) {
     const d = model.buildings.filter((b) => strip.has(b.id)).map((b) => `M${b.footprint.map((p) => `${n(p.x)},${n(p.y)}`).join('L')}Z`).join(' ')
-    out.push(`<path data-frontage data-count="${strip.size}" d="${d}" fill="${theme.frontage.fill}" stroke="${theme.frontage.stroke}" stroke-width="0.5"/>`)
+    out.push(`<path data-frontage="1" data-count="${strip.size}" d="${d}" fill="${theme.frontage.fill}" stroke="${theme.frontage.stroke}" stroke-width="0.5"/>`)
   }
   for (const m of model.megablocks) {
     const blockIds = new Set(model.blocks.filter((b) => b.flags.megablock === m.id).map((b) => b.id))

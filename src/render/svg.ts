@@ -193,7 +193,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     }
     for (const [, rings] of byDistrict)
       out.push(
-        `<path data-buildings data-count="${rings.length}" d="${rings.join(' ')}" fill="${theme.building.fill}" stroke="${theme.building.stroke}" stroke-width="1"/>`,
+        `<path data-buildings="1" data-count="${rings.length}" d="${rings.join(' ')}" fill="${theme.building.fill}" stroke="${theme.building.stroke}" stroke-width="1"/>`,
       )
   } else {
     for (const b of generic) {
@@ -225,7 +225,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   const batch: Record<'street' | 'ramp', string[]> = { street: [], ramp: [] }
   const flush = (c: 'street' | 'ramp') => {
     if (!batch[c].length) return
-    const w = c === 'street' ? ' data-streets' : ' data-ramps'
+    const w = c === 'street' ? ' data-streets="1"' : ' data-ramps="1"'
     const width = ordered.find(([r]) => r.class === c)![0].width
     out.push(
       `<path${w} data-count="${batch[c].length}" d="${batch[c].join(' ')}" fill="none" stroke="${theme.road[c]}" stroke-width="${width}"/>`,

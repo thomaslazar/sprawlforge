@@ -17,7 +17,7 @@ const base: SectorParams = {
   landform: 'coastal', river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon',
 }
 const model = generateSector(base)
-const frontageCount = (svg: string) => [...svg.matchAll(/<path data-frontage data-count="(\d+)"/g)].reduce((a, x) => a + Number(x[1]), 0)
+const frontageCount = (svg: string) => [...svg.matchAll(/<path data-frontage="1" data-count="(\d+)"/g)].reduce((a, x) => a + Number(x[1]), 0)
 
 describe('renderSector', () => {
   it('is deterministic', () => {
@@ -293,7 +293,7 @@ describe('renderSector', () => {
     expect(ia).not.toContain('<filter id="glow"')
     expect(ia).not.toContain('<polygon data-id="BLD')
     const sum = (re: RegExp) => [...ia.matchAll(re)].reduce((a, x) => a + Number(x[1]), 0)
-    expect(sum(/<path data-buildings data-count="(\d+)"/g) + frontageCount(ia) + (ia.match(/<polygon points=[^>]*stroke-width="0.5"/g) ?? []).length).toBe(m.buildings.length)
+    expect(sum(/<path data-buildings="1" data-count="(\d+)"/g) + frontageCount(ia) + (ia.match(/<polygon points=[^>]*stroke-width="0.5"/g) ?? []).length).toBe(m.buildings.length)
     expect(cnt(ia, 'data-streets')).toBe(m.roads.filter((r) => r.class === 'street' && !r.bridge).length)
     expect(cnt(ia, 'data-ramps')).toBe(m.roads.filter((r) => r.class === 'ramp' && !r.bridge).length)
     expect(cnt(ia, 'data-junctions')).toBe(junctions)
@@ -404,7 +404,7 @@ describe('landmarks', () => {
     expect(count).toBeGreaterThan(0)
     for (const interactive of [false, true]) {
       const svg = renderSector(m, getTheme('neon'), { interactive })
-      expect(svg).toContain(`<path data-frontage data-count="${count}"`)
+      expect(svg).toContain(`<path data-frontage="1" data-count="${count}"`)
       if (interactive) expect(svg.match(/<path data-buildings[^>]*>/g)!.join('').split('M').length - 1).toBe(m.buildings.length - count)
       else expect(svg.match(/<polygon data-id="BLD/g)!.length).toBe(m.buildings.length - count)
     }
@@ -428,6 +428,20 @@ describe('compounds', () => {
       expect(inner).not.toBeNull()
       expect(mine[0] + mine[1]).toBeGreaterThan(per(c.fence) + per(inner!) - 24 - 2)
       expect(mine[0] + mine[1]).toBeLessThan(per(c.fence) + per(inner!) - 24 + 2)
+    }
+  })
+})
+
+describe('xml well-formedness', () => {
+  it('rendered svg is well-formed xml (no bare attributes)', () => {
+    for (const interactive of [false, true]) {
+      const svg = renderSector(model, getTheme('neon'), { interactive })
+      expect(svg).not.toMatch(/ data-[a-z-]+(?=[\s>/])/)
+      // strict: inside every tag, each attribute name must be followed by ="
+      for (const tag of svg.match(/<[a-zA-Z][^>]*>/g)!) {
+        const attrs = tag.replace(/^<[a-zA-Z0-9:-]+/, '').replace(/\/?>$/, '').replace(/"[^"]*"/g, '""')
+        expect(attrs, tag.slice(0, 80)).toMatch(/^(\s+[\w:-]+="")*\s*$/)
+      }
     }
   })
 })
