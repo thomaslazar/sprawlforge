@@ -91,6 +91,8 @@ and patch sizing so planned-grid quarters flow into organic ones spatially.
 - **Polyline degeneracy**: the bridges/clipping pipeline must treat a
   2-point road identically to the pre-polyline code (`pointAtT` on 2
   points is plain lerp) — the old tests pin this.
+- **Deliberate exception**: frontage roads are indexed only at the street
+  stage (never during arterial passes), so arterials cross the highway.
 - **GENERATOR_VERSION** (`src/gen/types.ts`) bumps whenever same-seed
   output changes; existing shared URLs re-render differently.
 - **Toy before wiring**: field/tracer changes are validated visually in

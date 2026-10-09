@@ -164,6 +164,8 @@ core (clipping, insetting, filling non-rectangular shapes).
 
 ## Cross-cutting
 
+- **Compound draw lost to highway** — highway-hugging largest corp block can waste a compound draw (falls back to normal lots); fix sketch: try up to 3 candidates per draw in a `fillLots` pre-pass without consuming rng.
+
 - **Single tag-cloud UI** — present all tags as one cloud (as popular
   generator tools do) instead of labeled group rows; exclusivity and
   dependency rules (landform group exclusive, piers ⇒ water) enforced

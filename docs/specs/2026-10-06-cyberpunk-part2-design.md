@@ -32,7 +32,7 @@ sunken, regardless of zone or density.
   every 10 m along the segment and simplified like other roads. The band
   left for lots is `FRONTAGE_OFF − 4.5 (half street) − 6 (sidewalk) −
   STRIP_HALF` ≈ 15.5 m deep nominal (median measured ≈ 9 m on seed 20).
-- Class `street`, width 9, ids `F<n>L` / `F<n>R` per segment `n`, `name:
+- Class `street`, width 9, ids `F<n>L` / `F<n>R` per piece `n` (a piece split by cuts gets a letter suffix, e.g. `F1Ra`), `name:
   null` (named by the street-name pass like any street).
 - Cut where they are not wanted: wet stretches removed (`dryRuns`), parts
   inside an arcology plaza or megablock core removed (obstacle test),
@@ -49,6 +49,10 @@ sunken, regardless of zone or density.
   After the sunken stretches are trimmed, the generate.ts street prune
   treats them as ordinary streets, so a remnant hanging at a sunken boundary
   is cut back to its last junction.
+- Highway no-build strips are one polygon per run of consecutive non-sunken
+  segments (no per-segment caps, so no zero-width spikes in lots); sunken
+  stretches stay uncovered. The highway halo renders at W×1.6 (about
+  2×`STRIP_HALF`).
 - Interchange ramps are built later and may cross a frontage road; the
   crossing renders like any ramp over a street. No cut.
 - The existing infill helper `frontageOf` stays for faces along `sunken`
@@ -59,7 +63,10 @@ sunken, regardless of zone or density.
 
 - A block is a **strip block** when its footprint centroid lies within
   `FRONTAGE_OFF + 1` m of the highway centreline and outside the highway
-  no-build strip, and the block carries no landmark flag.
+  no-build strip, a kept frontage road lies within `FRONTAGE_OFF + 10` m of
+  the centroid (P4), and the block carries no landmark flag. Strip blocks
+  are exempt from the 60 000 m² block-size invariant (P6: they exceed it by
+  length, not width).
   `BlockStyle` gains `'strip'`.
 - Lots: the block inset is the usual sidewalk inset. Lots are cut along the
   highway direction (`longestEdgeAngle` of the footprint, which is the
@@ -107,6 +114,8 @@ sunken, regardless of zone or density.
   ≥ 14 m long (longest edge if none).
   No alleys. The compound centre = fence centroid.
 - No normal lots in a compound block.
+- Strip and compound blocks skip the shared `'buildings'`/`'notches'` draws,
+  so lots in later blocks shift (P10); roads never move.
 
 ### 3.3 Names, POIs, render
 
@@ -119,9 +128,9 @@ sunken, regardless of zone or density.
   compound buildings (they are ordinary corp buildings).
 - Theme gains `frontage: { fill; stroke }` and `compound: { fence; ground }`
   in all five themes.
-- Render, landmark pass: compound ground = fence polygon filled
+- Render, before the generic building pass (ground sits under buildings): compound ground = fence polygon filled
   `compound.ground`; fence drawn as two open polylines (the fence ring at
-  4 m and a parallel at 5.5 m inset), each 0.8 px `compound.fence`, both
+  4 m and a parallel at 5.5 m inset), each 1.2 m (user units) `compound.fence`, both
   skipping the gate span; `data-compound="CMP1"` on the ground polygon.
   Compound buildings render in the generic building batch. Labels: the POI
   label only (no landmark label).
