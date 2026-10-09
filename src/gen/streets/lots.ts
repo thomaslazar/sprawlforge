@@ -2,8 +2,10 @@ import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
 import { BOX_MARGIN, boxOf, bboxOf, bspSplit, makeNearTieCheck, pointInRings, segTouchesBox, simplifyPolyline, type Box, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import { fractalNoise2D } from '../terrain/noise'
+import { distToPolyline } from '../terrain/rivers'
+import { FRONTAGE_OFF, STRIP_HALF } from './highway'
 import { dryRuns, inWater } from '../sector/bridges'
-import type { Block, BlockStyle, Building, District, SectorParams, Terrain, ZoneType } from '../types'
+import type { Block, Road, BlockStyle, Building, District, SectorParams, Terrain, ZoneType } from '../types'
 import type { Landmarks } from '../landmarks/place'
 
 export const ZONE_BUILD: Record<ZoneType, { minCell: number; fill: number }> = {
@@ -310,7 +312,7 @@ export function insetByClipping(full: Pt[], d: number): Pt[][] {
   }).filter((r) => r.length >= 3 && Math.abs(ringArea(r)) >= MIN_BLOCK_AREA)
 }
 
-const NOTCH_P: Record<BlockStyle, number> = { plaza: 0.5, courtyard: 0.35, rows: 0.1, sheds: 0, megablock: 0 }
+const NOTCH_P: Record<BlockStyle, number> = { plaza: 0.5, courtyard: 0.35, rows: 0.1, sheds: 0, megablock: 0, strip: 0 }
 
 /**
  * Notch to cut from rect `r`: a corner square (L) or a side slot (U), 30-45 %
@@ -410,6 +412,7 @@ export function fillLots(
   noBuildIn: Pt[][],
   forceStyle?: BlockStyle,
   landmarks?: Landmarks,
+  highway?: Road,
 ): { buildings: Building[]; blocks: Block[]; megablockFootprints: Map<string, Pt[]> } {
   const rng = mulberry32(hashSeed(params.seed, 'buildings'))
   // own stream: notches must not reshuffle the lots the main stream lays out
@@ -419,6 +422,7 @@ export function fillLots(
   // a non-ring arcology sits in an ordinary face: its plaza is ground nobody builds on (ring plazas are their own block)
   const noBuild = [...noBuildIn, ...(landmarks?.arcologies ?? []).filter((a) => a.access !== 'ring').map((a) => a.plaza)]
   const megaRng = mulberry32(hashSeed(params.seed, 'megablocks'))
+  const frontageRng = mulberry32(hashSeed(params.seed, 'frontage'))
   const noBuildPolys = noBuild.map((nb) => [toRing(nb)])
   const noBuildBoxes = noBuild.map(boxOf)
   const convexNb = noBuild.map(isConvex)
@@ -463,6 +467,35 @@ export function fillLots(
       outBlocks.push({ ...block, style: 'megablock', alleys: hive.alleys, flags: { ...block.flags, megablock: mega.id } })
       continue
     }
+    // frontage strip: the band between a frontage road and the highway, packed with narrow lots facing the highway
+    const hwDist = highway ? distToPolyline(cc, highway.points) : Infinity
+    if (highway && hwDist <= FRONTAGE_OFF + 1 && hwDist > STRIP_HALF && !block.flags.arcology && !block.flags.megablock) {
+      const sub = (clipped: MultiPolygon) => (noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, near, convexNb, nearTie) : clipped)
+      const insetsS = insetRing(block.footprint, SIDEWALK) ? [insetRing(block.footprint, SIDEWALK)!] : insetByClipping(block.footprint, SIDEWALK)
+      const before = buildings.length
+      for (const inset of insetsS) {
+        const th = longestEdgeAngle(inset)
+        const c = ringCentroid(inset)
+        const bsp = bspSplit(bboxOf(inset.map((p) => rotatePt(p, -th, c))), { minCell: 10, gap: 1, jitter: 0.3, rng: frontageRng })
+        for (const r0 of bsp.cells) {
+          // a cell longer than 25 m along the road splits again into equal parts
+          const parts = Math.ceil(r0.w / 25)
+          for (let k = 0; k < parts; k++) {
+            const r = { x: r0.x + (r0.w * k) / parts, y: r0.y, w: r0.w / parts, h: r0.h }
+            const lot = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }].map((p) => rotatePt(p, th, c))
+            const pts = largestRing(safeClip(lot, (ring) => sub(polygonClipping.intersection([ring], [toRing(inset)]))))
+            if (!pts || Math.abs(ringArea(pts)) < MIN_BUILDING_AREA || inWater(terrain, ringCentroid(pts))) continue
+            n += 1
+            buildings.push({ id: `BLD${String(n).padStart(4, '0')}`, blockId: block.id, districtId: district.id, footprint: pts })
+          }
+        }
+      }
+      // a sliver hugging the highway corridor has no buildable ground: it stays an ordinary (empty) block
+      if (buildings.length > before) {
+        outBlocks.push({ ...block, style: 'strip', alleys: [] })
+        continue
+      }
+    }
     const home = landmarks?.arcologies.find((a) => a.access !== 'ring' && pointInRings(a.center, [block.footprint]))
     // a 'plaza'-style block keeps only its 1-2 biggest cells, which here would sit in the arcology plaza: build rows around it instead
     const picked = chooseStyle(district.zone, params.density, neighbourhood(cc.x / 500, cc.y / 500))
@@ -500,6 +533,7 @@ export function fillLots(
       plaza: { cell: Math.max(profile.minCell * 1.6, 0.4 * short), gap: 12, fill: 0.6 },
       sheds: { cell: profile.minCell, gap: 10, fill: 0.65 },
       megablock: { cell, gap: 3, fill },
+      strip: { cell, gap: 3, fill }, // ponytail: never reached, strip blocks branch out earlier
     }[style]
     // courtyard: only the band between the inset and a deeper inset is buildable
     let inner: Pt[][] = []

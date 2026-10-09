@@ -1,7 +1,7 @@
 import type { SectorModel } from '../gen/types'
 import type { Theme } from './theme'
 import { renderHighway, renderJunctionMarkers } from './highway'
-import { hiveBuildingIds, renderLandmarks } from './landmarks'
+import { hiveBuildingIds, stripBuildingIds, renderLandmarks } from './landmarks'
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -178,7 +178,8 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   out.push('</g>')
 
   const hive = hiveBuildingIds(model)
-  const generic = hive.size ? model.buildings.filter((b) => !hive.has(b.id)) : model.buildings
+  const strip = stripBuildingIds(model)
+  const generic = hive.size || strip.size ? model.buildings.filter((b) => !hive.has(b.id) && !strip.has(b.id)) : model.buildings
   if (interactive) {
     const byDistrict = new Map<string, string[]>()
     for (const b of generic) {

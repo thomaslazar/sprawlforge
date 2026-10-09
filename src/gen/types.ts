@@ -133,7 +133,7 @@ export interface District {
   flags: LandmarkFlags
 }
 
-export type BlockStyle = 'rows' | 'courtyard' | 'plaza' | 'sheds' | 'megablock'
+export type BlockStyle = 'rows' | 'courtyard' | 'plaza' | 'sheds' | 'megablock' | 'strip'
 
 export interface Block {
   id: string

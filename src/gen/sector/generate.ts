@@ -361,7 +361,7 @@ export function generateSector(params: SectorParams): SectorModel {
   const { buildings, blocks, megablockFootprints } = fillLots(namedDistricts, rawBlocks, params, terrain, [
     ...(highway ? noBuildStrips(highway, segments) : []),
     ...roads.filter((r) => r.class !== 'highway').flatMap((r) => corridorRects(r.points, r.width / 2 + SIDEWALK)),
-  ], undefined, { arcologies, megablocks })
+  ], undefined, { arcologies, megablocks }, highway)
   const megablocksOut = namedMegablocks.map((m) => ({ ...m, footprint: megablockFootprints.get(m.id) ?? [] }))
   const finalDistricts = deriveDistricts(namedDistricts, blocks)
   const pois = placePois(finalDistricts, buildings, pack, params, { arcologies: namedArcologies, megablocks: megablocksOut })

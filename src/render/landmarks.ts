@@ -12,6 +12,12 @@ export function hiveBuildingIds(model: SectorModel): Set<string> {
   return new Set(model.buildings.filter((b) => hive.has(b.blockId)).map((b) => b.id))
 }
 
+/** ids of the buildings in strip blocks (narrow lots along the highway frontage; drawn by renderLandmarks) */
+export function stripBuildingIds(model: SectorModel): Set<string> {
+  const strip = new Set(model.blocks.filter((b) => b.style === 'strip').map((b) => b.id))
+  return new Set(model.buildings.filter((b) => strip.has(b.blockId)).map((b) => b.id))
+}
+
 /** landmark pass (megablock hives are drawn here): after buildings, before roads; landmarks are few so elements are individual in both modes */
 export function renderLandmarks(model: SectorModel, theme: Theme, out: string[], interactive: boolean): void {
   for (const a of model.arcologies) {
@@ -28,6 +34,12 @@ export function renderLandmarks(model: SectorModel, theme: Theme, out: string[],
     else if (a.design === 'ziggurat') { poly(s.outline, fill, stroke, 2); s.polys.forEach((p) => poly(p, 'none', ring, 1)); s.lines.forEach(line) }
     else if (a.design === 'crescent') { poly(s.polys[0], fill, stroke, 2); poly(s.polys[1], 'none', ring, 1) }
     else { s.lines.forEach(line); s.polys.forEach((p) => poly(p, fill, stroke, 2)) }
+  }
+  // one path for every strip lot, in both modes
+  const strip = stripBuildingIds(model)
+  if (strip.size) {
+    const d = model.buildings.filter((b) => strip.has(b.id)).map((b) => `M${b.footprint.map((p) => `${n(p.x)},${n(p.y)}`).join('L')}Z`).join(' ')
+    out.push(`<path data-frontage data-count="${strip.size}" d="${d}" fill="${theme.frontage.fill}" stroke="${theme.frontage.stroke}" stroke-width="0.5"/>`)
   }
   for (const m of model.megablocks) {
     const blockIds = new Set(model.blocks.filter((b) => b.flags.megablock === m.id).map((b) => b.id))

@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { pointInRings, ringArea, ringCentroid, type Pt } from '../geometry'
 import type { Block, District, SectorParams, Terrain } from '../types'
 import { generateSector } from '../sector/generate'
+import { FRONTAGE_OFF, STRIP_HALF } from './highway'
+import { distToPolyline } from '../terrain/rivers'
 import { SIDEWALK, corridorRects, fillLots as fillLotsFull, insetByClipping, insetRing } from './lots'
 
 // pre-style tests assumed BSP rows everywhere, so the shared helper forces 'rows'
@@ -330,5 +332,34 @@ describe('landmark blocks', () => {
       const block = mega.blocks.find((b) => b.flags.megablock === m.id)!
       for (const p of m.footprint) expect(insideOrOnEdge(p, block.footprint, SIDEWALK + 2)).toBe(true)
     }
+  })
+})
+
+describe('strip blocks', () => {
+  const m = generateSector({ ...base, seed: 42, size: 4, landform: 'coastal', river: true })
+  it('strip blocks are packed with narrow lots facing the highway', { timeout: 120000 }, () => {
+    const hws = m.roads.filter((r) => r.class === 'highway')
+    const dHw = (p: Pt) => Math.min(...hws.map((r) => distToPolyline(p, r.points)))
+    const near = m.blocks.filter((b) => {
+      const d = dHw(ringCentroid(b.footprint))
+      // a sliver inside the highway corridor has no buildable ground, stays an ordinary empty block
+      return d <= FRONTAGE_OFF + 1 && d > STRIP_HALF && !b.flags.arcology && !b.flags.megablock && m.buildings.some((x) => x.blockId === b.id)
+    })
+    expect(near.length).toBeGreaterThan(0)
+    for (const b of near) {
+      expect(b.style).toBe('strip')
+      expect(b.alleys).toEqual([])
+      const lots = m.buildings.filter((x) => x.blockId === b.id)
+      expect(lots.length).toBeGreaterThanOrEqual(3)
+      // extent along the highway direction (the block's long axis, which the lots are cut along)
+      const { x: cx, y: cy } = ringCentroid(b.footprint)
+      let best = 0, ang = 0
+      b.footprint.forEach((p, i) => { const q = b.footprint[(i + 1) % b.footprint.length]; const l = Math.hypot(q.x - p.x, q.y - p.y); if (l > best) { best = l; ang = Math.atan2(q.y - p.y, q.x - p.x) } })
+      for (const l of lots) {
+        const u = l.footprint.map((p) => (p.x - cx) * Math.cos(ang) + (p.y - cy) * Math.sin(ang))
+        expect(Math.max(...u) - Math.min(...u)).toBeLessThanOrEqual(26)
+      }
+    }
+    console.log('STRIP', near.length, near.reduce((t, b) => t + m.buildings.filter((x) => x.blockId === b.id).length, 0))
   })
 })

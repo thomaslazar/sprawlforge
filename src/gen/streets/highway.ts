@@ -557,7 +557,7 @@ export function noBuildStrips(highway: Road, segments: HighwaySegment[]): Pt[][]
 // -------------------------------------------------------------- frontage
 
 export { FRONTAGE_ID_PREFIX }
-const FRONTAGE_OFF = STRIP_HALF + 22
+export const FRONTAGE_OFF = STRIP_HALF + 22
 const FRONTAGE_WIDTH = 9
 const FRONTAGE_MIN_M = 60
 const EXTEND_N = 6

@@ -16,6 +16,7 @@ const base: SectorParams = {
   landform: 'coastal', river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon',
 }
 const model = generateSector(base)
+const frontageCount = (svg: string) => [...svg.matchAll(/<path data-frontage data-count="(\d+)"/g)].reduce((a, x) => a + Number(x[1]), 0)
 
 describe('renderSector', () => {
   it('is deterministic', () => {
@@ -31,7 +32,7 @@ describe('renderSector', () => {
     const svg = renderSector(model, getTheme('neon'))
     for (const d of model.districts) expect(svg).toContain(`data-id="${d.id}"`)
     for (const p of model.pois) expect(svg).toContain(`data-id="${p.id}"`)
-    expect(svg.match(/<polygon data-id="BLD/g)!.length).toBe(model.buildings.length)
+    expect(svg.match(/<polygon data-id="BLD/g)!.length + frontageCount(svg)).toBe(model.buildings.length) // strip lots are one data-frontage path
   })
   // field-driven irregularity samples the noise field per cut (arterials
   // and streets both), so a 6km sector's extra fabric pushes this past the
@@ -291,7 +292,7 @@ describe('renderSector', () => {
     expect(ia).not.toContain('<filter id="glow"')
     expect(ia).not.toContain('<polygon data-id="BLD')
     const sum = (re: RegExp) => [...ia.matchAll(re)].reduce((a, x) => a + Number(x[1]), 0)
-    expect(sum(/<path data-buildings data-count="(\d+)"/g) + (ia.match(/<polygon points=[^>]*stroke-width="0.5"/g) ?? []).length).toBe(m.buildings.length)
+    expect(sum(/<path data-buildings data-count="(\d+)"/g) + frontageCount(ia) + (ia.match(/<polygon points=[^>]*stroke-width="0.5"/g) ?? []).length).toBe(m.buildings.length)
     expect(cnt(ia, 'data-streets')).toBe(m.roads.filter((r) => r.class === 'street' && !r.bridge).length)
     expect(cnt(ia, 'data-ramps')).toBe(m.roads.filter((r) => r.class === 'ramp' && !r.bridge).length)
     expect(cnt(ia, 'data-junctions')).toBe(junctions)
@@ -382,10 +383,10 @@ describe('landmarks', () => {
       const hiveIds = new Set(fringe.blocks.filter((b) => b.flags.megablock).map((b) => b.id))
       const hive = fringe.buildings.filter((b) => hiveIds.has(b.blockId))
       expect(hive.length).toBeGreaterThan(0)
-      if (!interactive) expect(m.match(/<polygon data-id="BLD/g)!.length).toBe(fringe.buildings.length) // each once: hive cells only in the landmark draw
+      if (!interactive) expect(m.match(/<polygon data-id="BLD/g)!.length + frontageCount(m)).toBe(fringe.buildings.length) // each once: hive cells only in the landmark draw
       else {
         const generic = m.match(/<path data-buildings[^>]*>/g)!.join('')
-        expect(generic.split('M').length - 1).toBe(fringe.buildings.length - hive.length)
+        expect(generic.split('M').length - 1 + frontageCount(m)).toBe(fringe.buildings.length - hive.length)
         expect(m).not.toContain('<polygon data-id="BLD')
       }
       const alleyPaths = m.match(/<path data-alleys[^>]*>/g) ?? []
@@ -393,6 +394,18 @@ describe('landmarks', () => {
       const generic = alleyPaths.join('')
       expect(generic).not.toContain(getTheme('neon').megablock.alley)
       expect(m).toContain('data-landmark-label=""') // valueless attrs are invalid XML, which breaks PNG export
+    }
+  })
+  it('strip lots render in the frontage batch', { timeout: 120000 }, () => {
+    const m = generateSector({ ...base, seed: 42, size: 4, landform: 'coastal', river: true })
+    const strip = new Set(m.blocks.filter((b) => b.style === 'strip').map((b) => b.id))
+    const count = m.buildings.filter((b) => strip.has(b.blockId)).length
+    expect(count).toBeGreaterThan(0)
+    for (const interactive of [false, true]) {
+      const svg = renderSector(m, getTheme('neon'), { interactive })
+      expect(svg).toContain(`<path data-frontage data-count="${count}"`)
+      if (interactive) expect(svg.match(/<path data-buildings[^>]*>/g)!.join('').split('M').length - 1).toBe(m.buildings.length - count)
+      else expect(svg.match(/<polygon data-id="BLD/g)!.length).toBe(m.buildings.length - count)
     }
   })
 })
