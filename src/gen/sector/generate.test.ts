@@ -9,7 +9,7 @@ import { traceRoads } from './streets'
 import { ringRoad } from '../landmarks/place'
 import { FRONTAGE_ID_PREFIX, HIGHWAY_WIDTH, STRIP_HALF } from '../streets/highway'
 import { inWater, isLakeShore } from './bridges'
-import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
+import { buildPlanarGraph, degree4Vertices, isPalindromeSpan, repeatSpans, windowRing } from '../streets/graph'
 import { bboxesFar, endMeetings, maxCloseRun } from '../streets/testutil'
 import { materializeTags, resolveTags } from '../../app/tags'
 import { deriveDistricts, generateSector } from './generate'
@@ -533,11 +533,11 @@ describe('coast-aligned streets', () => {
 })
 
 describe('block size', () => {
-  it('does not hang on seed 7 coastal,small (bridge-excursion face)', { timeout: 120000 }, () => {
+  it('does not hang on seed 7 coastal,small (bridge island loop)', { timeout: 120000 }, () => {
     const params = { ...resolveTags(materializeTags(7, ['coastal', 'small'] as any)), seed: 7, pack: 'generic', theme: 'neon' } as SectorParams
     const model = generateSector(params)
     expect(model.blocks.length).toBeGreaterThan(0)
-    for (const b of model.blocks) expect(new Set(b.footprint.map((p) => `${p.x.toFixed(6)},${p.y.toFixed(6)}`)).size).toBe(b.footprint.length)
+    for (const b of model.blocks) expect(repeatSpans(b.footprint).every(([i, j]) => isPalindromeSpan(b.footprint, i, j))).toBe(true)
   })
 
   const cases: SectorParams[] = [

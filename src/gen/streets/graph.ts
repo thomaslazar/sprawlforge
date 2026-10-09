@@ -361,27 +361,45 @@ export function facesOf(g: PlanarGraph): Pt[][] {
   // so drop every ring that isn't strictly positive-area instead of hunting
   // for "the" outer ring. Do not try to subtract hole rings (an isolated
   // loop's own footprint) from the faces around it — out of scope here.
-  return rings.map(simplifyFace).filter((r) => r.length >= 3 && ringArea(r) > 0)
+  return rings.map(simplifyFace).filter((r) => new Set(r.map((p) => `${p.x},${p.y}`)).size >= 3 && ringArea(r) > 0)
+}
+
+const samePt = (a: Pt, b: Pt): boolean => Math.hypot(a.x - b.x, a.y - b.y) < 1e-6
+
+/** repeated-vertex spans v[i..j] (i < j) of a ring */
+export function repeatSpans(ring: Pt[]): Array<[number, number]> {
+  const out: Array<[number, number]> = []
+  for (let i = 0; i < ring.length; i++) for (let j = i + 1; j < ring.length; j++) if (samePt(ring[i], ring[j])) out.push([i, j])
+  return out
+}
+
+/** out-and-back filament (cul-de-sac / bridge street): span reads the same both ways */
+export function isPalindromeSpan(ring: Pt[], i: number, j: number): boolean {
+  for (let k = 0; i + k < j - k; k++) if (!samePt(ring[i + k], ring[j - k])) return false
+  return true
 }
 
 /**
- * A face walk crosses a bridge edge out to an island loop and back, repeating
- * vertices; polygon-clipping hangs on such non-simple rings. Excise each
- * excursion (the island is still its own face from the same walk).
+ * A face walk can cross a bridge edge out to a positive-area island loop and
+ * back; polygon-clipping hangs on that. Excise such loops (innermost first);
+ * the island is still its own face. Pure filaments (palindromic spans) stay:
+ * their zero-width spike keeps lots off that street after the block inset.
+ * Pinch vertices (loop whose outside neighbours differ) are left alone.
  */
 export function simplifyFace(ring: Pt[]): Pt[] {
   const out = [...ring]
   for (;;) {
-    // widest repeat first, so nested excursions go in one cut
-    let bi = -1
-    let bj = -1
-    for (let i = 0; i < out.length; i++) {
-      for (let j = out.length - 1; j > i && j - i > bj - bi; j--) {
-        if (Math.hypot(out[i].x - out[j].x, out[i].y - out[j].y) < 1e-6) { bi = i; bj = j; break }
-      }
+    const n = out.length
+    let best: [number, number] | null = null
+    for (const [i, j] of repeatSpans(out)) {
+      if (best && j - i >= best[1] - best[0]) continue
+      if (isPalindromeSpan(out, i, j) || !samePt(out[(i - 1 + n) % n], out[(j + 1) % n])) continue
+      // the island is the smaller lobe; never excise the face body
+      if (Math.abs(ringArea(out.slice(i, j))) >= Math.abs(ringArea([...out.slice(0, i + 1), ...out.slice(j + 1)]))) continue
+      best = [i, j]
     }
-    if (bi < 0) return out
-    out.splice(bi + 1, bj - bi)
+    if (!best) return out
+    out.splice(best[0] + 1, best[1] - best[0])
   }
 }
 
