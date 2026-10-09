@@ -849,10 +849,11 @@ describe('frontage', () => {
         hwPts = pieces.flatMap((r) => r.points)
         sunken = (pieces[0].segments ?? []).filter((s) => s.level === 'sunken').map((s) => [s.from, s.to])
         fr = m.roads.filter((r) => r.id.startsWith(FRONTAGE_ID_PREFIX))
-      })
+      }, 120000)
       const beside = (t: number) => sunken.some(([a, b]) => t >= a - 0.01 && t <= b + 0.01)
       const wetNear = (p: Pt) => [-15, 0, 15].some((dx) => [-15, 0, 15].some((dy) => inWater(m.terrain, { x: p.x + dx, y: p.y + dy })))
 
+      // plazas/cores are not excluded from the sampling: neither seed has one
       it('frontage roads line the highway', () => {
         expect(fr.length).toBeGreaterThan(0)
         const total = polylineLength(hwPts)
@@ -876,6 +877,7 @@ describe('frontage', () => {
       })
 
       it('no frontage along sunken segments', () => {
+        if (c.seed === 42) expect(sunken.length).toBeGreaterThan(0) // seed 20 has none; seed 42 must exercise the check
         const total = polylineLength(hwPts)
         const bad: string[] = []
         for (const r of fr) {

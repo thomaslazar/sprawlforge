@@ -91,7 +91,7 @@ export function renderCompounds(model: SectorModel, theme: Theme, out: string[])
     // ponytail: inner line is the fence inset 1.5 m (5.5 m from the block); skipped when the inset collapses
     const inner = insetOrLargest(c.fence, 1.5)
     for (const ring of inner ? [c.fence, inner] : [c.fence]) {
-      out.push(`<polyline data-fence="${c.id}" points="${pts(openRing(ring, c.gate[0], c.gate[1]))}" fill="none" stroke="${theme.compound.fence}" stroke-width="0.8"/>`)
+      out.push(`<polyline data-fence="${c.id}" points="${pts(openRing(ring, c.gate[0], c.gate[1]))}" fill="none" stroke="${theme.compound.fence}" stroke-width="1.2"/>`)
     }
   }
 }

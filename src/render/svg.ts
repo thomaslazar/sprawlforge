@@ -41,6 +41,7 @@ function clampShift(box: Box, S: number): { dx: number; dy: number } {
 const POI_RANK: Record<string, number> = {
   corp_hq: 0,
   matrix_hub: 1,
+  corp_campus: 1,
   corp_office: 2,
   clinic: 3,
   market: 4,

@@ -354,7 +354,7 @@ export function generateSector(params: SectorParams): SectorModel {
   const compoundNames = (n: number) => Array.from({ length: n }, () => generateName(nameRng.pick(pack.compoundPatterns), pack.tables, nameRng))
 
   const frontageRoads = roads.filter((r) => r.id.startsWith(FRONTAGE_ID_PREFIX))
-  const compoundPicks = selectCompounds(namedDistricts, rawBlocks, params, terrain, (b) => isStripBlock(b, highway, frontageRoads), roads, { arcologies, megablocks })
+  const compoundPicks = selectCompounds(namedDistricts, rawBlocks, params, terrain, (b) => isStripBlock(b, highway, frontageRoads), roads.filter((r) => r.class !== 'highway'), { arcologies, megablocks })
   const { buildings, blocks, megablockFootprints, compounds } = fillLots(namedDistricts, rawBlocks, params, terrain, [
     ...(highway ? noBuildStrips(highway, segments) : []),
     ...roads.filter((r) => r.class !== 'highway').flatMap((r) => corridorRects(r.points, r.width / 2 + SIDEWALK)),

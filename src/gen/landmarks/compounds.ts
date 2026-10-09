@@ -15,19 +15,19 @@ const bandP = (c: number): number => (c >= 0.7 ? 0.6 : c >= 0.3 ? 0.3 : 0.1)
 /** midpoint of the footprint edge nearest the widest road within 15 m of a footprint vertex, else nearest the district centroid */
 function gateToward(block: Block, district: District, roads: Road[]): Pt {
   const fp = block.footprint
-  let target = ringCentroid(district.poly)
+  const target = ringCentroid(district.poly)
   let widest = 0
-  let best: { r: Road; d: number } | null = null
+  let best: Road | null = null
   for (const r of roads) {
     if (r.width <= widest) continue
     let d = Infinity
     for (const p of fp) d = Math.min(d, distToPolyline(p, r.points))
-    if (d <= NEAR_ROAD_M) { widest = r.width; best = { r, d } }
+    if (d <= NEAR_ROAD_M) { widest = r.width; best = r }
   }
   const edges = fp.map((p, i) => ({ a: p, b: fp[(i + 1) % fp.length] }))
   const near = (e: { a: Pt; b: Pt }) => {
     if (!best) return Math.hypot((e.a.x + e.b.x) / 2 - target.x, (e.a.y + e.b.y) / 2 - target.y)
-    return distToPolyline({ x: (e.a.x + e.b.x) / 2, y: (e.a.y + e.b.y) / 2 }, best.r.points)
+    return distToPolyline({ x: (e.a.x + e.b.x) / 2, y: (e.a.y + e.b.y) / 2 }, best.points)
   }
   let pick = edges[0]
   let pd = near(pick)

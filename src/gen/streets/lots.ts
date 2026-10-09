@@ -539,7 +539,8 @@ export function fillLots(
     // frontage strip: the band between a frontage road and the highway, packed with narrow lots facing the highway
     if (isStripBlock(block, highway, frontage)) {
       const sub = (clipped: MultiPolygon) => (noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, near, convexNb, nearTie) : clipped)
-      const insetsS = insetRing(block.footprint, SIDEWALK) ? [insetRing(block.footprint, SIDEWALK)!] : insetByClipping(block.footprint, SIDEWALK)
+      const ins = insetRing(block.footprint, SIDEWALK)
+      const insetsS = ins ? [ins] : insetByClipping(block.footprint, SIDEWALK)
       for (const inset of insetsS) {
         const th = longestEdgeAngle(inset)
         const c = ringCentroid(inset)
@@ -597,9 +598,7 @@ export function fillLots(
       plaza: { cell: Math.max(profile.minCell * 1.6, 0.4 * short), gap: 12, fill: 0.6 },
       sheds: { cell: profile.minCell, gap: 10, fill: 0.65 },
       megablock: { cell, gap: 3, fill },
-      strip: { cell, gap: 3, fill }, // ponytail: never reached, strip blocks branch out earlier
-      compound: { cell, gap: 3, fill }, // ponytail: never reached, compound blocks branch out earlier
-    }[style]
+    }[style as Exclude<BlockStyle, 'strip' | 'compound'>]
     // courtyard: only the band between the inset and a deeper inset is buildable
     let inner: Pt[][] = []
     if (style === 'courtyard') {

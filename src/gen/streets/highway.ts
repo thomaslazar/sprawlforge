@@ -542,7 +542,15 @@ export function buildInterchanges(
 export const STRIP_HALF = HIGHWAY_WIDTH / 2 + 10
 
 export function noBuildStrips(highway: Road, segments: HighwaySegment[]): Pt[][] {
-  return segments.filter((s) => s.level !== 'sunken').map((s) => {
+  // consecutive non-sunken segments merge into one run, so per-segment caps leave no zero-width spikes in lots
+  const runs: Array<{ from: number; to: number }> = []
+  for (const s of segments) {
+    if (s.level === 'sunken') continue
+    const last = runs[runs.length - 1]
+    if (last && Math.abs(last.to - s.from) < 1e-9) last.to = s.to
+    else runs.push({ from: s.from, to: s.to })
+  }
+  return runs.map((s) => {
     const line = slicePolyline(highway.points, s.from, s.to)
     const off = (sign: number) => line.map((p, i) => {
       const a = line[Math.max(0, i - 1)]

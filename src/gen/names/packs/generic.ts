@@ -24,7 +24,7 @@ export const generic: FlavorPack = {
     stack: ['{corpA} Stack', 'The {corpB} Terraces', '{corpA}-{corpB} Terraces'],
   },
   megablockPatterns: ['{place} Block', 'The {adj} Hive', '{place} Stacks', '{adj} Warren'],
-  compoundPatterns: ['{corpA} Campus', '{corpA} Research Park', '{corpA}-{corpB} Compound', 'The {corpB} Enclave'],
+  compoundPatterns: ['{corpA} Campus', '{corpA} Research Park', '{corpA}-{corpB} Compound', 'The {corpA} Enclave'],
   poiTypes: [
     { type: 'corp_hq', label: 'Corporate HQ', zones: ['corp'], namePatterns: ['{corpA} {corpB} HQ'] },
     { type: 'corp_office', label: 'Corporate office', zones: ['corp', 'entertainment'], namePatterns: ['{corpA} {corpB}'] },
@@ -36,6 +36,6 @@ export const generic: FlavorPack = {
     { type: 'bar', label: 'Bar', zones: ['slum', 'entertainment', 'docks', 'industrial', 'residential', 'corp'], namePatterns: ['The {street}', '{venue} Bar'] },
     { type: 'arcology', label: 'Arcology', zones: ['corp'], namePatterns: ['{corpA} Arcology', '{corpA}-{corpB} Spire', '{corpA} Hive', 'The {corpB} Ziggurat'] },
     { type: 'megablock', label: 'Megablock', zones: ['slum'], namePatterns: ['{place} Block', 'The {adj} Hive', '{place} Stacks', '{adj} Warren'] },
-    { type: 'corp_campus', label: 'Corporate campus', zones: ['corp'], namePatterns: ['{corpA} Campus', '{corpA} Research Park', '{corpA}-{corpB} Compound', 'The {corpB} Enclave'] },
+    { type: 'corp_campus', label: 'Corporate campus', zones: ['corp'], namePatterns: ['{corpA} Campus', '{corpA} Research Park', '{corpA}-{corpB} Compound', 'The {corpA} Enclave'] },
   ],
 }

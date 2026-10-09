@@ -368,7 +368,6 @@ describe('strip blocks', () => {
         expect(Math.max(...u) - Math.min(...u)).toBeLessThanOrEqual(26)
       }
     }
-    console.log('STRIP', near.length, near.reduce((t, b) => t + m.buildings.filter((x) => x.blockId === b.id).length, 0))
   })
 })
 
