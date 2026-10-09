@@ -38,6 +38,7 @@ describe('flavor packs', () => {
         ...pack.streetPatterns,
         ...pack.arcologyPatterns,
         ...pack.megablockPatterns,
+        ...pack.compoundPatterns,
         ...pack.poiTypes.flatMap((p) => p.namePatterns),
       ]
       for (const pattern of allPatterns) {
@@ -50,6 +51,8 @@ describe('flavor packs', () => {
       const types = pack.poiTypes.map((p) => p.type)
       expect(types).toContain('arcology')
       expect(types).toContain('megablock')
+      expect(types).toContain('corp_campus')
+      expect(pack.compoundPatterns.length).toBeGreaterThanOrEqual(3)
     })
     it(`${pack.id}: every zone type has at least one poi type`, () => {
       const zones = new Set(pack.poiTypes.flatMap((p) => p.zones))

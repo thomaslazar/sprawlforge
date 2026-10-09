@@ -2,7 +2,7 @@ import { pointInRings, ringCentroid } from '../geometry'
 import type { FlavorPack } from '../names/names'
 import { generateName } from '../names/names'
 import { hashSeed, mulberry32 } from '../rng'
-import type { Arcology, Building, District, Megablock, Poi, SectorParams } from '../types'
+import type { Arcology, Building, Compound, District, Megablock, Poi, SectorParams } from '../types'
 
 export function placePois(
   districts: District[],
@@ -10,6 +10,7 @@ export function placePois(
   pack: FlavorPack,
   params: SectorParams,
   landmarks: { arcologies: Arcology[]; megablocks: Megablock[] } = { arcologies: [], megablocks: [] },
+  compounds: Compound[] = [],
 ): Poi[] {
   const rng = mulberry32(hashSeed(params.seed, 'pois'))
   const pois: Poi[] = []
@@ -24,6 +25,11 @@ export function placePois(
     }
   }
 
+  for (const c of compounds) {
+    const d = districts.find((x) => x.id === c.districtId)
+    pois.push({ id: id(), buildingId: '', districtId: d?.id ?? c.districtId, type: 'corp_campus', name: c.name, at: c.center })
+  }
+
   // poiDensity <= 0 disables the lottery — the per-district count formula
   // floors at 1, so it can't express "none" on its own; defensive guard, not
   // currently reachable via any tag (poi visibility is a display-only toggle)
@@ -34,7 +40,7 @@ export function placePois(
     const candidates = buildings.filter((b) => b.districtId === district.id
       && !plazas.some((p) => pointInRings(ringCentroid(b.footprint), [p]))
       && !landmarks.megablocks.some((m) => m.footprint.length > 0 && pointInRings(ringCentroid(b.footprint), [m.footprint])))
-    const types = pack.poiTypes.filter((t) => t.zones.includes(district.zone) && t.type !== 'arcology' && t.type !== 'megablock')
+    const types = pack.poiTypes.filter((t) => t.zones.includes(district.zone) && t.type !== 'arcology' && t.type !== 'megablock' && t.type !== 'corp_campus')
     if (types.length === 0 || candidates.length === 0) continue
     const count = Math.min(
       candidates.length,

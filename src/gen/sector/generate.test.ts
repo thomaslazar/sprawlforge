@@ -913,6 +913,17 @@ describe('frontage', () => {
   }
 })
 
+describe('compound names', () => {
+  it('are drawn after the landmark names, which stay as before', { timeout: 300000 }, () => {
+    const m = generateSector({ ...base, corpDominance: 0.85, arcology: true, megablock: true })
+    expect(m.arcologies.map((a) => a.name)).toEqual(['Kessler Twin Towers'])
+    expect(m.megablocks.map((a) => a.name)).toEqual(['Gardens Block'])
+    expect(m.compounds.length).toBeGreaterThan(0)
+    for (const c of m.compounds) expect(c.name.length).toBeGreaterThan(0)
+    expect(m.pois.filter((p) => p.type === 'corp_campus').map((p) => p.name)).toEqual(m.compounds.map((c) => c.name))
+  })
+})
+
 describe('compounds', () => {
   const corp = [0.85, 0.5, 0.15]
   const runs = [42, 7, 11].flatMap((seed) => corp.map((c) => [seed, c] as const))

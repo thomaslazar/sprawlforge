@@ -97,6 +97,14 @@ describe('placePois', () => {
       expect(pois.filter((p) => p.type === 'arcology' || p.type === 'megablock')).toHaveLength(2)
       expect(new Set(pois.map((p) => p.id)).size).toBe(pois.length)
     })
+    it('one corp_campus POI per compound with its name', () => {
+      const compounds = [{ id: 'CMP1', name: 'Kessler Campus', blockId: 'B0101', districtId: 'D01', center: { x: 250, y: 300 }, fence: sq(250, 300, 50), gate: [{ x: 200, y: 290 }, { x: 200, y: 302 }] as [Pt, Pt] }]
+      const pois = placePois(districts, buildings, pack, base, landmarks, compounds)
+      expect(pois[2]).toEqual({ id: 'P03', type: 'corp_campus', name: 'Kessler Campus', buildingId: '', districtId: 'D01', at: { x: 250, y: 300 } })
+      expect(pois.filter((p) => p.type === 'corp_campus')).toHaveLength(1)
+      expect(placePois(districts, buildings, pack, base, landmarks).filter((p) => p.type === 'corp_campus')).toHaveLength(0)
+      expect(pois.slice(3).map(({ id: _i, ...r }) => r)).toEqual(placePois(districts, buildings, pack, base, landmarks).slice(2).map(({ id: _i, ...r }) => r))
+    })
     it('landmark POIs survive poiDensity 0', () => {
       expect(placePois(districts, buildings, pack, { ...base, poiDensity: 0 }, landmarks)).toHaveLength(2)
     })

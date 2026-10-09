@@ -17,6 +17,7 @@ export interface FlavorPack {
   arcologyPatterns: string[]
   arcologyPatternsByDesign: Partial<Record<ArcologyDesign, string[]>>
   megablockPatterns: string[]
+  compoundPatterns: string[]
   poiTypes: PoiTypeDef[]
 }
 

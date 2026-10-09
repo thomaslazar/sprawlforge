@@ -422,7 +422,7 @@ const COMPOUND_GATE = 12
 const COMPOUND_MIN_WIDTH = 14
 const ringPerimeter = (r: Pt[]): number => r.reduce((t, p, i) => t + Math.hypot(r[(i + 1) % r.length].x - p.x, r[(i + 1) % r.length].y - p.y), 0)
 const largestPiece = (pieces: Pt[][]): Pt[] | null => pieces.sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)))[0] ?? null
-const insetOrLargest = (ring: Pt[], d: number): Pt[] | null => insetRing(ring, d) ?? largestPiece(insetByClipping(ring, d))
+export const insetOrLargest = (ring: Pt[], d: number): Pt[] | null => insetRing(ring, d) ?? largestPiece(insetByClipping(ring, d))
 
 /** a walled compound: fence 4 m in from the block, a 12 m gate gap toward the road, 2-4 buildings in the fence inset by 10 m (null: too small, block falls back to normal lots) */
 function compoundLots(footprint: Pt[], gateToward: Pt, rng: ReturnType<typeof mulberry32>, subtract: (clipped: MultiPolygon) => MultiPolygon): { fence: Pt[]; gate: [Pt, Pt]; cells: Pt[][] } | null {

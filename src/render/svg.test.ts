@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { generateSector } from '../gen/sector/generate'
 import type { Pt, Rect } from '../gen/geometry'
 import { GENERATOR_VERSION, type SectorModel, type SectorParams } from '../gen/types'
+import { insetOrLargest } from '../gen/streets/lots'
 import { designShape } from '../gen/landmarks/designs'
 import { renderSector } from './svg'
 import { getTheme, themes } from './theme'
@@ -375,7 +376,7 @@ describe('landmarks', () => {
         expect(a).toContain(k.name.replace(/&/g, '&amp;'))
       }
       expect(a.match(/<polygon[^>]*data-arcology/g)!.length).toBe(corp.arcologies.length)
-      expect(a.indexOf('data-arcology')).toBeLessThan(a.indexOf('<polyline'))
+      expect(a.indexOf('data-arcology')).toBeLessThan(a.search(/<polyline(?! data-fence)/))
       const m = renderSector(fringe, getTheme('neon'), { interactive })
       for (const k of fringe.megablocks) expect(m).toContain(`data-megablock="${k.id}"`)
       expect(m).toMatch(/<polygon data-megablock="MEG\d+"[^>]*stroke-width="2"/)
@@ -406,6 +407,27 @@ describe('landmarks', () => {
       expect(svg).toContain(`<path data-frontage data-count="${count}"`)
       if (interactive) expect(svg.match(/<path data-buildings[^>]*>/g)!.join('').split('M').length - 1).toBe(m.buildings.length - count)
       else expect(svg.match(/<polygon data-id="BLD/g)!.length).toBe(m.buildings.length - count)
+    }
+  })
+})
+
+describe('compounds', () => {
+  it('renders compound ground and double fence with a gate gap', { timeout: 300000 }, () => {
+    const m = generateSector({ ...base, landform: 'inland', corpDominance: 0.85 })
+    expect(m.compounds.length).toBeGreaterThan(0)
+    const svg = renderSector(m, getTheme('neon'))
+    expect(svg.match(/<polygon data-compound="CMP\d+"/g)).toHaveLength(m.compounds.length)
+    const lines = [...svg.matchAll(/<polyline data-fence="(CMP\d+)" points="([^"]+)"/g)]
+    expect(lines).toHaveLength(2 * m.compounds.length)
+    const len = (s: string) => { const p = s.split(' ').map((q) => q.split(',').map(Number)); return p.slice(1).reduce((a, q, i) => a + Math.hypot(q[0] - p[i][0], q[1] - p[i][1]), 0) }
+    const per = (r: Pt[]) => r.reduce((a, p, i) => a + Math.hypot(r[(i + 1) % r.length].x - p.x, r[(i + 1) % r.length].y - p.y), 0)
+    for (const c of m.compounds) {
+      const mine = lines.filter((l) => l[1] === c.id).map((l) => len(l[2]))
+      expect(mine).toHaveLength(2)
+      const inner = insetOrLargest(c.fence, 1.5)
+      expect(inner).not.toBeNull()
+      expect(mine[0] + mine[1]).toBeGreaterThan(per(c.fence) + per(inner!) - 24 - 2)
+      expect(mine[0] + mine[1]).toBeLessThan(per(c.fence) + per(inner!) - 24 + 2)
     }
   })
 })

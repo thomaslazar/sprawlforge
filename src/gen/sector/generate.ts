@@ -350,15 +350,20 @@ export function generateSector(params: SectorParams): SectorModel {
   const namedArcologies = arcologies.map((a) => ({ ...a, name: generateName(nameRng.pick(pack.arcologyPatternsByDesign[a.design] ?? pack.arcologyPatterns), pack.tables, nameRng) }))
   const namedMegablocks = megablocks.map((m) => ({ ...m, name: generateName(nameRng.pick(pack.megablockPatterns), pack.tables, nameRng) }))
 
+  // compound names come after the landmark names, still the last draws
+  const compoundNames = (n: number) => Array.from({ length: n }, () => generateName(nameRng.pick(pack.compoundPatterns), pack.tables, nameRng))
+
   const frontageRoads = roads.filter((r) => r.id.startsWith(FRONTAGE_ID_PREFIX))
   const compoundPicks = selectCompounds(namedDistricts, rawBlocks, params, terrain, (b) => isStripBlock(b, highway, frontageRoads), roads, { arcologies, megablocks })
   const { buildings, blocks, megablockFootprints, compounds } = fillLots(namedDistricts, rawBlocks, params, terrain, [
     ...(highway ? noBuildStrips(highway, segments) : []),
     ...roads.filter((r) => r.class !== 'highway').flatMap((r) => corridorRects(r.points, r.width / 2 + SIDEWALK)),
   ], undefined, { arcologies, megablocks }, highway, frontageRoads, compoundPicks)
+  const names = compoundNames(compounds.length)
+  const compoundsOut = compounds.map((c, i) => ({ ...c, name: names[i] }))
   const megablocksOut = namedMegablocks.map((m) => ({ ...m, footprint: megablockFootprints.get(m.id) ?? [] }))
   const finalDistricts = deriveDistricts(namedDistricts, blocks)
-  const pois = placePois(finalDistricts, buildings, pack, params, { arcologies: namedArcologies, megablocks: megablocksOut })
+  const pois = placePois(finalDistricts, buildings, pack, params, { arcologies: namedArcologies, megablocks: megablocksOut }, compoundsOut)
   const piers = placePiers(finalDistricts, terrain, params)
 
   return {
@@ -378,6 +383,6 @@ export function generateSector(params: SectorParams): SectorModel {
     piers,
     arcologies: namedArcologies,
     megablocks: megablocksOut,
-    compounds,
+    compounds: compoundsOut,
   }
 }

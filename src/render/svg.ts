@@ -1,7 +1,7 @@
 import type { SectorModel } from '../gen/types'
 import type { Theme } from './theme'
 import { renderHighway, renderJunctionMarkers } from './highway'
-import { hiveBuildingIds, stripBuildingIds, renderLandmarks } from './landmarks'
+import { renderCompounds, hiveBuildingIds, stripBuildingIds, renderLandmarks } from './landmarks'
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -176,6 +176,8 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     out.push(`<polygon data-id="${d.id}" points="${pts}" fill="${theme.districtFill[d.zone]}"/>`)
   }
   out.push('</g>')
+
+  renderCompounds(model, theme, out)
 
   const hive = hiveBuildingIds(model)
   const strip = stripBuildingIds(model)
