@@ -5,7 +5,7 @@ import type { Block, District, SectorParams, Terrain } from '../types'
 import { generateSector } from '../sector/generate'
 import { FRONTAGE_OFF, STRIP_HALF } from './highway'
 import { distToPolyline } from '../terrain/rivers'
-import { SIDEWALK, corridorRects, fillLots as fillLotsFull, insetByClipping, insetRing } from './lots'
+import { SIDEWALK, corridorRects, fillLots as fillLotsFull, insetByClipping, insetRing, isStripBlock } from './lots'
 
 // pre-style tests assumed BSP rows everywhere, so the shared helper forces 'rows'
 const fillLots = (...a: Parameters<typeof fillLotsFull>) => fillLotsFull(a[0], a[1], a[2], a[3], a[4], 'rows').buildings
@@ -368,5 +368,38 @@ describe('strip blocks', () => {
       }
     }
     console.log('STRIP', near.length, near.reduce((t, b) => t + m.buildings.filter((x) => x.blockId === b.id).length, 0))
+  })
+})
+
+describe('compounds', () => {
+  const m = generateSector({ ...base, seed: 42, size: 4, corpDominance: 0.85, landform: 'inland' })
+  it('a compound has a fence, a gate and 2-4 buildings', { timeout: 120000 }, () => {
+    expect(m.compounds.length).toBeGreaterThanOrEqual(1)
+    for (const c of m.compounds) {
+      const block = m.blocks.find((b) => b.id === c.blockId)!
+      expect(block.style).toBe('compound')
+      expect(block.flags.compound).toBe(c.id)
+      expect(block.alleys.length).toBe(0)
+      for (const p of c.fence) expect(insideOrOnEdge(p, block.footprint, 0.5)).toBe(true)
+      const len = Math.hypot(c.gate[1].x - c.gate[0].x, c.gate[1].y - c.gate[0].y)
+      expect(Math.abs(len - 12)).toBeLessThanOrEqual(1)
+      for (const g of c.gate) expect(Math.min(...c.fence.map((p, i) => distToSegment(g, p, c.fence[(i + 1) % c.fence.length])))).toBeLessThan(1)
+      const blds = m.buildings.filter((b) => b.blockId === c.blockId)
+      expect(blds.length).toBeGreaterThanOrEqual(2)
+      expect(blds.length).toBeLessThanOrEqual(4)
+      for (const b of blds) for (const p of b.footprint) {
+        expect(insideOrOnEdge(p, c.fence, 0.5)).toBe(true)
+        expect(distToSegment(p, c.gate[0], c.gate[1])).toBeGreaterThan(2)
+      }
+    }
+  })
+  it('compounds never sit on strip or landmark blocks', () => {
+    const hw = m.roads.find((r) => r.class === 'highway')
+    const fr = m.roads.filter((r) => r.id.startsWith('F'))
+    for (const c of m.compounds) {
+      const b = m.blocks.find((x) => x.id === c.blockId)!
+      expect(b.flags.arcology ?? b.flags.megablock).toBeUndefined()
+      expect(isStripBlock(b, hw, fr)).toBe(false)
+    }
   })
 })

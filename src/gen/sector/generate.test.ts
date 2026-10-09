@@ -912,3 +912,21 @@ describe('frontage', () => {
     })
   }
 })
+
+describe('compounds', () => {
+  const corp = [0.85, 0.5, 0.15]
+  const runs = [42, 7, 11].flatMap((seed) => corp.map((c) => [seed, c] as const))
+  it('compound counts follow the power band', { timeout: 900000 }, () => {
+    for (const [seed, corpDominance] of runs) {
+      const m = generateSector({ ...base, seed, corpDominance })
+      const corpDistricts = m.districts.filter((d) => d.zone === 'corp' && !d.flags.arcology).length
+      expect(m.compounds.length, `seed ${seed} corp ${corpDominance}`).toBeLessThanOrEqual(2 * corpDistricts)
+      if (seed === 42 && corpDominance === 0.85) expect(m.compounds.length).toBeGreaterThanOrEqual(1)
+      console.log('COMPOUNDS', seed, corpDominance, m.compounds.length, corpDistricts)
+    }
+  })
+  it('same seed gives the same compounds', { timeout: 300000 }, () => {
+    const p = { ...base, corpDominance: 0.85 }
+    expect(generateSector(p).compounds).toEqual(generateSector(p).compounds)
+  })
+})
