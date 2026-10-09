@@ -413,6 +413,7 @@ export function fillLots(
   forceStyle?: BlockStyle,
   landmarks?: Landmarks,
   highway?: Road,
+  frontage: Road[] = [],
 ): { buildings: Building[]; blocks: Block[]; megablockFootprints: Map<string, Pt[]> } {
   const rng = mulberry32(hashSeed(params.seed, 'buildings'))
   // own stream: notches must not reshuffle the lots the main stream lays out
@@ -469,10 +470,10 @@ export function fillLots(
     }
     // frontage strip: the band between a frontage road and the highway, packed with narrow lots facing the highway
     const hwDist = highway ? distToPolyline(cc, highway.points) : Infinity
-    if (highway && hwDist <= FRONTAGE_OFF + 1 && hwDist > STRIP_HALF && !block.flags.arcology && !block.flags.megablock) {
+    // a kept frontage road beside it: blocks beside a sunken stretch (no frontage, no no-build strip) keep their normal style
+    if (highway && hwDist <= FRONTAGE_OFF + 1 && hwDist > STRIP_HALF && frontage.some((f) => distToPolyline(cc, f.points) <= FRONTAGE_OFF + 10) && !block.flags.arcology && !block.flags.megablock) {
       const sub = (clipped: MultiPolygon) => (noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, near, convexNb, nearTie) : clipped)
       const insetsS = insetRing(block.footprint, SIDEWALK) ? [insetRing(block.footprint, SIDEWALK)!] : insetByClipping(block.footprint, SIDEWALK)
-      const before = buildings.length
       for (const inset of insetsS) {
         const th = longestEdgeAngle(inset)
         const c = ringCentroid(inset)
@@ -490,11 +491,8 @@ export function fillLots(
           }
         }
       }
-      // a sliver hugging the highway corridor has no buildable ground: it stays an ordinary (empty) block
-      if (buildings.length > before) {
-        outBlocks.push({ ...block, style: 'strip', alleys: [] })
-        continue
-      }
+      outBlocks.push({ ...block, style: 'strip', alleys: [] })
+      continue
     }
     const home = landmarks?.arcologies.find((a) => a.access !== 'ring' && pointInRings(a.center, [block.footprint]))
     // a 'plaza'-style block keeps only its 1-2 biggest cells, which here would sit in the arcology plaza: build rows around it instead

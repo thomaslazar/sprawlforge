@@ -9,7 +9,7 @@ import {
 import {
   buildPlanarGraph, clipFacesToLand, facesOf, dropSlivers, pruneDanglers, windowRing,
 } from '../streets/graph'
-import { RoadIndex, endKey, pruneDangling } from '../streets/trace'
+import { FRONTAGE_ID_PREFIX, RoadIndex, endKey, pruneDangling } from '../streets/trace'
 import { distToPolyline } from '../terrain/rivers'
 import { SIDEWALK, clipSegmentToRing, corridorRects, fillLots, insetRing, longestEdgeAngle } from '../streets/lots'
 import { sampleTerrain } from '../terrain'
@@ -361,7 +361,7 @@ export function generateSector(params: SectorParams): SectorModel {
   const { buildings, blocks, megablockFootprints } = fillLots(namedDistricts, rawBlocks, params, terrain, [
     ...(highway ? noBuildStrips(highway, segments) : []),
     ...roads.filter((r) => r.class !== 'highway').flatMap((r) => corridorRects(r.points, r.width / 2 + SIDEWALK)),
-  ], undefined, { arcologies, megablocks }, highway)
+  ], undefined, { arcologies, megablocks }, highway, roads.filter((r) => r.id.startsWith(FRONTAGE_ID_PREFIX)))
   const megablocksOut = namedMegablocks.map((m) => ({ ...m, footprint: megablockFootprints.get(m.id) ?? [] }))
   const finalDistricts = deriveDistricts(namedDistricts, blocks)
   const pois = placePois(finalDistricts, buildings, pack, params, { arcologies: namedArcologies, megablocks: megablocksOut })

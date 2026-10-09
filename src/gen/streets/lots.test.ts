@@ -340,15 +340,22 @@ describe('strip blocks', () => {
   it('strip blocks are packed with narrow lots facing the highway', { timeout: 120000 }, () => {
     const hws = m.roads.filter((r) => r.class === 'highway')
     const dHw = (p: Pt) => Math.min(...hws.map((r) => distToPolyline(p, r.points)))
-    const near = m.blocks.filter((b) => {
+    const fr = m.roads.filter((r) => r.id.startsWith('F'))
+    const nearHw = m.blocks.filter((b) => {
       const d = dHw(ringCentroid(b.footprint))
-      // a sliver inside the highway corridor has no buildable ground, stays an ordinary empty block
-      return d <= FRONTAGE_OFF + 1 && d > STRIP_HALF && !b.flags.arcology && !b.flags.megablock && m.buildings.some((x) => x.blockId === b.id)
+      return d <= FRONTAGE_OFF + 1 && d > STRIP_HALF && !b.flags.arcology && !b.flags.megablock
     })
+    const hasFr = (b: Block) => fr.some((f) => distToPolyline(ringCentroid(b.footprint), f.points) <= FRONTAGE_OFF + 10)
+    const near = nearHw.filter(hasFr)
     expect(near.length).toBeGreaterThan(0)
+    // beside a sunken stretch there is no frontage road: those blocks keep their normal style
+    const sunken = nearHw.filter((b) => !hasFr(b))
+    expect(sunken.length).toBeGreaterThan(0)
+    for (const b of sunken) expect(b.style).not.toBe('strip')
     for (const b of near) {
       expect(b.style).toBe('strip')
       expect(b.alleys).toEqual([])
+      if (Math.abs(ringArea(b.footprint)) < 500) continue // a degenerate sliver has no ground for lots
       const lots = m.buildings.filter((x) => x.blockId === b.id)
       expect(lots.length).toBeGreaterThanOrEqual(3)
       // extent along the highway direction (the block's long axis, which the lots are cut along)
