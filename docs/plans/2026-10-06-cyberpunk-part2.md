@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Metric only. Determinism via `mulberry32(hashSeed(seed, '<stage>'))`: new stages `'frontage'` (strip lots) and `'compounds'` (selection + geometry); compound names on the `'names'` stream after the landmark names.
-- `FRONTAGE_OFF = STRIP_HALF + 22` m (export `STRIP_HALF` from `streets/highway.ts`; `HIGHWAY_WIDTH = 32`, so `STRIP_HALF = 26`, `FRONTAGE_OFF = 48`). Frontage road: class `street`, width 9, ids `F<n>L` / `F<n>R`.
+- `FRONTAGE_OFF = STRIP_HALF + 26` m (export `STRIP_HALF` from `streets/highway.ts`; `HIGHWAY_WIDTH = 32`, so `STRIP_HALF = 26`, `FRONTAGE_OFF = 52`). Frontage road: class `street`, width 9, ids `F<n>L` / `F<n>R`.
 - Strip lots: BSP `minCell 10, gap 1, jitter 0.3`, cells > 25 m along the road split at 25 m, pieces ≥ 40 m², no alleys. Compound: fence inset 4 m, second fence line 5.5 m, gate 12 m, inner area inset 10 m, BSP `minCell 40, gap 10, jitter 0.2`, 2–4 buildings ≥ 400 m². Selection: corp ≥ 0.7 → 0.6, 0.3–0.7 → 0.3, < 0.3 → 0.1; block land area ≥ 15 000 m²; second draw when district area > 400 000 m².
 - `GENERATOR_VERSION = 7`.
 - Perf within +10 % of main on seed 42 coastal+river 4 km (median of 3, same machine).

@@ -6,7 +6,7 @@ import { sampleTerrain } from '../terrain'
 import { distToPolyline } from '../terrain/rivers'
 import type { District, HighwaySegment, Road, SectorParams, Terrain, ZoneType } from '../types'
 import {
-  FRONTAGE_ID_PREFIX, HIGHWAY_WIDTH, STRIP_HALF, assignHighwayLevels, buildInterchanges, cutStreetsAtGround, highwayCrossings, levelAt, noBuildStrips, traceHighway, frontageRoads, trimFrontage,
+  FRONTAGE_ID_PREFIX, HIGHWAY_WIDTH, FRONTAGE_OFF, assignHighwayLevels, buildInterchanges, cutStreetsAtGround, highwayCrossings, levelAt, noBuildStrips, traceHighway, frontageRoads, trimFrontage,
 } from './highway'
 import { MAJOR } from './trace'
 
@@ -354,7 +354,7 @@ describe('highway levels', () => {
 })
 
 describe('frontage roads', () => {
-  const OFF = STRIP_HALF + 22
+  const OFF = FRONTAGE_OFF
   it('offsets both sides and skips water', () => {
     const fr = frontageRoads(hw, dry, 4000, [])
     expect(fr.map((r) => r.id).sort()).toEqual([FRONTAGE_ID_PREFIX + '1L', FRONTAGE_ID_PREFIX + '1R'])

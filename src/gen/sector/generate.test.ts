@@ -545,8 +545,9 @@ describe('block size', () => {
       const big = m.blocks.filter((b) => {
         const c = ringCentroid(b.footprint)
         // blocks beside a megablock, and an arcology's own block, stay big on purpose
+        // a strip block is a long band between frontage road and highway (about 40 m wide): its area says nothing about street spacing
         const nearCore = m.megablocks.some((k) => k.core.some((p) => pointInRings(p, [b.footprint])) || pointInRings(k.center, [b.footprint]))
-        return Math.abs(ringArea(b.footprint)) > 60000 && Math.min(c.x, c.y, s - c.x, s - c.y) >= 150 && !wet(c) && !nearCore && !m.arcologies.some((a) => pointInRings(a.center, [b.footprint]))
+        return Math.abs(ringArea(b.footprint)) > 60000 && Math.min(c.x, c.y, s - c.x, s - c.y) >= 150 && !wet(c) && !nearCore && b.style !== 'strip' && !m.arcologies.some((a) => pointInRings(a.center, [b.footprint]))
       })
       expect(big.map((b) => `${b.id} ${Math.round(Math.abs(ringArea(b.footprint)))}`), `seed ${params.seed}`).toEqual([])
     }
