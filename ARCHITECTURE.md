@@ -25,6 +25,7 @@ each other.
 | 2 | Road field | `streets/field.ts` `buildRoadField` | Orientation patches + basis fields → `sample(p) → {major, minor}` |
 | 3 | Highway | `streets/highway.ts` `traceHighway` | One highway polyline (or none if every edge is sea) |
 | 3b | Landmarks | `landmarks/place.ts` `placeLandmarks` | Arcologies (7 designs; ring / half ring / boulevard / embedded), megablock cores; obstacles for the tracer |
+| 3c | Frontage roads | `streets/highway.ts` `frontageRoads` | Service streets 52 m either side of elevated/ground highway stretches; strip lots between street and highway |
 | 4 | Arterials | `sector/streets.ts` `traceRoads` → `streets/trace.ts` `traceLayer` | Major streamlines ~400 m apart, seeded along the highway and across the river |
 | 5 | Streets pass 1 | same | Minor streamlines ~100 m apart |
 | 6 | Streets pass 2 | same | Second minor pass fills gaps |
@@ -36,7 +37,7 @@ each other.
 | 12 | Full graph + blocks | `sector/generate.ts` `facesFor`/`toBlocks` | Faces of highway + arterials + streets, each block tagged with `districtId` |
 | 13 | Wet spans | `sector/bridges.ts` `markWetSpans` | Road spans over water flagged as bridges |
 | 14 | Names | `sector/generate.ts`, `names/` | District and road names |
-| 15 | Lots | `streets/lots.ts` `fillLots` | Rotated lot grid per block, clipped to block ∩ land, minus highway no-build strips |
+| 15 | Lots | `streets/lots.ts` `fillLots` | Rotated lot grid per block, clipped to block ∩ land, minus highway no-build strips; corp-district blocks become walled compounds (`landmarks/compounds.ts` `selectCompounds`, one gate, fence + inner court lots) |
 | 16 | Labels, POIs, piers | `sector/generate.ts` `deriveDistricts`, `sector/pois.ts`, `sector/piers.ts` | Label anchors, zone-filtered POIs, dock piers |
 | 17 | Render | `src/render/svg.ts` + `theme.ts` | One SVG string; themes are pure palettes |
 

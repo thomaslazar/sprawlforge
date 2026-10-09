@@ -1,6 +1,6 @@
 # Cyberpunk Layer, Part 2: Highway Frontage and Corporate Compounds — Design
 
-Status: spec for review
+Status: implemented
 Branch: `spec/cyberpunk-part2` (off `main` 7e75bf7)
 Depends on: `docs/specs/2026-10-02-cyberpunk-layer-design.md` (part 1,
 merged as PR #7). Perf round follows this part.

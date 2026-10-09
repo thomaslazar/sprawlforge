@@ -26,8 +26,9 @@
    - a dangling half-ring end if its end spoke dies later (K roads are never pruned)
    - boulevard may still meet the plaza when neither side is tangential
    - design/detail/access tests cover a handful of seeds
-2d. **Cyberpunk layer, part 2** — *next, wanted:* highway frontage strips
-   and walled corporate compounds.
+2d. **Cyberpunk layer, part 2** — *done:* highway frontage strips and walled
+   corporate compounds (generator version 7). **Next: a perf round.**
+   Later idea: markets and stalls under the highway deck.
 3. **Metroplex generator** — parent of sectors, proves linkage chain.
    Candidate metroplex-scale landform: **city on an island** — a whole
    metro occupying an island, distinct from the sector-scale `islands`
