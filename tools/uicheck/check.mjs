@@ -391,6 +391,14 @@ await page.goto(`${BASE}/?seed=42&tags=coastal,river,sprawl,small`)
 await page.waitForSelector('svg')
 await page.screenshot({ path: `${OUT}/streets-sprawl-river.png` })
 
+// arterials: planned grids carry crossroads, the coast scene keeps a bridge (spec 2026-10-12 §7)
+await page.goto(`${BASE}/?seed=42&tags=inland,planned,corp-run`)
+await page.waitForSelector('svg'); await page.screenshot({ path: `${OUT}/arterials-grid.png` })
+if ((await countAttr(page, 'svg [data-junctions]')) < 20) fail('arterials-grid: too few crossroads')
+await page.goto(`${BASE}/?seed=42&tags=coastal,river,arcology`)
+await page.waitForSelector('svg'); await page.screenshot({ path: `${OUT}/arterials-coast.png` })
+if ((await page.locator('svg [data-bridge]').count()) < 1) fail('arterials-coast: no bridge rendered')
+
 // bare URL (no tags) still auto-resolves a landform via resolveTerrain, but
 // the chips/URL must materialize that roll instead of showing nothing staged
 await page.goto(`${BASE}/?seed=42`)

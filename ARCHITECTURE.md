@@ -52,6 +52,8 @@ enforcing separation; layers differ only in `TraceOpts` (`MAJOR`,
 `MINOR`). `streets/graph.ts` — polylines become a **planar graph**; its
 faces are the districts (major graph) and blocks (full graph). Road width
 follows road class (highway 32 m, arterial 18, street 9, ramp 8).
+`streets/smooth.ts` fillets sharp bends of traced roads; `streets/join.ts` curves a
+tracer's dead end into the arterial ahead instead of pruning it.
 
 Each arcology adds a `radialBasis` field (spokes and rings
 around its centre), and landmark footprints are `TraceOpts.obstacles`

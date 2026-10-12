@@ -1,6 +1,6 @@
 import type { Pt, Rect } from './geometry'
 
-export const GENERATOR_VERSION = 8
+export const GENERATOR_VERSION = 9
 
 export const ZONE_TYPES = [
   'corp', 'residential', 'slum', 'industrial', 'entertainment', 'docks',
