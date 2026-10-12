@@ -58,13 +58,13 @@ describe('generateSector', () => {
     const buildingIds = new Set(m.buildings.map((b) => b.id))
     for (const b of m.blocks) {
       expect(districtIds.has(b.districtId)).toBe(true)
-      // block's embedded district ordinal must match its actual district
-      expect(b.id.slice(1, 3)).toBe(b.districtId.slice(1))
+      // block's embedded district ordinal (any digit count) must match its actual district
+      expect(b.id.startsWith(`B${b.districtId.slice(1)}`)).toBe(true)
     }
     for (const b of m.buildings) {
       expect(blockIds.has(b.blockId)).toBe(true)
       // building's blockId ordinal must match its own districtId
-      expect(b.blockId.slice(1, 3)).toBe(b.districtId.slice(1))
+      expect(b.blockId.startsWith(`B${b.districtId.slice(1)}`)).toBe(true)
     }
     for (const p of m.pois.filter((q) => q.buildingId)) expect(buildingIds.has(p.buildingId)).toBe(true)
   })
@@ -984,8 +984,8 @@ describe('frontage', () => {
 describe('compound names', () => {
   it('are drawn after the landmark names, which stay as before', { timeout: 300000 }, () => {
     const m = generateSector({ ...base, corpDominance: 0.85, arcology: true, megablock: true })
-    expect(m.arcologies.map((a) => a.name)).toEqual(['Kessler Twin Towers']) // arterials cross the highway (and one-point roads are gone): layout shifts the name draw; same as the original golden
-    expect(m.megablocks.map((a) => a.name)).toEqual(['Docks Block']) // was 'Gardens Block': arterials cross the highway, layout shifts the name draw
+    expect(m.arcologies.map((a) => a.name)).toEqual(['The Vertex-Dynamics Gemini']) // arterials re-roll (v9); was 'Kessler Twin Towers': arterials cross the highway (and one-point roads are gone): layout shifts the name draw; same as the original golden
+    expect(m.megablocks.map((a) => a.name)).toEqual(['The Iron Hive']) // arterials re-roll (v9); was 'Docks Block', before that 'Gardens Block': arterials cross the highway, layout shifts the name draw
     expect(m.compounds.length).toBeGreaterThan(0)
     for (const c of m.compounds) expect(c.name.length).toBeGreaterThan(0)
     expect(m.pois.filter((p) => p.type === 'corp_campus').map((p) => p.name)).toEqual(m.compounds.map((c) => c.name))
@@ -1015,22 +1015,22 @@ describe('compounds', () => {
 })
 
 describe('arterial ends (model seeds)', () => {
-const F = { river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'print' }
-const p1 = { ...resolveTags(['coastal','medium','dense','fringe','lively','mixed','river']), seed: 42, pack: 'generic', theme: 'print' } as any
+  const F = { river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'print' }
+  const p1 = { ...resolveTags(['coastal','medium','dense','fringe','lively','mixed','river']), seed: 42, pack: 'generic', theme: 'print' } as any
   const MODEL_SETS: Record<string, any> = {
-  P1: p1,
-  P2: { seed: 42, size: 4, density: 0.6, corpDominance: 0.85, poiDensity: 0.5, irregularity: 0.5, landform: 'inland', river: false, lakes: false, islands: false, piers: false, arcology: true, megablock: true, pack: 'generic', theme: 'print' },
-  P3: { seed: 42, size: 6, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', river: true, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon' },
-  S7: { ...p1, seed: 7 },
-  S3017268931: { ...p1, seed: 3017268931 },
-  S2982258224: { ...F, seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, poiDensity: 0.5, irregularity: 0.85, landform: 'bay' },
-  S4280430344: { ...F, seed: 4280430344, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15, landform: 'coastal', river: true, lakes: true },
-  S11: { ...F, seed: 11, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.5, irregularity: 0.5, landform: 'inland', arcology: true, megablock: true },
-  S782008753: { ...F, seed: 782008753, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', lakes: true },
-  R1: { ...F, seed: 123456789, size: 2, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', islands: true, piers: true },
-  R2: { ...F, seed: 987654321, size: 2, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'bay', islands: true, piers: true },
-  R3: { ...F, seed: 555555555, size: 2, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', river: true, islands: true, piers: true },
-}
+    P1: p1,
+    P2: { seed: 42, size: 4, density: 0.6, corpDominance: 0.85, poiDensity: 0.5, irregularity: 0.5, landform: 'inland', river: false, lakes: false, islands: false, piers: false, arcology: true, megablock: true, pack: 'generic', theme: 'print' },
+    P3: { seed: 42, size: 6, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', river: true, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon' },
+    S7: { ...p1, seed: 7 },
+    S3017268931: { ...p1, seed: 3017268931 },
+    S2982258224: { ...F, seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, poiDensity: 0.5, irregularity: 0.85, landform: 'bay' },
+    S4280430344: { ...F, seed: 4280430344, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15, landform: 'coastal', river: true, lakes: true },
+    S11: { ...F, seed: 11, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.5, irregularity: 0.5, landform: 'inland', arcology: true, megablock: true },
+    S782008753: { ...F, seed: 782008753, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', lakes: true },
+    R1: { ...F, seed: 123456789, size: 2, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', islands: true, piers: true },
+    R2: { ...F, seed: 987654321, size: 2, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'bay', islands: true, piers: true },
+    R3: { ...F, seed: 555555555, size: 2, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', river: true, islands: true, piers: true },
+  }
   const onEdge = (p: Pt, s: number) => p.x < 1 || p.y < 1 || p.x > s - 1 || p.y > s - 1
   /** worst excess (deg) of a turn over its curvature budget: max(15, 2 * shorter leg m) and 45; vertices within skipM of arc of an end or beside a leg <= 10 m (invisible kink at map scale) are ignored */
   const bendViolation = (pts: Pt[], skipM: number) => {
@@ -1049,13 +1049,13 @@ const p1 = { ...resolveTags(['coastal','medium','dense','fringe','lively','mixed
   }
   // last-resort prune: ideal 0; measured P1: 3, P2: 9, P3: 2, S7: 2, S3017268931: 2, S2982258224: 0, S4280430344: 2, S11: 5, S782008753: 1, R1: 0, R2: 0, R3: 1 (arterials re-roll, v9)
   for (const [name, p] of Object.entries(MODEL_SETS)) {
-    it(`${name}: every arterial end is anchored and nothing was pruned`, { timeout: 120000 }, () => {
+    it(`${name}: every arterial end is anchored and at most 10 were pruned`, { timeout: 120000 }, () => {
       const sizeM = p.size * 1000
       const terrain = sampleTerrain(p, sizeM)
       const t = traceRoads(p, terrain, sizeM)
       expect(t.pruned, 'prune fired').toBeLessThanOrEqual(10)
       const idx = new RoadIndex(200)
-      for (const r of [...t.arterials, ...(t.highway ? [t.highway] : [])]) idx.add(r.id, r.points, r.class)
+      for (const r of t.arterials) idx.add(r.id, r.points, r.class)
       for (const r of t.arterials) {
         const first = r.points[0], last = r.points.at(-1)!
         if (r.id.startsWith(RING_ID_PREFIX) && Math.hypot(first.x - last.x, first.y - last.y) < 1) continue

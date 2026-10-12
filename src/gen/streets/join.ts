@@ -69,50 +69,50 @@ export function joinFreeEnds(
   const onEdge = (q: Pt) => q.x < 1 || q.y < 1 || q.x > sizeM - 1 || q.y > sizeM - 1
   // order-dependent: an end rejected early can succeed once a neighbour has joined
   for (let pass = 0, before = -1; pass < 3 && joined !== before; pass++) {
-  before = joined
-  for (let ri = 0; ri < out.length; ri++) {
-    const road = out[ri]
-    if (road.class !== 'arterial' || road.id.startsWith(RING_ID_PREFIX)) continue
-    let pts = road.points
-    for (const atStart of [true, false]) {
-      if (pts.length < 2) break
-      const fwd = atStart ? pts.slice().reverse() : pts
-      const end = fwd[fwd.length - 1]
-      const other = fwd[0]
-      if (onEdge(end) || nearWater(terrain, end, 15) || index.nearestMatching(end, 6, (h) => h.id !== road.id && h.cls === 'arterial')) continue
-      const back = pointAtT(fwd, Math.max(0, 1 - 20 / polylineLength(fwd)))
-      const hl = Math.hypot(end.x - back.x, end.y - back.y)
-      if (hl === 0) continue
-      const dir = { x: (end.x - back.x) / hl, y: (end.y - back.y) / hl }
-      const byRoad = new Map<string, { id: string; at: Pt; dist: number; ang: number }>()
-      index.forEachInRadius(end, JOIN_REACH * MAJOR.separation, (seg, at, dist, edge) => {
-        if (seg.cls !== 'arterial' || seg.id === road.id || edge < 30) return
-        const vx = at.x - end.x, vy = at.y - end.y
-        const vl = Math.hypot(vx, vy)
-        if (vl > 0 && Math.acos(Math.max(-1, Math.min(1, (vx * dir.x + vy * dir.y) / vl))) > JOIN_CONE) return
-        // nearest segment per road, so one road cannot eat the whole END_TRY budget
-        if (!((byRoad.get(seg.id)?.dist ?? Infinity) <= dist)) byRoad.set(seg.id, { id: seg.id, at, dist, ang: Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x) })
-      })
-      const cands = [...byRoad.values()].sort((a, b) => a.dist - b.dist)
-      for (const c of cands.slice(0, END_TRY)) {
-        // a road with both ends on one road is a hairpin
-        if (index.nearestMatching(other, 6, (h) => h.id === c.id)) continue
-        const reject = (q: Pt, dirAt: Pt) => inWater(terrain, q) || !inWindow(q)
-          || obstacles.some((r) => pointInRings(q, [r]))
-          || !!index.nearestMatching(q, 0.15 * MAJOR.separation, (h) => h.id !== road.id && h.id !== c.id && h.cls === 'arterial' && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE)
-        const curve = joinCurve(end, dir, c.at, { x: Math.cos(c.ang), y: Math.sin(c.ang) }, reject)
-        if (!curve) continue
-        const pinned = (v: Pt) => !!index.nearestMatching(v, 6, (h) => h.id !== road.id && h.edge < 1)
-        const grown = smoothBends([...fwd, ...curve], 60, pinned)
-        pts = atStart ? grown.reverse() : grown
-        index.remove(road.id)
-        index.add(road.id, pts, 'arterial')
-        out[ri] = { ...road, points: pts }
-        joined++
-        break
+    before = joined
+    for (let ri = 0; ri < out.length; ri++) {
+      const road = out[ri]
+      if (road.class !== 'arterial' || road.id.startsWith(RING_ID_PREFIX)) continue
+      let pts = road.points
+      for (const atStart of [true, false]) {
+        if (pts.length < 2) break
+        const fwd = atStart ? pts.slice().reverse() : pts
+        const end = fwd[fwd.length - 1]
+        const other = fwd[0]
+        if (onEdge(end) || nearWater(terrain, end, 15) || index.nearestMatching(end, 6, (h) => h.id !== road.id && h.cls === 'arterial')) continue
+        const back = pointAtT(fwd, Math.max(0, 1 - 20 / polylineLength(fwd)))
+        const hl = Math.hypot(end.x - back.x, end.y - back.y)
+        if (hl === 0) continue
+        const dir = { x: (end.x - back.x) / hl, y: (end.y - back.y) / hl }
+        const byRoad = new Map<string, { id: string; at: Pt; dist: number; ang: number }>()
+        index.forEachInRadius(end, JOIN_REACH * MAJOR.separation, (seg, at, dist, edge) => {
+          if (seg.cls !== 'arterial' || seg.id === road.id || edge < 30) return
+          const vx = at.x - end.x, vy = at.y - end.y
+          const vl = Math.hypot(vx, vy)
+          if (vl > 0 && Math.acos(Math.max(-1, Math.min(1, (vx * dir.x + vy * dir.y) / vl))) > JOIN_CONE) return
+          // nearest segment per road, so one road cannot eat the whole END_TRY budget
+          if (!((byRoad.get(seg.id)?.dist ?? Infinity) <= dist)) byRoad.set(seg.id, { id: seg.id, at, dist, ang: Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x) })
+        })
+        const cands = [...byRoad.values()].sort((a, b) => a.dist - b.dist)
+        for (const c of cands.slice(0, END_TRY)) {
+          // a road with both ends on one road is a hairpin
+          if (index.nearestMatching(other, 6, (h) => h.id === c.id)) continue
+          const reject = (q: Pt, dirAt: Pt) => inWater(terrain, q) || !inWindow(q)
+            || obstacles.some((r) => pointInRings(q, [r]))
+            || !!index.nearestMatching(q, 0.15 * MAJOR.separation, (h) => h.id !== road.id && h.id !== c.id && h.cls === 'arterial' && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE)
+          const curve = joinCurve(end, dir, c.at, { x: Math.cos(c.ang), y: Math.sin(c.ang) }, reject)
+          if (!curve) continue
+          const pinned = (v: Pt) => !!index.nearestMatching(v, 6, (h) => h.id !== road.id && h.edge < 1)
+          const grown = smoothBends([...fwd, ...curve], 60, pinned)
+          pts = atStart ? grown.reverse() : grown
+          index.remove(road.id)
+          index.add(road.id, pts, 'arterial')
+          out[ri] = { ...road, points: pts }
+          joined++
+          break
+        }
       }
     }
-  }
   }
   return { roads: out, joined }
 }
