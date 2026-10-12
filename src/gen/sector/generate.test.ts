@@ -390,8 +390,14 @@ describe('river bridges (seed 42)', () => {
   })
   it('facing arterial stubs across the river are joined by bridges', () => {
     console.log('arterial bridges', arterialBridges.length, arterialBridges.map((r) => r.id).join(' '))
-    // was 1 before joinRiverStubs; the brief expected 4, but A001<->A002 face a sea inlet (not the river) and A009 is now blocked by the highway bridge
-    expect(arterialBridges.length).toBeGreaterThanOrEqual(3)
+    // was 1 before joinRiverStubs, 3 until landings stopped anchoring (A003 bridged to a dead end): now A006, A007
+    expect(arterialBridges.length).toBeGreaterThanOrEqual(2)
+  })
+  it('no arterial bridge ends in nothing', () => {
+    const idx = new RoadIndex(200)
+    for (const r of m.roads) if (r.class !== 'ramp') idx.add(r.id, r.points, r.class)
+    for (const b of arterialBridges) for (const e of [b.points[0], b.points.at(-1)!])
+      expect(idx.nearestMatching(e, 20, (h) => h.id !== b.id && (h.cls === 'arterial' || h.cls === 'highway')), b.id).not.toBeNull()
   })
   it('every arterial bridge is shorter than 600 m', () => {
     for (const b of arterialBridges) expect(polylineLength(b.points), b.id).toBeLessThan(600)

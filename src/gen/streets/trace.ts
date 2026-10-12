@@ -579,7 +579,9 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
         const dx = end.x - seq[1].x
         const dy = end.y - seq[1].y
         const len = Math.hypot(dx, dy) || 1
-        const wet = nearWater(terrain, end, 15) || inWater(terrain, { x: end.x + (dx / len) * 15, y: end.y + (dy / len) * 15 })
+        // an end reached FROM water is a deck landing, not a water anchor: it needs a junction like any dry end
+        const landing = inWater(terrain, { x: end.x - (dx / len) * 20, y: end.y - (dy / len) * 20 })
+        const wet = !landing && (nearWater(terrain, end, 15) || inWater(terrain, { x: end.x + (dx / len) * 15, y: end.y + (dy / len) * 15 }))
         if (wet && !opts.waterAnchor) continue
         // walk inward in ~5 m samples to the first junction
         let kept: Pt[] | null = null
