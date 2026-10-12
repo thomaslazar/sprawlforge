@@ -390,7 +390,7 @@ function traceHalf(
         && (foot.x - p.x) * dir.x + (foot.y - p.y) * dir.y >= 0 && (!before || hitPar.dist <= before.dist + 0.1)) {
         const sign = Math.cos(hitPar.segAngle) * dir.x + Math.sin(hitPar.segAngle) * dir.y > 0 ? 1 : -1
         const target = index.pointAlong(hitPar, sign * JOIN_AHEAD * sep)
-        const curve = joinCurve(p, dir, target, (q) =>
+        const curve = joinCurve(p, dir, target, { x: Math.cos(hitPar.segAngle), y: Math.sin(hitPar.segAngle) }, (q) =>
           inWater(terrain, q) || inObstacle(q) || q.x < 0 || q.x > sizeM || q.y < 0 || q.y > sizeM
           || !!index.nearestMatching(q, 0.3 * sep, (h) => h.id !== hitPar.id && h.cls !== 'highway' && sameOrHigher(h.cls)))
         if (curve) pts.push(...curve)

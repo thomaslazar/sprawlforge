@@ -12,19 +12,31 @@ export const JOIN_REACH = 1.5
 /** end pass: widest angle from the end's heading to a join target */
 export const JOIN_CONE = Math.PI / 2
 
+/** angle at which a join curve meets the target road */
+export const JOIN_ARRIVE = (60 * Math.PI) / 180
+
 /**
- * Quadratic Bezier from p, leaving along dir, ending exactly on target. The first sample is
- * excluded (p is already on the road); null when `reject` is true for any sample.
+ * Cubic Bezier from p, leaving along dir, ending exactly on target at JOIN_ARRIVE to the target road
+ * (`tangent`: that road's unit direction at target, sign irrelevant), arriving from p's side. The first
+ * sample is excluded (p is already on the road); null when `reject` is true for any sample.
  */
-export function joinCurve(p: Pt, dir: Pt, target: Pt, reject: (q: Pt) => boolean): Pt[] | null {
+export function joinCurve(p: Pt, dir: Pt, target: Pt, tangent: Pt, reject: (q: Pt) => boolean): Pt[] | null {
   const len = Math.hypot(target.x - p.x, target.y - p.y)
-  const c = { x: p.x + dir.x * (len / 2), y: p.y + dir.y * (len / 2) }
-  const n = Math.max(4, Math.ceil(len / 10))
+  const f = tangent.x * dir.x + tangent.y * dir.y < 0 ? -1 : 1
+  const t = { x: f * tangent.x, y: f * tangent.y }
+  let n = { x: -t.y, y: t.x }
+  if (n.x * (p.x - target.x) + n.y * (p.y - target.y) < 0) n = { x: -n.x, y: -n.y }
+  const a = { x: t.x * Math.cos(JOIN_ARRIVE) - n.x * Math.sin(JOIN_ARRIVE), y: t.y * Math.cos(JOIN_ARRIVE) - n.y * Math.sin(JOIN_ARRIVE) }
+  const c1 = { x: p.x + dir.x * (len / 3), y: p.y + dir.y * (len / 3) }
+  const c2 = { x: target.x - a.x * (len / 3), y: target.y - a.y * (len / 3) }
+  const m = Math.max(4, Math.ceil(len / 10))
   const out: Pt[] = []
-  for (let i = 1; i <= n; i++) {
-    const t = i / n, u = 1 - t
-    const q = i === n ? { x: target.x, y: target.y }
-      : { x: u * u * p.x + 2 * u * t * c.x + t * t * target.x, y: u * u * p.y + 2 * u * t * c.y + t * t * target.y }
+  for (let i = 1; i <= m; i++) {
+    const s = i / m, u = 1 - s
+    const q = i === m ? { x: target.x, y: target.y } : {
+      x: u * u * u * p.x + 3 * u * u * s * c1.x + 3 * u * s * s * c2.x + s * s * s * target.x,
+      y: u * u * u * p.y + 3 * u * u * s * c1.y + 3 * u * s * s * c2.y + s * s * s * target.y,
+    }
     if (reject(q)) return null
     out.push(q)
   }
@@ -58,13 +70,13 @@ export function joinFreeEnds(
       const hl = Math.hypot(end.x - back.x, end.y - back.y)
       if (hl === 0) continue
       const dir = { x: (end.x - back.x) / hl, y: (end.y - back.y) / hl }
-      const cands: Array<{ id: string; at: Pt; dist: number }> = []
+      const cands: Array<{ id: string; at: Pt; dist: number; ang: number }> = []
       index.forEachInRadius(end, JOIN_REACH * MAJOR.separation, (seg, at, dist, edge) => {
         if (seg.cls !== 'arterial' || seg.id === road.id || edge < 30) return
         const vx = at.x - end.x, vy = at.y - end.y
         const vl = Math.hypot(vx, vy)
         if (vl > 0 && Math.acos(Math.max(-1, Math.min(1, (vx * dir.x + vy * dir.y) / vl))) > JOIN_CONE) return
-        cands.push({ id: seg.id, at, dist })
+        cands.push({ id: seg.id, at, dist, ang: Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x) })
       })
       cands.sort((a, b) => a.dist - b.dist)
       for (const c of cands.slice(0, END_TRY)) {
@@ -73,7 +85,7 @@ export function joinFreeEnds(
         const reject = (q: Pt) => inWater(terrain, q) || !inWindow(q)
           || obstacles.some((r) => pointInRings(q, [r]))
           || !!index.nearestMatching(q, 0.3 * MAJOR.separation, (h) => h.id !== road.id && h.id !== c.id && h.cls === 'arterial')
-        const curve = joinCurve(end, dir, c.at, reject)
+        const curve = joinCurve(end, dir, c.at, { x: Math.cos(c.ang), y: Math.sin(c.ang) }, reject)
         if (!curve) continue
         const pinned = (v: Pt) => !!index.nearestMatching(v, 6, (h) => h.id !== road.id && h.edge < 1)
         const grown = smoothBends([...fwd, ...curve], 60, pinned)

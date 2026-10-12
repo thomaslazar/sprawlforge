@@ -18,13 +18,18 @@ function maxBendDeg(pts: Pt[]): number {
 
 describe('joinCurve', () => {
   it('leaves along dir and ends on target', () => {
-    const c = joinCurve({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 200, y: 100 }, () => false)!
+    const c = joinCurve({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 200, y: 100 }, { x: 1, y: 0 }, () => false)!
     expect(c.at(-1)).toEqual({ x: 200, y: 100 })
     expect(Math.abs(c[0].y / c[0].x)).toBeLessThan(0.2)
     expect(maxBendDeg([{ x: 0, y: 0 }, ...c])).toBeLessThan(15)
   })
+  it.each([150, -150])('arrives at 60° to the target road (target y %d)', (y) => {
+    const c = joinCurve({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 300, y }, { x: 1, y: 0 }, () => false)!
+    const a = c.at(-2)!, b = c.at(-1)!
+    expect(Math.abs((Math.atan2(Math.abs(b.y - a.y), b.x - a.x) * 180) / Math.PI - 60)).toBeLessThan(2)
+  })
   it('is null when a sample is rejected', () => {
-    expect(joinCurve({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 200, y: 100 }, (q) => q.x > 100)).toBeNull()
+    expect(joinCurve({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 200, y: 100 }, { x: 1, y: 0 }, (q) => q.x > 100)).toBeNull()
   })
 })
 
