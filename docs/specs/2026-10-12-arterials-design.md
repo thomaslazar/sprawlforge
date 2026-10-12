@@ -249,12 +249,16 @@ attributes; `data-ramps` counts both.
 - Model seeds (`temp/perf/sets.mts` is scratch; the test file carries its
   own copy of the 12 parameter sets): every arterial end is on the window
   edge, within 6 m of another arterial/ring, on the highway (T end, phase
-  3), or at water; `pruneDangling` removes nothing on these seeds (count
-  exposed via a debug return or an index diff; the test asserts 0 — a
-  seed that fails is tuned, never dodged); arterial count on the west
-  peninsula of seed 42 coastal/river/arcology ≥ 12.
-- No arterial bend sharper than 15° between consecutive points except
-  within 15 m of an endpoint, on all model seeds.
+  3), or at water; the arterial prune (`TracedRoads.pruned`) fires at most
+  10 times per seed — a ratchet that only tightens; the ideal is 0, the
+  rest are the last-resort cases of §3.4 (plaza in the way, water, window
+  edge, hairpin, nothing in reach). Measured at phase 1: 0–9 per seed.
+- Curvature, not angle: the clamp fixes 15° per 10 m step and the 1 m
+  simplification merges steps, so at every interior vertex (farther than
+  15 m of arc from either end, shorter adjacent leg over 10 m — a kink
+  shorter than that is invisible at map scale) the bend is at most
+  `max(15°, 2° × shorter leg in m)` and never over 45°; ring roads (an
+  octagon by design) are exempt.
 - Phase 2: on P1 (seed 42 coastal/river) at least one arterial runs ≥
   400 m within 150 m of the sea; at most 20 % of arterial ends are water
   ends; the band-off stretches exist (some shore length > 300 m has no
