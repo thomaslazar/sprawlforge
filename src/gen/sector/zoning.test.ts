@@ -36,7 +36,11 @@ describe('assignZones', () => {
   it('zone weights follow the style', () => {
     const base = zoneWeights(params, false, 0.5)
     expect(zoneWeights(params, false, 0.2).corp).toBeCloseTo(2 * base.corp)
-    expect(zoneWeights(params, false, 0.7).slum).toBeCloseTo(2 * base.slum)
+    expect(zoneWeights(params, false, 0.2).industrial).toBeCloseTo(1.5 * base.industrial)
+    for (const i of [0.6, 0.7]) {
+      expect(zoneWeights(params, false, i).slum).toBeCloseTo(2 * base.slum)
+      expect(zoneWeights(params, false, i).residential).toBeCloseTo(1.5 * base.residential)
+    }
   })
 
   it('is deterministic and assigns valid zones', () => {

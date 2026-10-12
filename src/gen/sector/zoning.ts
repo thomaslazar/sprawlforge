@@ -56,14 +56,14 @@ function isShore(poly: Pt[], terrain: Terrain): boolean {
   return false
 }
 
-/** irr: the district's effective irregularity; planned (< 0.4) favours corp, organic (> 0.6) favours slum */
+/** irr: the district's effective irregularity; planned (< 0.4) favours corp, organic (>= 0.6) favours slum and residential; planned also industrial */
 export function zoneWeights(params: SectorParams, shore: boolean, irr: number): Record<ZoneType, number> {
   const c = params.corpDominance
   return {
     corp: (0.5 + 3 * c) * (irr < 0.4 ? 2 : 1),
-    residential: 3 - 1.5 * c,
-    slum: (2.5 - 2 * c) * (irr > 0.6 ? 2 : 1),
-    industrial: 1.5,
+    residential: (3 - 1.5 * c) * (irr >= 0.6 ? 1.5 : 1),
+    slum: (2.5 - 2 * c) * (irr >= 0.6 ? 2 : 1),
+    industrial: 1.5 * (irr < 0.4 ? 1.5 : 1),
     entertainment: 1,
     docks: shore ? 1.5 : 0,
   }

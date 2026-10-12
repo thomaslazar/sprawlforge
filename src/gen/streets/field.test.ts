@@ -44,6 +44,7 @@ describe('streets/field', () => {
     }
     const planned = byCell(params({ landform: 'inland', river: false, irregularity: 0.15 }))
     expect(planned.length).toBeGreaterThanOrEqual(2)
+    expect(planned.some((cell) => cell.filter((c) => c.irr < 0.4).length >= 2)).toBe(true)
     for (const cell of planned) {
       const a = cell.filter((c) => c.irr < 0.4)
       for (const c of a) expect(c.angle).toBeCloseTo(a[0].angle, 6)
