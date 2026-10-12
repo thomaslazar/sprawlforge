@@ -13,7 +13,7 @@ import { inWater, isLakeShore } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
 import { bboxesFar, endMeetings, maxCloseRun } from '../streets/testutil'
 import { materializeTags, resolveTags } from '../../app/tags'
-import { deriveDistricts, generateSector } from './generate'
+import { deriveDistricts, generateSector, toBlocks } from './generate'
 
 // full pipeline is ~3-10 s per 4 km generation (tracing + land clipping dominate)
 vi.setConfig({ testTimeout: 90000 })
@@ -234,6 +234,17 @@ describe('arcology names', () => {
       for (const a of m.arcologies) if (words[a.design]) { seen++; expect(a.name).toMatch(words[a.design]) }
     }
     expect(seen).toBeGreaterThan(0)
+  })
+})
+
+describe('toBlocks', () => {
+  const sq = (x0: number, y0: number, x1: number, y1: number): Pt[] => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]
+  it('a block touching a district only along an edge midpoint goes to that district', () => {
+    const d = (id: string, poly: Pt[]) => ({ id, poly }) as unknown as District
+    const districts = [d('D01', sq(200, 200, 300, 300)), d('D02', sq(40, -10, 60, 10))]
+    const ring = sq(0, 0, 100, 100) // centroid and all four corners outside every district; the top edge midpoint (50, 0) is inside D02
+    const blocks = toBlocks([{ poly: ring, footprint: ring }] as unknown as Parameters<typeof toBlocks>[0], districts)
+    expect(blocks.map((b) => b.districtId)).toEqual(['D02'])
   })
 })
 
