@@ -82,6 +82,8 @@ and patch sizing so planned-grid quarters flow into organic ones spatially.
   never `Math.random()`/`Date.now()` in generation. Same inputs →
   byte-identical `SectorModel`.
 - **Metric only** — meters everywhere, no imperial. Ever.
+- **Smoothing order**: a road is smoothed before anything ends on it, never
+  after (`finalize` does not simplify).
 - **Window containment**: every generated point lies inside
   `[0, sizeM]²`. Tracing stops at the window edge and faces are bounded
   by `windowRing` (the river course deliberately carries ±500 m
