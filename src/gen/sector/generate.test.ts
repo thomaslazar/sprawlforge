@@ -390,8 +390,8 @@ describe('river bridges (seed 42)', () => {
   })
   it('facing arterial stubs across the river are joined by bridges', () => {
     console.log('arterial bridges', arterialBridges.length, arterialBridges.map((r) => r.id).join(' '))
-    // was 1 before joinRiverStubs, 3 until landings stopped anchoring (A003 bridged to a dead end): now A006, A007
-    expect(arterialBridges.length).toBeGreaterThanOrEqual(2)
+    // was 1 before joinRiverStubs, 3 until landings stopped anchoring (A003 bridged to a dead end), 2 (A006, A007) until arterials crossed the highway: now A006 only; no unmatched river-facing stub pair remains (A001/A002 face a sea inlet)
+    expect(arterialBridges.length).toBeGreaterThanOrEqual(1)
   })
   it('no arterial bridge ends in nothing', () => {
     const idx = new RoadIndex(200)
@@ -973,8 +973,8 @@ describe('frontage', () => {
 describe('compound names', () => {
   it('are drawn after the landmark names, which stay as before', { timeout: 300000 }, () => {
     const m = generateSector({ ...base, corpDominance: 0.85, arcology: true, megablock: true })
-    expect(m.arcologies.map((a) => a.name)).toEqual(['Halcyon Twin Towers']) // was 'Kessler Twin Towers': dropping 5 one-point roads (trimStubs fix) shifted the name draw
-    expect(m.megablocks.map((a) => a.name)).toEqual(['Docks Stacks']) // was 'Gardens Block': same name-draw shift as above
+    expect(m.arcologies.map((a) => a.name)).toEqual(['Kessler Twin Towers']) // arterials cross the highway (and one-point roads are gone): layout shifts the name draw; same as the original golden
+    expect(m.megablocks.map((a) => a.name)).toEqual(['Docks Block']) // was 'Gardens Block': arterials cross the highway, layout shifts the name draw
     expect(m.compounds.length).toBeGreaterThan(0)
     for (const c of m.compounds) expect(c.name.length).toBeGreaterThan(0)
     expect(m.pois.filter((p) => p.type === 'corp_campus').map((p) => p.name)).toEqual(m.compounds.map((c) => c.name))

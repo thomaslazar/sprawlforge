@@ -302,7 +302,9 @@ function traceHalf(
       next, 25, (hit) => hit.id === sourceId && angleGapLines(Math.atan2(newDir.y, newDir.x), hit.segAngle) < PARALLEL_ANGLE,
     )) return []
     const hitPar = index.nearestMatching(
-      next, 0.7 * sep, (hit) => !isSourceAt(hit.id, next) && !isRing(hit.id) && angleGapLines(dirAngle, hit.segAngle) < PARALLEL_ANGLE,
+      // an arterial that has crossed the highway and walks away from it is not running along it (the foot is behind)
+      next, 0.7 * sep, (hit) => !isSourceAt(hit.id, next) && !isRing(hit.id) && angleGapLines(dirAngle, hit.segAngle) < PARALLEL_ANGLE
+        && !(opts.bridgeRivers && hit.cls === 'highway' && (hit.at.x - p.x) * dir.x + (hit.at.y - p.y) * dir.y < 0),
     )
     if (hitPar) {
       // a street stopped by a near-parallel road would end free and the prune would drop it (and the
