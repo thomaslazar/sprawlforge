@@ -338,11 +338,7 @@ export function highwayCrossings(highway: Road, roads: Road[], segments: Highway
         // a road that merely ends on the highway (T-junction, or an end inside the highway strip) does not cross it
         const rp = road.points
         const hitPt = f === null ? null : { x: hp[j].x + f * (hp[j + 1].x - hp[j].x), y: hp[j].y + f * (hp[j + 1].y - hp[j].y) }
-        // an end that has passed the axis (more than SPAN_TOL beyond it, away from the side the road came from) is a crossing
-        const nx = -(hp[j + 1].y - hp[j].y), ny = hp[j + 1].x - hp[j].x
-        const side = (q: Pt) => hitPt ? (q.x - hitPt.x) * nx + (q.y - hitPt.y) * ny : 0
-        const atEnd = hitPt && [[rp[0], rp[i + 1]], [rp[rp.length - 1], rp[i]]].some(([e, from]) =>
-          Math.hypot(e.x - hitPt.x, e.y - hitPt.y) < HIGHWAY_WIDTH / 2 + 6 && side(e) * Math.sign(side(from)) >= -SPAN_TOL * Math.hypot(nx, ny))
+        const atEnd = hitPt && [rp[0], rp[rp.length - 1]].some((e) => Math.hypot(e.x - hitPt.x, e.y - hitPt.y) < HIGHWAY_WIDTH / 2 + 6)
         if (f !== null && !atEnd) {
           const at = (acc + f * l) / total
           const level = levelAt(segments, at)
