@@ -422,6 +422,17 @@ describe('compound geometry edge cases', () => {
     // gate faces the toward point: the edge along y = 4
     expect(Math.abs(r.compounds[0].gate[0].y - 4)).toBeLessThan(1)
   })
+  it('a compound whose centre would sit in water is not made', () => {
+    // C-shaped block: the fence centroid (110, 120) falls in the bay between the arms
+    const C = [[0, 0], [240, 0], [240, 80], [60, 80], [60, 160], [240, 160], [240, 240], [0, 240]].map(([x, y]) => ({ x, y }))
+    const block: Block = { ...makeBlock('D01'), poly: C, footprint: C }
+    const bay: Terrain = { ...dryTerrain, water: [[[[60, 80], [240, 80], [240, 160], [60, 160]]]] }
+    const dry = fillLotsFull([corpDistrict], [block], base, dryTerrain, [], undefined, undefined, undefined, [], pick(block.id, 0, 0))
+    expect(dry.compounds.length).toBe(1) // without the bay it is a valid compound
+    const wet = fillLotsFull([corpDistrict], [block], base, bay, [], undefined, undefined, undefined, [], pick(block.id, 0, 0))
+    expect(wet.compounds).toEqual([])
+    expect(wet.blocks[0].style).not.toBe('compound')
+  })
   it('a block too small for 2 buildings stays a normal block', () => {
     const r = run(rectPoly(0, 0, 60, 60))
     expect(r.compounds).toEqual([])

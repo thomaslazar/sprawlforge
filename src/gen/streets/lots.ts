@@ -495,7 +495,8 @@ export function fillLots(
     const comp = compoundsIn.find((k) => k.blockId === block.id)
     if (comp) {
       const res = compoundLots(block.footprint, comp.gateToward, compoundRng, (clipped) => (noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, near, convexNb, nearTie) : clipped))
-      if (res) {
+      // a crescent block's fence centroid can fall in the bay: no compound there (its POI would sit in water)
+      if (res && !inWater(terrain, ringCentroid(res.fence))) {
         for (const footprint of res.cells) {
           n += 1
           buildings.push({ id: `BLD${String(n).padStart(4, '0')}`, blockId: block.id, districtId: district.id, footprint })
