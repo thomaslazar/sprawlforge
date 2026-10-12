@@ -609,7 +609,10 @@ export function frontageRoads(highway: Road, terrain: Terrain, sizeM: number, ob
   const n0 = Math.max(1, Math.ceil(polylineLength(hp) / SAMPLE_M))
   const core = Array.from({ length: n0 + 1 }, (_, i) => pointAtT(hp, i / n0))
   // run the end tangents on past the window so the offset lines reach the edge instead of stopping short of it
+  // (only at an end on the window edge: past a highway that stops at the shore there is nothing to line)
+  const onEdge = (p: Pt) => p.x < 1 || p.y < 1 || p.x > sizeM - 1 || p.y > sizeM - 1
   const ext = (a: Pt, b: Pt) => {
+    if (!onEdge(b)) return []
     const u = normalize({ x: b.x - a.x, y: b.y - a.y })
     return Array.from({ length: EXTEND_N }, (_, k) => ({ x: b.x + u.x * SAMPLE_M * (k + 1), y: b.y + u.y * SAMPLE_M * (k + 1) }))
   }
