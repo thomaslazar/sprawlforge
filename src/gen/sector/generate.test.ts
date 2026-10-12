@@ -951,7 +951,7 @@ describe('compound names', () => {
   it('are drawn after the landmark names, which stay as before', { timeout: 300000 }, () => {
     const m = generateSector({ ...base, corpDominance: 0.85, arcology: true, megablock: true })
     expect(m.arcologies.map((a) => a.name)).toEqual(['Halcyon Twin Towers']) // was 'Kessler Twin Towers': dropping 5 one-point roads (trimStubs fix) shifted the name draw
-    expect(m.megablocks.map((a) => a.name)).toEqual(['Gardens Block'])
+    expect(m.megablocks.map((a) => a.name)).toEqual(['Docks Stacks']) // was 'Gardens Block': same name-draw shift as above
     expect(m.compounds.length).toBeGreaterThan(0)
     for (const c of m.compounds) expect(c.name.length).toBeGreaterThan(0)
     expect(m.pois.filter((p) => p.type === 'corp_campus').map((p) => p.name)).toEqual(m.compounds.map((c) => c.name))
