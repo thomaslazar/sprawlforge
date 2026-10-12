@@ -1,4 +1,4 @@
-import { bboxOf, pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, type Pt } from '../geometry'
+import { bboxOf, pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, simplifyPolyline, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import { RING_ID_PREFIX } from '../landmarks/place'
 import { inWater, nearWater } from '../sector/bridges'
@@ -584,7 +584,7 @@ export function traceLayer(
     if (blocker && blocker.id !== source?.id) continue
     const raw = traceStreamline(field, axis, seed, terrain, sizeM, index, opts, rng, irregularityAt, decayEnds)
     if (!raw) continue
-    const points = opts.smoothRadius ? smoothBends(raw, opts.smoothRadius) : raw
+    const points = opts.smoothRadius ? smoothBends(simplifyPolyline(raw, 1), opts.smoothRadius) : raw
     n += 1
     const id = idPrefix + String(n).padStart(3, '0')
     index.add(id, points, cls)

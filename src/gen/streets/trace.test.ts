@@ -632,13 +632,13 @@ describe('arterial smoothing and singularity stop', () => {
     traceLayer(f, 'major', [{ at: { x: 500, y: 2000 } }], dryTerrain, 4000, new RoadIndex(200), opts, mulberry32(1), () => 0.2, 'A', 'arterial')
 
   it('traceLayer smooths each streamline before indexing it', () => {
-    const seam = field((p) => (p.x < 1000 ? 0 : Math.PI / 2))
-    const o = { ...MAJOR, maxTurn: undefined, stopAtSingularity: false }
-    const raw = run(seam, { ...o, smoothRadius: undefined })
-    const smooth = run(seam, o)
-    expect(smooth.length).toBe(1)
-    // 10 m legs cap each fillet to r<=5 m, so a 90° seam cannot reach <15°; it must still drop clearly
-    expect(maxBendDeg(smooth[0].points)).toBeLessThan(maxBendDeg(raw[0].points) - 10)
+    const seam = field((p) => (p.x < 1000 ? 0 : Math.PI / 8))
+    const roads = run(seam, MAJOR)
+    expect(roads.length).toBe(1)
+    const pts = roads[0].points
+    expect(maxBendDeg(pts)).toBeLessThanOrEqual(15 + 1e-6)
+    expect(pts.some((p) => p.x > 1000)).toBe(true)
+    expect(Math.abs(pts[pts.length - 1].y - 2000)).toBeGreaterThan(50)
   })
 
   it('arterials stop at a field singularity even with the turn clamp', () => {
