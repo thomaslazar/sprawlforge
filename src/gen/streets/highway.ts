@@ -1,4 +1,4 @@
-import { pointAtT, pointInRings, polylineLength, simplifyPolyline, slicePolyline, type Pt } from '../geometry'
+import { pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, simplifyPolyline, slicePolyline, type Pt } from '../geometry'
 import { hashSeed, mulberry32, type Rng } from '../rng'
 import { effectiveIrregularity } from '../sector/zoning'
 import { inWater } from '../sector/bridges'
@@ -16,10 +16,6 @@ const ENTRY_ATTEMPTS = 3
 const ENTRY_LO = 0.3
 const ENTRY_SPAN = 0.4
 const SPAN_TOL = 1 // "reaching the opposite edge within 1 m" counts as spanning (R11)
-// a stop point this close to riverSlice.course counts as the river (vs.
-// sea/lake, which just ends the trace) — wider than riverSlice.width itself
-// since the actual carve varies past that single scalar average
-const RIVER_BAND_FACTOR = 1.5
 const BRIDGE_MAX_TURN_FROM_HEADING = Math.PI / 4 // R12: bridge chord ≤ 45° off the recent approach heading
 
 const clamp = (lo: number, hi: number, v: number) => Math.max(lo, Math.min(hi, v))
@@ -135,7 +131,7 @@ function traceFromEdge(
     if (!onSide || bridged) return points // exited a side edge, or already used our one bridge (R12)
 
     const river = terrain.riverSlice
-    if (!river || distToPolyline(last, river.course) > river.width * RIVER_BAND_FACTOR) return points // sea/lake — done
+    if (!river) return points // no river: the stop was the sea or a lake
 
     const prev = points.length > 1 ? points[points.length - 2] : last
     const heading = normalize({ x: last.x - prev.x, y: last.y - prev.y })
@@ -150,6 +146,8 @@ function traceFromEdge(
     // R1: a far-bank point computed from an in-window `last` plus a bounded
     // offset can still land fractionally outside — clamp before pushing.
     const farBank = clampToWindow({ x: last.x + normal.x * width, y: last.y + normal.y * width }, sizeM)
+    // the chord must cross the river course itself (not a sea inlet or a lake beside it), as an arterial deck must
+    if (!segmentCrossesPolyline(last, farBank, river.course)) return points
     points.push(farBank)
     at = farBank
     dir = normal
