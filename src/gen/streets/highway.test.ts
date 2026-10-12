@@ -315,6 +315,14 @@ describe('highway levels', () => {
     expect(highwayCrossings(h2, [a], [seg(0, 1, 'elevated')], rng())).toHaveLength(1)
   })
 
+  it('a road ending past the axis is a crossing, one ending before it is a T', () => {
+    const h2: Road = { ...hw, points: [{ x: 2000, y: 0 }, { x: 2000, y: 4000 }] }
+    const past = line('P', 'arterial', { x: 1000, y: 1000 }, { x: 2015, y: 1000 })
+    const before = line('B', 'arterial', { x: 1000, y: 1000 }, { x: 1985, y: 1000 })
+    expect(highwayCrossings(h2, [past], [seg(0, 1, 'elevated')], rng())).toHaveLength(1)
+    expect(highwayCrossings(h2, [before], [seg(0, 1, 'elevated')], rng())).toHaveLength(0)
+  })
+
   it('a crossing too close to the highway end is not an interchange', () => {
     const h2: Road = { ...hw, points: [{ x: 2000, y: 0 }, { x: 2000, y: 1150 }] }
     const arts = [line('A0', 'arterial', { x: 0, y: 1100 }, { x: 4000, y: 1100 })]
