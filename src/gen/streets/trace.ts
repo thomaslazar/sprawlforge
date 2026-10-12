@@ -271,7 +271,8 @@ function traceHalf(
     // segment (not a blanket grace window, and not for the whole trace —
     // R6) lets the child immediately leave its parent while every OTHER
     // road, and the parent itself once far enough away, is still checked.
-    const hitSame = index.nearest(next, 0.3 * sep, sameOrHigher)
+    // an arterial crosses the highway (over/under, decided later); only the river-deck check above treats it as an obstacle
+    const hitSame = index.nearest(next, 0.3 * sep, opts.bridgeRivers ? (c) => c !== 'highway' && sameOrHigher(c) : sameOrHigher)
     if (hitSame && !isSourceAt(hitSame.id, next)) {
       // the walker overshot the target by < 1 step: backtrack (at most 2 points) so the road ends on it without doubling back.
       // A foot still behind after that means the walker is leaving this road (e.g. its own parent), not hitting it: keep walking.

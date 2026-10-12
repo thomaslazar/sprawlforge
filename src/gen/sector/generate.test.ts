@@ -333,7 +333,7 @@ describe('arterial connectivity', () => {
         for (const e of [r.points[0], r.points[r.points.length - 1]]) {
           ends++
           if (e.x < 1 || e.y < 1 || e.x > S - 1 || e.y > S - 1) continue
-          if (idx.nearestMatching(e, 6, (h) => h.id !== r.id && (h.cls === 'arterial' || h.cls === 'highway'))) continue
+          if (idx.nearestMatching(e, 6, (h) => h.id !== r.id && h.cls === 'arterial')) continue
           if (nearWater(m.terrain, e, 15)) continue
           dangling++
         }
@@ -398,6 +398,19 @@ describe('river bridges (seed 42)', () => {
     for (const r of m.roads) if (r.class !== 'ramp') idx.add(r.id, r.points, r.class)
     for (const b of arterialBridges) for (const e of [b.points[0], b.points.at(-1)!])
       expect(idx.nearestMatching(e, 20, (h) => h.id !== b.id && (h.cls === 'arterial' || h.cls === 'highway')), b.id).not.toBeNull()
+  })
+  it('no arterial ends on the highway', () => {
+    const hw = m.roads.filter((r) => r.class === 'highway')
+    const S = m.meta.sizeM
+    const arts = m.roads.filter((r) => r.class === 'arterial')
+    const idx = new RoadIndex(200)
+    for (const r of arts) idx.add(r.id, r.points, r.class)
+    console.log('highway crossings', hw[0]?.crossings?.length, 'interchanges', hw[0]?.crossings?.filter((c) => c.interchange).length)
+    for (const r of arts) for (const e of [r.points[0], r.points.at(-1)!]) {
+      if (e.x < 1 || e.y < 1 || e.x > S - 1 || e.y > S - 1) continue
+      if (idx.nearestMatching(e, 6, (h) => h.id !== r.id)) continue
+      for (const h of hw) expect(distToPolyline(e, h.points), r.id).toBeGreaterThan(30)
+    }
   })
   it('every arterial bridge is shorter than 600 m', () => {
     for (const b of arterialBridges) expect(polylineLength(b.points), b.id).toBeLessThan(600)

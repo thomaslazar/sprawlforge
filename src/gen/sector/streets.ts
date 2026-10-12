@@ -121,9 +121,9 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   let arterials = [...ringRoads, ...dropHairpins(finalize([...arterialsRaw, ...crossRaw], terrain, index, ARTERIAL_STUB_M), ringsOrNull, arcologies)]
   // stubs facing each other across the river become one road (bridged later by markWetSpans)
   arterials = joinRiverStubs(arterials, terrain, sizeM, indexOf(arterials))
-  // prune, never invent: an arterial ends on an arterial / the highway / water / the edge, or the tail is cut
+  // prune, never invent: an arterial ends on an arterial / water / the edge, or the tail is cut (never on the highway: it crosses it)
   arterials = pruneDangling(arterials, indexOf(arterials), terrain, sizeM, {
-    accept: (c) => c === 'arterial' || c === 'highway', minLength: 300,
+    accept: (c) => c === 'arterial', minLength: 300,
   })
   index = indexOf(arterials)
   const decayEnds: Pt[] = []
