@@ -206,6 +206,32 @@ describe('streets/trace', () => {
     }
   })
 
+  describe('crescent drop on a U-turning field', () => {
+    // streamlines are circles of any radius round (1000, 150); a seed on the r = 200 circle runs both ways round it
+    const circles = {
+      sizeM: 2000, patches: [],
+      sample: (p: Pt) => {
+        const l = Math.hypot(p.x - 1000, p.y - 150) || 1
+        const major = { x: -(p.y - 150) / l, y: (p.x - 1000) / l }
+        return { major, minor: { x: -major.y, y: major.x } }
+      },
+    } as unknown as RoadField
+    const crescent = (roadY: number) => {
+      const { terrain, irregularityAt } = setup({ landform: 'inland', river: false, lakes: false, irregularity: 0.05 })
+      const index = new RoadIndex(200)
+      index.add('X', [{ x: 0, y: roadY }, { x: 2000, y: roadY }], 'arterial')
+      return traceStreamline(circles, 'major', { at: { x: 1000, y: 350 } }, terrain, 2000, index, MAJOR, mulberry32(1), irregularityAt)
+    }
+    it('both ends land on the source road within 3 separations: dropped', () => {
+      expect(crescent(0)).toBeNull()
+    })
+    it('the same field with the road out of reach is kept (the control)', () => {
+      const r = crescent(-300)
+      expect(r).not.toBeNull()
+      expect(polylineLength(r!)).toBeGreaterThan(MAJOR.minLength)
+    })
+  })
+
   it('snaps endpoints', () => {
     const { roads, terrain, sizeM } = traceArterials()
     expect(roads.length).toBeGreaterThan(0)
