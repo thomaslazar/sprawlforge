@@ -27,8 +27,12 @@ export function joinCurve(p: Pt, dir: Pt, target: Pt, tangent: Pt, reject: (q: P
   const len = Math.hypot(target.x - p.x, target.y - p.y)
   if (len <= JOIN_SNAP) {
     const dl = len || 1, d = { x: (target.x - p.x) / dl, y: (target.y - p.y) / dl }
-    const mid = { x: (p.x + target.x) / 2, y: (p.y + target.y) / 2 }
-    return reject(mid, d) || reject(target, d) ? null : [{ x: target.x, y: target.y }]
+    const k = Math.max(3, Math.ceil(len / 10)) // every 10 m, at least 2 interior samples
+    for (let i = 1; i <= k; i++) {
+      const q = i === k ? target : { x: p.x + ((target.x - p.x) * i) / k, y: p.y + ((target.y - p.y) * i) / k }
+      if (reject(q, d)) return null
+    }
+    return [{ x: target.x, y: target.y }]
   }
   const f = tangent.x * dir.x + tangent.y * dir.y < 0 ? -1 : 1
   const t = { x: f * tangent.x, y: f * tangent.y }

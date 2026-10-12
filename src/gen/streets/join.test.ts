@@ -41,6 +41,11 @@ describe('joinCurve', () => {
     const pts = [{ x: 0, y: 0 }, ...c].filter((q, i, all) => i === 0 || Math.hypot(q.x - all[i - 1].x, q.y - all[i - 1].y) >= 1)
     expect(maxBendDeg(pts)).toBeLessThanOrEqual(15)
   })
+  it('a straight connector is sampled along the chord: a 5 m strip rejects a 40 m join', () => {
+    const strip = (q: Pt) => q.x > 8 && q.x < 13
+    expect(joinCurve({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 40, y: 0 }, { x: 0, y: 1 }, strip)).toBeNull()
+    expect(joinCurve({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 40, y: 0 }, { x: 0, y: 1 }, () => false)).toEqual([{ x: 40, y: 0 }])
+  })
   it('is null when a sample is rejected', () => {
     expect(joinCurve({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 200, y: 100 }, { x: 1, y: 0 }, (q) => q.x > 100)).toBeNull()
   })
