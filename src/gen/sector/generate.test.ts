@@ -370,8 +370,12 @@ describe('arterial bridges', () => {
 })
 
 describe('river bridges (seed 42)', () => {
-  const m = generateSector({ ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river']), seed: 42, pack: 'generic', theme: 'print' } as SectorParams)
-  const arterialBridges = m.roads.filter((r) => r.class === 'arterial' && r.bridge)
+  let m: ReturnType<typeof generateSector>
+  let arterialBridges: Road[]
+  beforeAll(() => {
+    m = generateSector({ ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river']), seed: 42, pack: 'generic', theme: 'print' } as SectorParams)
+    arterialBridges = m.roads.filter((r) => r.class === 'arterial' && r.bridge)
+  }, 300000)
   it('no road is degenerate (>= 2 points, positive length)', () => {
     for (const r of m.roads) {
       expect(r.points.length, r.id).toBeGreaterThanOrEqual(2)
