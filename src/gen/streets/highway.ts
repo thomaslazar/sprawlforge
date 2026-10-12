@@ -614,7 +614,7 @@ export function frontageRoads(highway: Road, terrain: Terrain, sizeM: number, ob
   const core = Array.from({ length: n0 + 1 }, (_, i) => pointAtT(hp, i / n0))
   // run the end tangents on past the window so the offset lines reach the edge instead of stopping short of it
   // (only at an end on the window edge: past a highway that stops at the shore there is nothing to line)
-  const onEdge = (p: Pt) => p.x < 1 || p.y < 1 || p.x > sizeM - 1 || p.y > sizeM - 1
+  const onEdge = (p: Pt) => p.x <= SPAN_TOL || p.y <= SPAN_TOL || p.x >= sizeM - SPAN_TOL || p.y >= sizeM - SPAN_TOL
   const ext = (a: Pt, b: Pt) => {
     if (!onEdge(b)) return []
     const u = normalize({ x: b.x - a.x, y: b.y - a.y })
