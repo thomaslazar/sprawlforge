@@ -1039,6 +1039,8 @@ const p1 = { ...resolveTags(['coastal','medium','dense','fringe','lively','mixed
     for (let i = 1; i < pts.length - 1; i++) {
       arc += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
       if (arc <= skipM || total - arc <= skipM) continue
+      // simplify tolerance is 1 m: legs under 1 m are noise, not bends
+      if (Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y) < 1 || Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y) < 1) continue
       const a = Math.atan2(pts[i].y - pts[i - 1].y, pts[i].x - pts[i - 1].x), b = Math.atan2(pts[i + 1].y - pts[i].y, pts[i + 1].x - pts[i].x)
       let d = Math.abs(b - a); if (d > Math.PI) d = 2 * Math.PI - d
       worst = Math.max(worst, (d * 180) / Math.PI)

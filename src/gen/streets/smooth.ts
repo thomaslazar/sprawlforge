@@ -33,7 +33,7 @@ export function smoothBends(points: Pt[], minRadius: number, pinned?: (v: Pt) =>
       const ang = a0 + (sign * theta * k) / n
       const q = { x: c.x + r * Math.cos(ang), y: c.y + r * Math.sin(ang) }
       const last = out[out.length - 1]
-      if (q.x !== last.x || q.y !== last.y) out.push(q)
+      if (Math.hypot(q.x - last.x, q.y - last.y) >= 0.5) out.push(q)
     }
   }
   out.push(points[points.length - 1])

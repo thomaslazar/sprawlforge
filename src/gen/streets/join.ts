@@ -3,7 +3,7 @@ import { RING_ID_PREFIX } from '../landmarks/place'
 import { inWater, nearWater } from '../sector/bridges'
 import type { Road, Terrain } from '../types'
 import { smoothBends } from './smooth'
-import { MAJOR, type RoadIndex } from './trace'
+import { MAJOR, PARALLEL_ANGLE, angleGapLines, type RoadIndex } from './trace'
 
 /** how far along the target road (fraction of separation) a join aims past the foot */
 export const JOIN_AHEAD = 0.5
@@ -20,7 +20,7 @@ export const JOIN_ARRIVE = (60 * Math.PI) / 180
  * (`tangent`: that road's unit direction at target, sign irrelevant), arriving from p's side. The first
  * sample is excluded (p is already on the road); null when `reject` is true for any sample.
  */
-export function joinCurve(p: Pt, dir: Pt, target: Pt, tangent: Pt, reject: (q: Pt) => boolean): Pt[] | null {
+export function joinCurve(p: Pt, dir: Pt, target: Pt, tangent: Pt, reject: (q: Pt, dirAt: Pt) => boolean): Pt[] | null {
   const len = Math.hypot(target.x - p.x, target.y - p.y)
   const f = tangent.x * dir.x + tangent.y * dir.y < 0 ? -1 : 1
   const t = { x: f * tangent.x, y: f * tangent.y }
@@ -31,19 +31,22 @@ export function joinCurve(p: Pt, dir: Pt, target: Pt, tangent: Pt, reject: (q: P
   const c2 = { x: target.x - a.x * (len / 3), y: target.y - a.y * (len / 3) }
   const m = Math.max(4, Math.ceil(len / 10))
   const out: Pt[] = []
+  let prev = p
   for (let i = 1; i <= m; i++) {
     const s = i / m, u = 1 - s
     const q = i === m ? { x: target.x, y: target.y } : {
       x: u * u * u * p.x + 3 * u * u * s * c1.x + 3 * u * s * s * c2.x + s * s * s * target.x,
       y: u * u * u * p.y + 3 * u * u * s * c1.y + 3 * u * s * s * c2.y + s * s * s * target.y,
     }
-    if (reject(q)) return null
+    const dl = Math.hypot(q.x - prev.x, q.y - prev.y) || 1
+    if (reject(q, { x: (q.x - prev.x) / dl, y: (q.y - prev.y) / dl })) return null
+    prev = q
     out.push(q)
   }
   return out
 }
 
-const END_TRY = 5
+export const END_TRY = 8
 
 /**
  * End pass: a non-ring arterial end that is still free (not on a road, the window edge or water)
@@ -83,9 +86,9 @@ export function joinFreeEnds(
       for (const c of cands.slice(0, END_TRY)) {
         // a road with both ends on one road is a hairpin
         if (index.nearestMatching(other, 6, (h) => h.id === c.id)) continue
-        const reject = (q: Pt) => inWater(terrain, q) || !inWindow(q)
+        const reject = (q: Pt, dirAt: Pt) => inWater(terrain, q) || !inWindow(q)
           || obstacles.some((r) => pointInRings(q, [r]))
-          || !!index.nearestMatching(q, 0.3 * MAJOR.separation, (h) => h.id !== road.id && h.id !== c.id && h.cls === 'arterial')
+          || !!index.nearestMatching(q, 0.3 * MAJOR.separation, (h) => h.id !== road.id && h.id !== c.id && h.cls === 'arterial' && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE)
         const curve = joinCurve(end, dir, c.at, { x: Math.cos(c.ang), y: Math.sin(c.ang) }, reject)
         if (!curve) continue
         const pinned = (v: Pt) => !!index.nearestMatching(v, 6, (h) => h.id !== road.id && h.edge < 1)

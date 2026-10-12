@@ -251,7 +251,7 @@ function clampTurn(prevDir: Pt, rawDir: Pt, maxTurn: number): Pt {
   return { x: Math.cos(a), y: Math.sin(a) }
 }
 
-function angleGapLines(a: number, b: number): number {
+export function angleGapLines(a: number, b: number): number {
   let d = Math.abs(a - b) % Math.PI
   if (d > Math.PI / 2) d = Math.PI - d
   return d
@@ -275,7 +275,7 @@ function clampToWindow(p: Pt, sizeM: number): Pt {
 
 const CROSSING_MAX_REACH = 450
 const CROSSING_SAMPLE_STEP = 10
-const PARALLEL_ANGLE = (25 * Math.PI) / 180
+export const PARALLEL_ANGLE = (25 * Math.PI) / 180
 /** a raw direction flip beyond this between two steps is a field singularity: stop, never clamp (a clamped hairpin is a U-loop) */
 const SINGULARITY_TURN = (60 * Math.PI) / 180
 /** a street may end on a near-parallel road only broadside and after a real run (a stub right beside its parent is a wedge) */
@@ -390,9 +390,9 @@ function traceHalf(
         && (foot.x - p.x) * dir.x + (foot.y - p.y) * dir.y >= 0 && (!before || hitPar.dist <= before.dist + 0.1)) {
         const sign = Math.cos(hitPar.segAngle) * dir.x + Math.sin(hitPar.segAngle) * dir.y > 0 ? 1 : -1
         const target = index.pointAlong(hitPar, sign * JOIN_AHEAD * sep)
-        const curve = joinCurve(p, dir, target, { x: Math.cos(hitPar.segAngle), y: Math.sin(hitPar.segAngle) }, (q) =>
+        const curve = joinCurve(p, dir, target, { x: Math.cos(hitPar.segAngle), y: Math.sin(hitPar.segAngle) }, (q, dirAt) =>
           inWater(terrain, q) || inObstacle(q) || q.x < 0 || q.x > sizeM || q.y < 0 || q.y > sizeM
-          || !!index.nearestMatching(q, 0.3 * sep, (h) => h.id !== hitPar.id && h.cls !== 'highway' && sameOrHigher(h.cls)))
+          || !!index.nearestMatching(q, 0.3 * sep, (h) => h.id !== hitPar.id && h.cls !== 'highway' && sameOrHigher(h.cls) && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE))
         if (curve) pts.push(...curve)
       }
       break
