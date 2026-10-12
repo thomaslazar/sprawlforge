@@ -7,15 +7,16 @@ export const SMOOTH_STEP = 10
  * Replace every polyline bend sharper than BEND_MIN by a circular fillet of
  * radius `minRadius` (shrunk so each arc takes at most half of either leg),
  * sampled every SMOOTH_STEP m. Legs are measured on the original polyline, so
- * neighbouring arcs never overlap. Endpoints and `pinned` vertices stay sharp.
+ * neighbouring arcs never overlap. Endpoints and `pinned` vertices stay sharp;
+ * `pinned` gets the tangent length t the fillet would use, since an arc starts t before its vertex.
  */
-export function smoothBends(points: Pt[], minRadius: number, pinned?: (v: Pt) => boolean): Pt[] {
+export function smoothBends(points: Pt[], minRadius: number, pinned?: (v: Pt, t: number) => boolean): Pt[] {
   if (points.length < 3) return points
   const out: Pt[] = [points[0]]
   for (let i = 1; i < points.length - 1; i++) {
     const a = points[i - 1], v = points[i], b = points[i + 1]
     const l1 = Math.hypot(v.x - a.x, v.y - a.y), l2 = Math.hypot(b.x - v.x, b.y - v.y)
-    if (l1 === 0 || l2 === 0 || pinned?.(v)) { out.push(v); continue }
+    if (l1 === 0 || l2 === 0) { out.push(v); continue }
     const d1 = { x: (v.x - a.x) / l1, y: (v.y - a.y) / l1 }
     const d2 = { x: (b.x - v.x) / l2, y: (b.y - v.y) / l2 }
     const cross = d1.x * d2.y - d1.y * d2.x
@@ -23,6 +24,7 @@ export function smoothBends(points: Pt[], minRadius: number, pinned?: (v: Pt) =>
     if (theta <= BEND_MIN) { out.push(v); continue }
     const tan = Math.tan(theta / 2)
     const t = Math.min(minRadius * tan, Math.min(l1, l2) / 2)
+    if (pinned?.(v, t)) { out.push(v); continue }
     const r = t / tan
     const s = { x: v.x - t * d1.x, y: v.y - t * d1.y }
     const sign = cross > 0 ? 1 : -1

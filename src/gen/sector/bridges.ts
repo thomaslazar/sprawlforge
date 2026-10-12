@@ -431,7 +431,7 @@ export function joinRiverStubs(roads: Road[], terrain: Terrain, sizeM: number, i
   return root.size === 0 ? roads : roads.filter((r) => !root.has(r.id)).map((r) => {
     if (points.get(r.id) === r.points) return r
     const mine = members.get(r.id)!
-    const pinned = (v: Pt) => !!index.nearestMatching(v, 6, (h) => !mine.has(h.id) && h.edge < 1)
+    const pinned = (v: Pt, t: number) => !!index.nearestMatching(v, t + 6, (h) => !mine.has(h.id) && h.edge < 1)
     return { ...r, points: smoothBends(points.get(r.id)!, 60, pinned) }
   })
 }

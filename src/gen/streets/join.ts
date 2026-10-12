@@ -104,7 +104,7 @@ export function joinFreeEnds(
             || !!index.nearestMatching(q, 0.15 * MAJOR.separation, (h) => h.id !== road.id && h.id !== c.id && h.cls === 'arterial' && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE)
           const curve = joinCurve(end, dir, c.at, { x: Math.cos(c.ang), y: Math.sin(c.ang) }, reject)
           if (!curve) continue
-          const pinned = (v: Pt) => !!index.nearestMatching(v, 6, (h) => h.id !== road.id && h.edge < 1)
+          const pinned = (v: Pt, t: number) => !!index.nearestMatching(v, t + 6, (h) => h.id !== road.id && h.edge < 1)
           const grown = smoothBends([...fwd, ...curve], 60, pinned)
           pts = atStart ? grown.reverse() : grown
           index.remove(road.id)

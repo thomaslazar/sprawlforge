@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Pt } from '../geometry'
+import { distToPolyline } from '../terrain/rivers'
 import { joinCurve, joinFreeEnds } from './join'
 import { RoadIndex } from './trace'
 import type { Road, Terrain } from '../types'
@@ -84,5 +85,14 @@ describe('joinFreeEnds', () => {
     expect(r.joined).toBeGreaterThanOrEqual(1) // B's own free ends may join too once passes repeat
     expect(near(r.roads[0].points.at(-1)!, B.points)).toBeLessThan(1)
     expect(near(C.points[0], r.roads[0].points)).toBeLessThan(6)
+  })
+  it('a road ending on the fillet leg of A stays anchored after A is re-smoothed', () => {
+    const A = road('A', [{ x: 100, y: 800 }, { x: 500, y: 800 }, { x: 500, y: 600 }]) // 90° corner, fillet starts 60 m before it
+    const C = road('C', line(480, 800, 480, 1900)) // ends on A's leg, 20 m from the corner
+    const B = road('B', line(300, 300, 700, 300))
+    const r = run([A, C, B])
+    expect(r.joined).toBeGreaterThanOrEqual(1)
+    expect(near(r.roads[0].points.at(-1)!, B.points)).toBeLessThan(1)
+    expect(distToPolyline(C.points[0], r.roads[0].points)).toBeLessThan(1)
   })
 })
