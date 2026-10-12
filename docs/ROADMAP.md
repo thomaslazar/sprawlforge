@@ -151,6 +151,11 @@ core (clipping, insetting, filling non-rectangular shapes).
 - **Infill streets are a crutch** — they split blocks the tracer leaves
   > 60 000 m² (hundreds on some seeds). The tracer should cover them.
 - **Odd 90° arterial bends** at orientation-patch seams.
+- **`trimStubs` is vertex-only** — since streamlines are simplified before
+  indexing, a tail that ends between two sparse vertices is not seen, so
+  the prune and the end pass absorb it (inflated prune count, connectors
+  grown from stubs). Sample along the polyline; a naive version cut real
+  junctions (arterials round, Task 7b item 3).
 - **`tools/streets-toy`** still runs the old two-pass streets; port to the
   current tracer or delete.
 - **`dangerouslyIgnoreUnhandledErrors`** in `vite.config.ts` hides vitest's

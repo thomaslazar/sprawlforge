@@ -88,9 +88,13 @@ road's direction at `target` (not at the foot of the walker's
 perpendicular; on a curving road the two differ). The fixed arrival angle keeps every join a
 proper T, never an acute Y merge. It is the one connector shape used
 everywhere in this spec (in-trace join, end pass, and in phase 3 the T
-end). The curve is rejected (returns null) when any sample is in water,
-inside an obstacle, outside the window, or within 0.3 × separation of a
-road of the same or higher rank other than the target.
+end). A join of 40 m or less (`JOIN_SNAP`) is a straight connector
+instead of a curve (a cubic that short dips into whatever lies beside
+it). The curve is rejected (returns null) when any sample is in water,
+inside an obstacle, outside the window, or within 0.15 × separation of
+a near-parallel arterial other than the target (a road crossing the
+connector is a junction, not a conflict; the highway is not a blocker
+here — arterials cross it anyway and `highwayCrossings` decks them).
 
 ### 3.2 In-trace join on a near-parallel road
 
@@ -129,11 +133,13 @@ within `1.5 × MAJOR.separation` (600 m) whose direction from the end is
 within 90° of the end's heading (the last 20 m of the road), excluding
 the road itself and points within 30 m of the target road's ends; try the
 §3.1 curve to it; if it succeeds, append it to the road (points,
-direction preserved). Candidates are tried nearest first, at most 5. An
-end that cannot be joined stays free and `pruneDangling` cuts it as today
-(last resort; see §7 for the expectation that it fires on no model seed).
-The index is updated after each join so later ends can join appended
-curves.
+direction preserved). Candidates are one per target road (its nearest
+segment), tried nearest first, at most 8 (`END_TRY`); a target the
+road's other end already sits on is skipped (that join would be a
+hairpin). An end that cannot be joined stays free and `pruneDangling`
+cuts it as today (last resort; see §7 for the ratchet). The index is
+updated after each join so later ends can join appended curves, and the
+pass repeats up to three times until a pass joins nothing.
 
 ### 3.5 Pipeline order (phase 1)
 
