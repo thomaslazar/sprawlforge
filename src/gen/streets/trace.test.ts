@@ -654,10 +654,16 @@ describe('arterial smoothing and singularity stop', () => {
   })
 
   it('arterials stop at a field singularity even with the turn clamp', () => {
-    const radial = field((p) => Math.atan2(2000 - p.y, 2000 - p.x))
-    const roads = run(radial, MAJOR)
+    // a radial field is a pencil of straight lines (a walker crosses its centre); a flip of the raw direction is the real singularity
+    const flip = field((p) => (p.x < 2000 ? 0 : (85 * Math.PI) / 180))
+    const roads = run(flip, MAJOR)
+    expect(MAJOR.stopAtSingularity).toBe(true)
     expect(roads.length).toBe(1)
     const pts = roads[0].points
+    // seeded at x=500: 500 m back to the window edge, the forward half stops at the flip
+    expect(Math.max(...pts.map((q) => q.x))).toBeLessThanOrEqual(2030)
+    expect(Math.max(...pts.map((q) => q.x))).toBeGreaterThanOrEqual(1970)
+    expect(polylineLength(pts)).toBeLessThan(2100)
     for (let i = 0; i < pts.length; i++)
       for (let j = i + 4; j < pts.length; j++) expect(Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y)).toBeGreaterThan(5)
   })
