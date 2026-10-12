@@ -611,3 +611,42 @@ describe('RoadIndex.remove', () => {
     idx.remove('zzz')
   })
 })
+
+describe('arterial smoothing and singularity stop', () => {
+  const dryTerrain = sampleTerrain(params({ landform: 'inland', river: false, lakes: false }), 4000)
+  const field = (f: (p: Pt) => number): RoadField => ({
+    sizeM: 4000, patches: [],
+    sample: (p) => { const a = f(p); return { major: { x: Math.cos(a), y: Math.sin(a) }, minor: { x: -Math.sin(a), y: Math.cos(a) } } },
+  })
+  const maxBendDeg = (pts: Pt[]) => {
+    let m = 0
+    for (let i = 1; i < pts.length - 1; i++) {
+      const a = Math.atan2(pts[i].y - pts[i - 1].y, pts[i].x - pts[i - 1].x)
+      const b = Math.atan2(pts[i + 1].y - pts[i].y, pts[i + 1].x - pts[i].x)
+      let d = Math.abs(b - a); if (d > Math.PI) d = 2 * Math.PI - d
+      m = Math.max(m, (d * 180) / Math.PI)
+    }
+    return m
+  }
+  const run = (f: RoadField, opts: TraceOpts) =>
+    traceLayer(f, 'major', [{ at: { x: 500, y: 2000 } }], dryTerrain, 4000, new RoadIndex(200), opts, mulberry32(1), () => 0.2, 'A', 'arterial')
+
+  it('traceLayer smooths each streamline before indexing it', () => {
+    const seam = field((p) => (p.x < 1000 ? 0 : Math.PI / 2))
+    const o = { ...MAJOR, maxTurn: undefined, stopAtSingularity: false }
+    const raw = run(seam, { ...o, smoothRadius: undefined })
+    const smooth = run(seam, o)
+    expect(smooth.length).toBe(1)
+    // 10 m legs cap each fillet to r<=5 m, so a 90° seam cannot reach <15°; it must still drop clearly
+    expect(maxBendDeg(smooth[0].points)).toBeLessThan(maxBendDeg(raw[0].points) - 10)
+  })
+
+  it('arterials stop at a field singularity even with the turn clamp', () => {
+    const radial = field((p) => Math.atan2(2000 - p.y, 2000 - p.x))
+    const roads = run(radial, MAJOR)
+    expect(roads.length).toBe(1)
+    const pts = roads[0].points
+    for (let i = 0; i < pts.length; i++)
+      for (let j = i + 4; j < pts.length; j++) expect(Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y)).toBeGreaterThan(5)
+  })
+})

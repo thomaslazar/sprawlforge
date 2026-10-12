@@ -5,6 +5,7 @@ import { inWater, nearWater } from '../sector/bridges'
 import { distToPolyline } from '../terrain/rivers'
 import type { Road, RoadClass, Terrain } from '../types'
 import type { RoadField } from './field'
+import { smoothBends } from './smooth'
 
 export const FRONTAGE_ID_PREFIX = 'F'
 
@@ -32,10 +33,14 @@ export interface TraceOpts {
   bridgeRivers?: boolean
   /** simple polygons (arcology plazas, megablock cores) no streamline may enter */
   obstacles?: Pt[][]
+  /** stop where the field direction flips (default: only when maxTurn is unset) */
+  stopAtSingularity?: boolean
+  /** fillet radius (m) for polyline bends sharper than 15° */
+  smoothRadius?: number
 }
 
-export const MAJOR: TraceOpts = { separation: 400, step: 10, maxSteps: 600, minLength: 60, jitter: 0, decay: 0, bridgeRivers: true }
-export const MINOR: TraceOpts = { separation: 100, step: 10, maxSteps: 200, minLength: 60, jitter: 0.4, decay: 0.2 }
+export const MAJOR: TraceOpts = { separation: 400, step: 10, maxSteps: 600, minLength: 60, jitter: 0, decay: 0, bridgeRivers: true, maxTurn: (15 * Math.PI) / 180, stopAtSingularity: true, smoothRadius: 60 }
+export const MINOR: TraceOpts = { separation: 100, step: 10, maxSteps: 200, minLength: 60, jitter: 0.4, decay: 0.2, smoothRadius: 25 }
 
 // highway > arterial > street > ramp
 const CLASS_RANK: Record<RoadClass, number> = { highway: 3, arterial: 2, street: 1, ramp: 0 }
@@ -290,7 +295,7 @@ function traceHalf(
   for (let i = 0; i < opts.maxSteps; i++) {
     const rawDir = rk4Dir(field, axis, p, dir, opts.step)
     // the highway (maxTurn set) is smoothed by its clamp instead
-    if (i > 0 && opts.maxTurn === undefined && Math.acos(clamp(-1, 1, dir.x * rawDir.x + dir.y * rawDir.y)) > SINGULARITY_TURN) break
+    if (i > 0 && (opts.stopAtSingularity ?? opts.maxTurn === undefined) && Math.acos(clamp(-1, 1, dir.x * rawDir.x + dir.y * rawDir.y)) > SINGULARITY_TURN) break
     const newDir = clampTurn(dir, rawDir, maxTurn)
     const next = { x: p.x + newDir.x * opts.step, y: p.y + newDir.y * opts.step }
 
@@ -577,8 +582,9 @@ export function traceLayer(
     const source = index.nearest(seed.at, SEED_SOURCE_RADIUS, () => true)
     const blocker = index.nearest(seed.at, 0.3 * opts.separation, sameOrHigher)
     if (blocker && blocker.id !== source?.id) continue
-    const points = traceStreamline(field, axis, seed, terrain, sizeM, index, opts, rng, irregularityAt, decayEnds)
-    if (!points) continue
+    const raw = traceStreamline(field, axis, seed, terrain, sizeM, index, opts, rng, irregularityAt, decayEnds)
+    if (!raw) continue
+    const points = opts.smoothRadius ? smoothBends(raw, opts.smoothRadius) : raw
     n += 1
     const id = idPrefix + String(n).padStart(3, '0')
     index.add(id, points, cls)
