@@ -68,6 +68,8 @@ export interface MatchHit { id: string; at: Pt; dist: number; segAngle: number; 
 export class RoadIndex {
   private cellSize: number
   private cells = new Map<number, Seg[]>()
+  /** road id -> keys of the buckets holding its segments, so remove() touches only those */
+  private keysById = new Map<string, Set<number>>()
 
   constructor(cellSize: number) {
     this.cellSize = cellSize
@@ -75,6 +77,8 @@ export class RoadIndex {
 
   add(id: string, points: Pt[], cls: RoadClass): void {
     const total = polylineLength(points)
+    let keys = this.keysById.get(id)
+    if (!keys) { keys = new Set(); this.keysById.set(id, keys) }
     let arc = 0
     for (let i = 1; i < points.length; i++) {
       const seg: Seg = { id, cls, a: points[i - 1], b: points[i], arc, total }
@@ -89,13 +93,17 @@ export class RoadIndex {
           let bucket = this.cells.get(key)
           if (!bucket) { bucket = []; this.cells.set(key, bucket) }
           bucket.push(seg)
+          keys.add(key)
         }
       }
     }
   }
 
   remove(id: string): void {
-    for (const [k, b] of this.cells) this.cells.set(k, b.filter((seg) => seg.id !== id))
+    const keys = this.keysById.get(id)
+    if (!keys) return
+    for (const k of keys) this.cells.set(k, this.cells.get(k)!.filter((seg) => seg.id !== id))
+    this.keysById.delete(id)
   }
 
   private forEachInRadius(p: Pt, radius: number, visit: (seg: Seg, pt: Pt, d: number, edge: number) => void): void {
