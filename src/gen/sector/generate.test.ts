@@ -898,7 +898,8 @@ describe('lakes bound blocks', () => {
 })
 
 describe('frontage', () => {
-  const cases = [{ ...base, seed: 42, landform: 'coastal', river: true }, { ...base, seed: 20, size: 2, landform: 'coastal', river: true }] as const
+  // clipper2 re-roll (v8): seed 42 no longer has a sunken stretch, seed 24 does
+  const cases = [{ ...base, seed: 24, landform: 'coastal', river: true }, { ...base, seed: 20, size: 2, landform: 'coastal', river: true }] as const
   for (const c of cases) {
     describe(`seed ${c.seed} ${c.size} km`, () => {
       let m: ReturnType<typeof generateSector>
@@ -939,7 +940,7 @@ describe('frontage', () => {
       })
 
       it('no frontage along sunken segments', () => {
-        if (c.seed === 42) expect(sunken.length).toBeGreaterThan(0) // seed 20 has none; seed 42 must exercise the check
+        if (c.seed === 24) expect(sunken.length).toBeGreaterThan(0) // seed 20 has none; seed 24 must exercise the check
         const total = polylineLength(hwPts)
         const bad: string[] = []
         for (const r of fr) {

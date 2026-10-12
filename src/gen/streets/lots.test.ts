@@ -328,7 +328,8 @@ describe('landmark blocks', () => {
 })
 
 describe('strip blocks', () => {
-  const m = generateSector({ ...base, seed: 42, size: 4, landform: 'coastal', river: true })
+  // clipper2 re-roll (v8): seed 42 no longer has a sunken stretch, seed 15 does
+  const m = generateSector({ ...base, seed: 15, size: 4, landform: 'coastal', river: true })
   it('strip blocks are packed with narrow lots facing the highway', { timeout: 120000 }, () => {
     const hws = m.roads.filter((r) => r.class === 'highway')
     const dHw = (p: Pt) => Math.min(...hws.map((r) => distToPolyline(p, r.points)))
