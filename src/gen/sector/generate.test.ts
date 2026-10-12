@@ -875,7 +875,9 @@ describe('lakes bound blocks', () => {
       const nearRing = (e: Pt) => m.terrain.water.some((poly) => poly.some((ring) => distToPolyline(e, [...ring, ring[0]].map(([x, y]) => ({ x, y }))) < 6))
       // infill chords end on the lake ring on purpose (it is the block edge); only traced streets are checked. Exact: infill ids continue the traced counter
       const traced = new Set(traceRoads(params, m.terrain, sizeM).streets.map((r) => r.id))
-      const ends = streets.filter((r) => traced.has(r.id.split('-')[0])).flatMap((r) => [r.points[0], r.points.at(-1)!]).filter(nearRing)
+      // an end welded to another road is a junction, not a stub (clipper2 re-roll (v8): S1196 ends on an arterial that hugs a lake)
+      const joined = (e: Pt, self: Road) => m.roads.some((o) => o.id !== self.id && distToPolyline(e, o.points) <= 6)
+      const ends = streets.filter((r) => traced.has(r.id.split('-')[0])).flatMap((r) => [r.points[0], r.points.at(-1)!].filter((e) => !joined(e, r))).filter(nearRing)
       expect(m.terrain.water.length).toBeGreaterThan(1) // lakes exist, so the check below is not vacuous
       expect(ends.filter((e) => isLakeShore(m.terrain, e, sizeM))).toEqual([])
       // river/sea shore stubs of >= 150 m stay: some street end sits at a river/sea shore
