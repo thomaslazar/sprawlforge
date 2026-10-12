@@ -84,7 +84,8 @@ road more steeply than 60° arrives along its own heading, so a grid T
 stays straight): with D = |target − p|, controls
 `p + dir × D/3` and `target − arrive × D/3`, sampled every 10 m (at least
 4 points). `target` is a point on the road being joined, `tangent` that
-road's direction there. The fixed arrival angle keeps every join a
+road's direction at `target` (not at the foot of the walker's
+perpendicular; on a curving road the two differ). The fixed arrival angle keeps every join a
 proper T, never an acute Y merge. It is the one connector shape used
 everywhere in this spec (in-trace join, end pass, and in phase 3 the T
 end). The curve is rejected (returns null) when any sample is in water,
@@ -136,9 +137,11 @@ curves.
 
 ### 3.5 Pipeline order (phase 1)
 
-`traceRoads`: field → highway → landmarks → frontage → arterials
+`traceRoads`: field → highway → landmarks (spoke seeds trace outward
+only: inward of a spoke is the plaza) → frontage → arterials
 (in-trace join, each streamline smoothed before it is indexed) → cross
-arterials (same) → finalize (trim stubs, simplify, truncate unlandable)
+arterials (same) → finalize (trim stubs, truncate unlandable; no second
+simplification — a road is smoothed before it is indexed, never after)
 → `joinRiverStubs` (joined roads re-smoothed, pinned) → `joinFreeEnds`
 (same) → `pruneDangling` (last resort) → streets (smoothed before
 indexing, 25 m).
@@ -258,7 +261,7 @@ attributes; `data-ramps` counts both.
   rest are the last-resort cases of §3.4 (plaza in the way, water, window
   edge, hairpin, nothing in reach). Measured at phase 1: 0–9 per seed.
 - Curvature, not angle: the clamp fixes 15° per 10 m step and the 1 m
-  simplification merges steps, so at every interior vertex (farther than
+  simplification before smoothing merges steps, so at every interior vertex (farther than
   15 m of arc from either end, shorter adjacent leg over 10 m — a kink
   shorter than that is invisible at map scale) the bend is at most
   `max(15°, 2° × shorter leg in m)` and never over 45°; ring roads (an
