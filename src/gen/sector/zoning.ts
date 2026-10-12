@@ -27,6 +27,18 @@ export function effectiveIrregularity(params: SectorParams): (p: Pt) => number {
   return (p: Pt) => clamp(0.05, 0.95, field(p) + bias)
 }
 
+// water rings as points, converted once per terrain (isShore runs per district vertex and edge midpoint)
+const waterCache = new WeakMap<Terrain, { polys: Pt[][][]; closed: Pt[][] }>()
+function waterRings(terrain: Terrain) {
+  let w = waterCache.get(terrain)
+  if (!w) {
+    const polys = terrain.water.map((waterPoly) => waterPoly.map((ring) => ring.map(([x, y]) => ({ x, y }))))
+    w = { polys, closed: polys.flat().map((ring) => [...ring, ring[0]]) }
+    waterCache.set(terrain, w)
+  }
+  return w
+}
+
 function isShore(poly: Pt[], terrain: Terrain): boolean {
   // sample the polygon's own vertices plus each edge midpoint
   const points: Pt[] = [...poly]
@@ -35,23 +47,10 @@ function isShore(poly: Pt[], terrain: Terrain): boolean {
     const b = poly[(i + 1) % poly.length]
     points.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
   }
-
+  const { polys, closed } = waterRings(terrain)
   for (const p of points) {
-    // Check if point is in water
-    for (const waterPoly of terrain.water) {
-      const rings = waterPoly.map((ring) => ring.map(([x, y]) => ({ x, y })))
-      if (pointInRings(p, rings)) return true
-    }
-    // Check if point is within SHORE_DIST of any water ring
-    for (const waterPoly of terrain.water) {
-      for (const ring of waterPoly) {
-        // Close the ring by appending the first point
-        const closedRing = [...ring, ring[0]]
-        const pts = closedRing.map(([x, y]) => ({ x, y }))
-        const dist = distToPolyline(p, pts)
-        if (dist < SHORE_DIST) return true
-      }
-    }
+    if (polys.some((rings) => pointInRings(p, rings))) return true
+    if (closed.some((ring) => distToPolyline(p, ring) < SHORE_DIST)) return true
   }
   return false
 }
