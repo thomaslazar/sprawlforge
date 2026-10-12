@@ -396,11 +396,17 @@ describe('river bridges (seed 42)', () => {
   it('no arterial bridge ends in nothing', () => {
     const idx = new RoadIndex(200)
     for (const r of m.roads) if (r.class !== 'ramp') idx.add(r.id, r.points, r.class)
-    for (const b of arterialBridges) for (const e of [b.points[0], b.points.at(-1)!])
-      expect(idx.nearestMatching(e, 20, (h) => h.id !== b.id && (h.cls === 'arterial' || h.cls === 'highway')), b.id).not.toBeNull()
+    const family = (id: string) => id.replace(/-(b?\d+)$/, '') // the deck's own dry pieces share its family
+    const sib = m.roads.filter((r) => r.class === 'arterial' && !r.bridge)
+    for (const b of arterialBridges) for (const e of [b.points[0], b.points.at(-1)!]) {
+      // an end continuing into its own dry piece is checked at that piece's far end ('no arterial dangles'); a deck that IS the road end must meet another road
+      if (sib.some((d) => family(d.id) === family(b.id) && [d.points[0], d.points.at(-1)!].some((q) => Math.hypot(q.x - e.x, q.y - e.y) < 1))) continue
+      expect(idx.nearestMatching(e, 6, (h) => family(h.id) !== family(b.id) && (h.cls === 'arterial' || h.cls === 'highway')), b.id).not.toBeNull()
+    }
   })
   it('no arterial ends on the highway', () => {
     const hw = m.roads.filter((r) => r.class === 'highway')
+    expect(hw.length).toBeGreaterThan(0)
     const S = m.meta.sizeM
     const arts = m.roads.filter((r) => r.class === 'arterial')
     const idx = new RoadIndex(200)
