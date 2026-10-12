@@ -663,10 +663,11 @@ describe('arterial smoothing and singularity stop', () => {
     it('an arterial diverging from a road does not hook back into it', () => {
       const a = (20 * Math.PI) / 180, d = { x: Math.cos(a), y: Math.sin(a) }
       const index = new RoadIndex(200)
-      index.add('X', [{ x: 0, y: 0 }, { x: 2000, y: 0 }], 'arterial')
+      index.add('X', [{ x: 0, y: 0 }, { x: 3000, y: 0 }], 'arterial')
       const f: RoadField = { sizeM: 4000, patches: [], sample: () => ({ major: d, minor: { x: -d.y, y: d.x } }) }
-      const roads = traceLayer(f, 'major', [{ at: { x: 10, y: 5 }, dir: d }], dryTerrain, 4000, index, MAJOR, mulberry32(1), () => 0.2, 'A', 'arterial')
-      for (const r of roads) expect(Math.abs(r.points[r.points.length - 1].y)).toBeGreaterThan(50)
+      const roads = traceLayer(f, 'major', [{ at: { x: 0, y: 125 }, dir: d }], dryTerrain, 4000, index, MAJOR, mulberry32(1), () => 0.2, 'A', 'arterial')
+      // the walker stops at once (foot behind it); what must not happen is a curve hooking back onto X
+      for (const r of roads) expect(r.points[r.points.length - 1].y).toBeGreaterThan(50)
     })
     it('an arterial stopped by a near-parallel arterial joins it with a curve', () => {
       const roads = joinRun(2000)
