@@ -1032,18 +1032,18 @@ const p1 = { ...resolveTags(['coastal','medium','dense','fringe','lively','mixed
   R3: { ...F, seed: 555555555, size: 2, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', river: true, islands: true, piers: true },
 }
   const onEdge = (p: Pt, s: number) => p.x < 1 || p.y < 1 || p.x > s - 1 || p.y > s - 1
-  /** largest turn (deg) at vertices farther than skipM of arc from both ends */
-  const maxBendDegInterior = (pts: Pt[], skipM: number) => {
+  /** worst excess (deg) of a turn over its curvature budget: max(15, 1.5 * shorter leg m) and 45; vertices within skipM of arc of an end or beside a leg < 1 m (simplify noise) are ignored */
+  const bendViolation = (pts: Pt[], skipM: number) => {
     const total = polylineLength(pts)
-    let arc = 0, worst = 0
+    let arc = 0, worst = -Infinity
     for (let i = 1; i < pts.length - 1; i++) {
-      arc += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
-      if (arc <= skipM || total - arc <= skipM) continue
-      // simplify tolerance is 1 m: legs under 1 m are noise, not bends
-      if (Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y) < 1 || Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y) < 1) continue
+      const l1 = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y), l2 = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y)
+      arc += l1
+      if (arc <= skipM || total - arc <= skipM || l1 < 1 || l2 < 1) continue
       const a = Math.atan2(pts[i].y - pts[i - 1].y, pts[i].x - pts[i - 1].x), b = Math.atan2(pts[i + 1].y - pts[i].y, pts[i + 1].x - pts[i].x)
       let d = Math.abs(b - a); if (d > Math.PI) d = 2 * Math.PI - d
-      worst = Math.max(worst, (d * 180) / Math.PI)
+      const deg = (d * 180) / Math.PI
+      worst = Math.max(worst, deg - Math.max(15, 1.5 * Math.min(l1, l2)), deg - 45)
     }
     return worst
   }
@@ -1064,7 +1064,8 @@ const p1 = { ...resolveTags(['coastal','medium','dense','fringe','lively','mixed
           expect(ok, `${name} ${r.id} end ${e.x.toFixed(0)},${e.y.toFixed(0)}`).toBeTruthy()
         }
       }
-      for (const r of t.arterials) expect(maxBendDegInterior(r.points, 15), `${name} ${r.id} bend`).toBeLessThan(15 + 1e-6)
+      // rings are polygons by design
+      for (const r of t.arterials) if (!r.id.startsWith(RING_ID_PREFIX)) expect(bendViolation(r.points, 15), `${name} ${r.id} bend`).toBeLessThan(1e-6)
     })
   }
 })

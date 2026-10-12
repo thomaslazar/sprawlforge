@@ -392,7 +392,7 @@ function traceHalf(
         const target = index.pointAlong(hitPar, sign * JOIN_AHEAD * sep)
         const curve = joinCurve(p, dir, target, { x: Math.cos(hitPar.segAngle), y: Math.sin(hitPar.segAngle) }, (q, dirAt) =>
           inWater(terrain, q) || inObstacle(q) || q.x < 0 || q.x > sizeM || q.y < 0 || q.y > sizeM
-          || !!index.nearestMatching(q, 0.3 * sep, (h) => h.id !== hitPar.id && h.cls !== 'highway' && sameOrHigher(h.cls) && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE))
+          || !!index.nearestMatching(q, 0.15 * sep, (h) => h.id !== hitPar.id && h.cls !== 'highway' && sameOrHigher(h.cls) && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE))
         if (curve) pts.push(...curve)
       }
       break

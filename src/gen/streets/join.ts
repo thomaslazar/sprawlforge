@@ -12,6 +12,9 @@ export const JOIN_REACH = 1.5
 /** end pass: widest angle from the end's heading to a join target */
 export const JOIN_CONE = Math.PI / 2
 
+/** a join this short (m) is a straight connector, not a cubic */
+export const JOIN_SNAP = 40
+
 /** angle at which a join curve meets the target road */
 export const JOIN_ARRIVE = (60 * Math.PI) / 180
 
@@ -22,6 +25,11 @@ export const JOIN_ARRIVE = (60 * Math.PI) / 180
  */
 export function joinCurve(p: Pt, dir: Pt, target: Pt, tangent: Pt, reject: (q: Pt, dirAt: Pt) => boolean): Pt[] | null {
   const len = Math.hypot(target.x - p.x, target.y - p.y)
+  if (len <= JOIN_SNAP) {
+    const dl = len || 1, d = { x: (target.x - p.x) / dl, y: (target.y - p.y) / dl }
+    const mid = { x: (p.x + target.x) / 2, y: (p.y + target.y) / 2 }
+    return reject(mid, d) || reject(target, d) ? null : [{ x: target.x, y: target.y }]
+  }
   const f = tangent.x * dir.x + tangent.y * dir.y < 0 ? -1 : 1
   const t = { x: f * tangent.x, y: f * tangent.y }
   let n = { x: -t.y, y: t.x }
@@ -59,6 +67,9 @@ export function joinFreeEnds(
   let joined = 0
   const inWindow = (q: Pt) => q.x >= 0 && q.y >= 0 && q.x <= sizeM && q.y <= sizeM
   const onEdge = (q: Pt) => q.x < 1 || q.y < 1 || q.x > sizeM - 1 || q.y > sizeM - 1
+  // order-dependent: an end rejected early can succeed once a neighbour has joined
+  for (let pass = 0, before = -1; pass < 3 && joined !== before; pass++) {
+  before = joined
   for (let ri = 0; ri < out.length; ri++) {
     const road = out[ri]
     if (road.class !== 'arterial' || road.id.startsWith(RING_ID_PREFIX)) continue
@@ -88,7 +99,7 @@ export function joinFreeEnds(
         if (index.nearestMatching(other, 6, (h) => h.id === c.id)) continue
         const reject = (q: Pt, dirAt: Pt) => inWater(terrain, q) || !inWindow(q)
           || obstacles.some((r) => pointInRings(q, [r]))
-          || !!index.nearestMatching(q, 0.3 * MAJOR.separation, (h) => h.id !== road.id && h.id !== c.id && h.cls === 'arterial' && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE)
+          || !!index.nearestMatching(q, 0.15 * MAJOR.separation, (h) => h.id !== road.id && h.id !== c.id && h.cls === 'arterial' && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE)
         const curve = joinCurve(end, dir, c.at, { x: Math.cos(c.ang), y: Math.sin(c.ang) }, reject)
         if (!curve) continue
         const pinned = (v: Pt) => !!index.nearestMatching(v, 6, (h) => h.id !== road.id && h.edge < 1)
@@ -101,6 +112,7 @@ export function joinFreeEnds(
         break
       }
     }
+  }
   }
   return { roads: out, joined }
 }

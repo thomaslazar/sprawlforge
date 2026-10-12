@@ -66,10 +66,10 @@ describe('joinFreeEnds', () => {
   })
   it('a road ending on A stays anchored after A is re-smoothed', () => {
     const A = road('A', [...line(100, 800, 400, 800), ...line(400, 800, 500, 700), ...line(500, 700, 600, 700)])
-    const C = road('C', line(400, 800, 400, 1100))
+    const C = road('C', line(400, 800, 400, 2000)) // ends on the window edge
     const B = road('B', line(900, 500, 900, 900))
     const r = run([A, C, B])
-    expect(r.joined).toBe(1)
+    expect(r.joined).toBeGreaterThanOrEqual(1) // B's own free ends may join too once passes repeat
     expect(near(r.roads[0].points.at(-1)!, B.points)).toBeLessThan(1)
     expect(near(C.points[0], r.roads[0].points)).toBeLessThan(6)
   })
