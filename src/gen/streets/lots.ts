@@ -378,11 +378,21 @@ function megablockHive(blockFootprint: Pt[], rng: ReturnType<typeof mulberry32>,
 export function isStripBlock(block: Block, highway: Road | undefined, frontage: Road[]): boolean {
   if (!highway || block.flags.arcology || block.flags.megablock) return false
   const cc = ringCentroid(block.footprint)
-  // the 80th-percentile vertex distance, not the centroid: a face from the highway centreline to its frontage
-  // road has its centroid right at STRIP_HALF, and on a bend it falls either side of it (one end may overshoot)
-  const ds = block.footprint.map((p) => distToPolyline(p, highway.points)).sort((a, b) => a - b)
+  // the 80th-percentile distance of the footprint resampled every 10 m, not the centroid (a face from the highway
+  // centreline to its frontage road has its centroid right at STRIP_HALF, and on a bend it falls either side) and not
+  // raw vertices (a dense near edge would outvote the far side); no vertex may stray past the frontage road by > 10 m
+  const fp = block.footprint
+  const ds: number[] = []
+  let far = 0
+  fp.forEach((p, i) => {
+    const q = fp[(i + 1) % fp.length]
+    const n = Math.max(1, Math.ceil(Math.hypot(q.x - p.x, q.y - p.y) / 10))
+    for (let k = 0; k < n; k++) ds.push(distToPolyline({ x: p.x + ((q.x - p.x) * k) / n, y: p.y + ((q.y - p.y) * k) / n }, highway.points))
+    far = Math.max(far, ds[ds.length - n])
+  })
+  ds.sort((a, b) => a - b)
   const hwDist = ds[Math.floor(0.8 * (ds.length - 1))]
-  return hwDist <= FRONTAGE_OFF + 1 && hwDist > STRIP_HALF && frontage.some((f) => distToPolyline(cc, f.points) <= FRONTAGE_OFF + 10)
+  return far <= FRONTAGE_OFF + 10 && hwDist <= FRONTAGE_OFF + 1 && hwDist > STRIP_HALF && frontage.some((f) => distToPolyline(cc, f.points) <= FRONTAGE_OFF + 10)
 }
 
 /** the landmark predicates fillLots branches on; selectCompounds uses isLandmarkBlock so it never picks a block fillLots would give to a landmark */

@@ -339,12 +339,19 @@ describe('strip blocks', () => {
       return d <= FRONTAGE_OFF + 1 && d > STRIP_HALF && !b.flags.arcology && !b.flags.megablock
     })
     const hasFr = (b: Block) => fr.some((f) => distToPolyline(ringCentroid(b.footprint), f.points) <= FRONTAGE_OFF + 10)
-    const near = nearHw.filter(hasFr)
+    // a band whose far end overshoots the frontage road by > 10 m is an ordinary block
+    const near = nearHw.filter(hasFr).filter((b) => Math.max(...b.footprint.map(dHw)) <= FRONTAGE_OFF + 10)
     expect(near.length).toBeGreaterThan(0)
     // beside a sunken stretch there is no frontage road: those blocks keep their normal style
     const sunken = nearHw.filter((b) => !hasFr(b))
     expect(sunken.length).toBeGreaterThan(0)
     for (const b of sunken) expect(b.style).not.toBe('strip')
+    // converse: nothing styled strip lies outside the distance band
+    for (const b of m.blocks.filter((x) => x.style === 'strip')) {
+      const ds = b.footprint.map((p) => dHw(p))
+      expect(Math.max(...ds)).toBeLessThanOrEqual(FRONTAGE_OFF + 10)
+      expect(dHw(ringCentroid(b.footprint))).toBeGreaterThan(0)
+    }
     for (const b of near) {
       expect(b.style).toBe('strip')
       expect(b.alleys).toEqual([])
@@ -373,6 +380,13 @@ describe('isStripBlock', () => {
     const wedge = blockOf([{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: FRONTAGE_OFF }, { x: 900, y: FRONTAGE_OFF }, { x: 0, y: 10 }])
     expect(distToPolyline(ringCentroid(wedge.footprint), hw.points)).toBeLessThan(STRIP_HALF)
     expect(isStripBlock(wedge, hw, fr)).toBe(true)
+  })
+  it('a far-side block with a dense near edge is not a strip', () => {
+    // 10 vertices along the frontage road, 2 a full block-depth further out: vertex count must not decide
+    const pts: Pt[] = []
+    for (let i = 0; i <= 9; i++) pts.push({ x: i * 100, y: FRONTAGE_OFF })
+    pts.push({ x: 1000, y: FRONTAGE_OFF + 60 }, { x: 0, y: FRONTAGE_OFF + 60 })
+    expect(isStripBlock(blockOf(pts), hw, fr)).toBe(false)
   })
   it('a block on the far side of the frontage road is not a strip', () => {
     expect(isStripBlock(blockOf(rectPoly(0, FRONTAGE_OFF, 1000, 100)), hw, fr)).toBe(false)
