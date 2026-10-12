@@ -1,4 +1,5 @@
-import polygonClipping, { type MultiPolygon, type Polygon } from 'polygon-clipping'
+import * as clip from '../clip'
+import type { MultiPolygon, Polygon } from '../clip'
 import type { Rect } from '../geometry'
 
 // fraction along the edge where the 0-contour sits, from height a to b.
@@ -9,8 +10,7 @@ const lerp0 = (a: number, b: number) => Math.min(0.999, Math.max(0.001, a / (a -
 
 // Round to a shared grid so two cells computing "the same" crossing from
 // opposite directions (t vs 1-t, see contourWater) land on bit-identical
-// coordinates — polygon-clipping's ring-matcher requires exact equality on
-// shared edges, and float rounding alone was enough to break that match.
+// coordinates, so shared edges match exactly before the clipper's 1 mm snap.
 const snap = (v: number): number => Math.round(v * 1e6) / 1e6
 
 interface Corner { x: number; y: number; h: number }
@@ -19,36 +19,18 @@ const crossing = (a: Corner, b: Corner): [number, number] => {
   return [snap(a.x + (b.x - a.x) * t), snap(a.y + (b.y - a.y) * t)]
 }
 
-// Deterministic epsilon shifts for the retry belt below — fixed sequence,
-// not random, so a retried run is still reproducible from the same seed.
-const RETRY_EPSILONS = [1e-4, -1e-4, 3e-4]
-
 /**
  * Marching squares, cell-polygon variant: for each grid cell emit the
  * below-threshold (water) sub-polygon, merge full-water runs per row into
  * strips, union everything. Robust against open contours at the window
  * border by construction — cell polygons are always closed.
- *
- * polygon-clipping's union/difference occasionally throws "unable to
- * complete output ring" on a degenerate configuration the belts above
- * don't fully rule out (e.g. near-coincident vertices from an adjacent
- * saddle). Rather than chase every such case, retry the whole pass with the
- * sample function nudged by a tiny fixed epsilon — enough to break the
- * degeneracy — up to 3 times before giving up.
  */
 export function contourWater(
   sample: (x: number, y: number) => number,
   win: Rect,
   n: number,
-  attempt = 0,
 ): { water: MultiPolygon; land: MultiPolygon } {
-  try {
-    return buildContour(sample, win, n)
-  } catch (err) {
-    if (attempt >= RETRY_EPSILONS.length) throw err
-    const eps = RETRY_EPSILONS[attempt]
-    return contourWater((x, y) => sample(x, y) + eps, win, n, attempt + 1)
-  }
+  return buildContour(sample, win, n)
 }
 
 function buildContour(
@@ -127,9 +109,9 @@ function buildContour(
   const windowPoly: Polygon = [[
     [0, 0], [win.w, 0], [win.w, win.h], [0, win.h],
   ]]
-  const water: MultiPolygon = pieces.length ? polygonClipping.union(pieces[0], ...pieces.slice(1)) : []
+  const water: MultiPolygon = pieces.length ? clip.union(pieces[0], ...pieces.slice(1)) : []
   const land: MultiPolygon = water.length
-    ? polygonClipping.difference([windowPoly], water)
+    ? clip.difference([windowPoly], water)
     : [windowPoly]
   return { water, land }
 }

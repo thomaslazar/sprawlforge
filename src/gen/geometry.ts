@@ -98,7 +98,7 @@ export function segTouchesBox(a: Pt, b: Pt, bx: Box): boolean {
 }
 
 /**
- * polygon-clipping snaps any coordinate within ~1 ulp of one it has already
+ * The old polygon-clipping snapped any coordinate within ~1 ulp of one it has already
  * seen (per axis, whatever the y of the other point). Returns a test for "does
  * a coordinate of these points sit within `tol` of any x or y of `others`":
  * when it does not, leaving `others` out of a clip cannot change the result.

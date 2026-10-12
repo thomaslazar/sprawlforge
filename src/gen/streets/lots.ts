@@ -1,4 +1,5 @@
-import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
+import * as clip from '../clip'
+import type { MultiPolygon } from '../clip'
 import { BOX_MARGIN, boxOf, bboxOf, bspSplit, makeNearTieCheck, pointInRings, segTouchesBox, simplifyPolyline, type Box, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import { fractalNoise2D } from '../terrain/noise'
@@ -53,31 +54,13 @@ function largestRing(result: MultiPolygon): Pt[] | null {
   for (const poly of result) {
     for (const r of poly) {
       const pts = r.map(([x, y]) => ({ x, y }))
-      // polygon-clipping rings are closed: drop the repeated first vertex
+      // clip rings are closed: drop the repeated first vertex
       if (pts.length > 1 && pts[0].x === pts[pts.length - 1].x && pts[0].y === pts[pts.length - 1].y) pts.pop()
       const area = Math.abs(ringArea(pts))
       if (area > bestArea) { bestArea = area; best = pts }
     }
   }
   return best
-}
-
-// polygon-clipping can throw "Unable to complete output ring" on simple but
-// numerically hard input (near-tangential crossings). Same workaround as
-// the old sector building filler: nudge the lot by a tiny epsilon and retry; if every
-// attempt throws, drop the lot rather than crash the sector.
-// ponytail: a dropped lot is silent; finer epsilon ladder if it ever shows.
-const CLIP_NUDGES = [0, 1e-6, -1e-6, 3e-6]
-
-function safeClip(lot: Pt[], run: (ring: [number, number][]) => MultiPolygon): MultiPolygon {
-  for (const eps of CLIP_NUDGES) {
-    try {
-      return run(toRing(lot).map(([x, y]) => [x + eps, y + eps] as [number, number]))
-    } catch {
-      continue
-    }
-  }
-  return []
 }
 
 /** Sutherland-Hodgman: convex `poly` clipped to the inside of edge a-b of a ring of the given winding */
@@ -169,7 +152,7 @@ function selfIntersects(r: Pt[]): boolean {
  * ponytail: no miter limit, so a very acute corner can spike far past `d` or
  * flip past the ring's center — caught below (NaN / area flip) and treated
  * as "no usable inset" rather than emitting a spike; switch to
- * polygon-clipping's own offset if the streets toy shows spikes in practice.
+ * a clipper offset if the streets toy shows spikes in practice.
  */
 export function insetRing(ring: Pt[], d: number): Pt[] | null {
   const n = ring.length
@@ -207,7 +190,7 @@ export function insetRing(ring: Pt[], d: number): Pt[] | null {
   // a ring thinner than 2d inverts through a point reflection, keeping its area sign
   if (out.some((v) => !pointInRings(v, [ring]))) return null
   // a concave ring's offset can fold over itself with every vertex still inside: feeding that
-  // to polygon-clipping crawls (seed 4280430344 coastal+river+lakes corp 0.85, 4 km)
+  // to the clipper crawls (seed 4280430344 coastal+river+lakes corp 0.85, 4 km)
   if (selfIntersects(out)) return null
   return out
 }
@@ -235,7 +218,7 @@ function subtractNoBuild(
     if (ring.some((p, i) => segTouchesBox(p, ring[(i + 1) % ring.length], box))) hit.push(k)
     else if (pointInRings({ x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 }, [ring])) return []
   }
-  // lot minus convex strips: exact half-plane cuts, no polygon-clipping call
+  // lot minus convex strips: exact half-plane cuts, no clip call
   if (hit.length > 0 && clipped.length === 1 && clipped[0].length === 1 && hit.every((k) => convexNb[k])) {
     const r0 = clipped[0][0]
     const closed = r0.length > 1 && r0[0][0] === r0[r0.length - 1][0] && r0[0][1] === r0[r0.length - 1][1]
@@ -251,13 +234,13 @@ function subtractNoBuild(
       return [[toRing(piece)]]
     }
   }
-  // near-ties would make polygon-clipping snap our coordinates to a strip's: do the real thing
+  // near-ties would make the clipper snap our coordinates to a strip's: do the real thing
   if (hit.length === 0 && !nearTie(coords)) return clipped
   // one strip at a time: a single n-ary difference over dozens of overlapping corridor rects can stall the clipper
   let cur = clipped
   for (const k of hit.length ? hit : cand) {
     if (cur.length === 0) break
-    cur = polygonClipping.difference(cur, noBuildPolys[k])
+    cur = clip.difference(cur, noBuildPolys[k])
   }
   return cur
 }
@@ -272,13 +255,13 @@ function subtractNoBuild(
 /**
  * Robust inset for the rings the edge-offset `insetRing` rejects (concave
  * blocks whose offset self-intersects): subtract a `d`-wide strip around
- * every edge with polygon-clipping. One library call per block; may split
+ * every edge with the clipper. One library call per block; may split
  * the block into several buildable pieces. Rings come back open.
  */
 export function insetByClipping(full: Pt[], d: number): Pt[][] {
-  // dense near-collinear vertices (curved streets) make polygon-clipping crawl
-  // or hang on the overlapping strips; 0.5 m is far below the inset itself
-  full = simplifyFace(full) // zero-area zig-zags (overlapping collinear edges) hang polygon-clipping
+  // dense near-collinear vertices (curved streets) make the strip
+  // difference slow; 0.5 m is far below the inset itself
+  full = simplifyFace(full) // zero-area zig-zags (overlapping collinear edges): clipping them changes the result
   const ring = simplifyPolyline([...full, full[0]], 0.5).slice(0, -1)
   const strips: [number, number][][][] = []
   for (let i = 0; i < ring.length; i++) {
@@ -291,22 +274,7 @@ export function insetByClipping(full: Pt[], d: number): Pt[][] {
     const bx = b.x + ux * d, by = b.y + uy * d
     strips.push([[[ax + nx, ay + ny], [bx + nx, by + ny], [bx - nx, by - ny], [ax - nx, ay - ny]]])
   }
-  // same nudge ladder as safeClip: translate everything, shift the result back
-  let out: MultiPolygon | null = null
-  for (const eps of CLIP_NUDGES) {
-    try {
-      const sh = ([x, y]: [number, number]): [number, number] => [x + eps, y + eps]
-      const res = polygonClipping.difference(
-        [toRing(ring).map(sh)],
-        ...strips.map((s) => s.map((r) => r.map(sh))),
-      )
-      out = res.map((poly) => poly.map((r) => r.map(([x, y]) => [x - eps, y - eps] as [number, number])))
-      break
-    } catch {
-      continue
-    }
-  }
-  if (!out) return []
+  const out = clip.difference([toRing(ring)], ...strips)
   return out.map((poly) => {
     const r = poly[0].map(([x, y]) => ({ x, y }))
     if (r.length > 1 && r[0].x === r[r.length - 1].x && r[0].y === r[r.length - 1].y) r.pop()
@@ -392,7 +360,7 @@ function megablockHive(blockFootprint: Pt[], rng: ReturnType<typeof mulberry32>,
   const cells: Pt[][] = []
   for (const r of bsp.cells) {
     const lot = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }].map((p) => rotatePt(p, theta, c))
-    const pts = largestRing(safeClip(lot, (ring) => subtract(polygonClipping.intersection([ring], [toRing(hive)]))))
+    const pts = largestRing(subtract(clip.intersection([toRing(lot)], [toRing(hive)])))
     if (pts && Math.abs(ringArea(pts)) >= MIN_BUILDING_AREA) cells.push(pts)
   }
   const cuts = bsp.cuts.map(({ axis, strip }) => {
@@ -441,7 +409,7 @@ function compoundLots(footprint: Pt[], gateToward: Pt, rng: ReturnType<typeof mu
   const ux = (edge.b.x - edge.a.x) / L
   const uy = (edge.b.y - edge.a.y) / L
   const gate: [Pt, Pt] = [{ x: m.x - (ux * COMPOUND_GATE) / 2, y: m.y - (uy * COMPOUND_GATE) / 2 }, { x: m.x + (ux * COMPOUND_GATE) / 2, y: m.y + (uy * COMPOUND_GATE) / 2 }]
-  // from the footprint, not the fence: clipping the fence's many offset vertices again can stall polygon-clipping
+  // from the footprint, not the fence: clipping the fence's many offset vertices again can stall the clipper
   const inner = insetOrLargest(footprint, 14)
   if (!inner) return null
   const theta = longestEdgeAngle(inner)
@@ -450,7 +418,7 @@ function compoundLots(footprint: Pt[], gateToward: Pt, rng: ReturnType<typeof mu
   const cells: Pt[][] = []
   for (const r of bsp.cells) {
     const lot = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }].map((p) => rotatePt(p, theta, c))
-    const pts = largestRing(safeClip(lot, (ring) => subtract(polygonClipping.intersection([ring], [toRing(inner)]))))
+    const pts = largestRing(subtract(clip.intersection([toRing(lot)], [toRing(inner)])))
     if (pts && Math.abs(ringArea(pts)) >= 400 && (2 * Math.abs(ringArea(pts))) / ringPerimeter(pts) >= COMPOUND_MIN_WIDTH) cells.push(pts)
   }
   cells.sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)))
@@ -553,7 +521,7 @@ export function fillLots(
           for (let k = 0; k < parts; k++) {
             const r = { x: r0.x + (r0.w * k) / parts, y: r0.y, w: r0.w / parts, h: r0.h }
             const lot = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }].map((p) => rotatePt(p, th, c))
-            const pts = largestRing(safeClip(lot, (ring) => sub(polygonClipping.intersection([ring], [toRing(inset)]))))
+            const pts = largestRing(sub(clip.intersection([toRing(lot)], [toRing(inset)])))
             if (!pts || Math.abs(ringArea(pts)) < MIN_BUILDING_AREA || inWater(terrain, ringCentroid(pts))) continue
             n += 1
             buildings.push({ id: `BLD${String(n).padStart(4, '0')}`, blockId: block.id, districtId: district.id, footprint: pts })
@@ -606,7 +574,7 @@ export function fillLots(
     if (style === 'courtyard') {
       const depth = 18 + 8 * rng.next()
       // a concave inset whose offset self-intersects gets a thinner band, never the clipping inset:
-      // polygon-clipping can burn 80 s throwing on such a ring (seed 42 block B1391)
+      // the clipper can burn 80 s on such a ring (seed 42 block B1391)
       const deep = [1, 0.7, 0.45].map((f) => insetRing(inset, depth * f)).find((r) => r !== null)
       inner = deep ? [deep] : []
     }
@@ -659,21 +627,19 @@ export function fillLots(
           pts = lot
         } else {
           const cut = touching === 1 ? halfPlaneClip(lot, inset[hit], inset[(hit + 1) % inset.length], insetCcw) : null
-          pts = largestRing(safeClip(lot, (ring) => {
-            const clipped: MultiPolygon = inInset ? [[ring]] : cut ? (cut.length >= 3 ? [[toRing(cut)]] : []) : polygonClipping.intersection([ring], [toRing(inset)])
-            return noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, near, convexNb, nearTie) : clipped
-          }))
+          const clipped: MultiPolygon = inInset ? [[toRing(lot)]] : cut ? (cut.length >= 3 ? [[toRing(cut)]] : []) : clip.intersection([toRing(lot)], [toRing(inset)])
+          pts = largestRing(noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, near, convexNb, nearTie) : clipped)
         }
         if (pts && notch) {
           const lp = pts
-          pts = largestRing(safeClip(lp, (ring) => polygonClipping.difference([ring], [toRing(notch)])))
+          pts = largestRing(clip.difference([toRing(lp)], [toRing(notch)]))
         }
         if (pts && inner.length) {
           // lot minus the courtyard: a lot clear of every courtyard edge is wholly in or out
           const lp = pts
           const pb = boxOf(lp)
           if (inner.some((r) => r.some((p, i) => segTouchesBox(p, r[(i + 1) % r.length], pb))))
-            pts = largestRing(safeClip(lp, (ring) => polygonClipping.difference([ring], ...inner.map((r) => [toRing(r)]))))
+            pts = largestRing(clip.difference([toRing(lp)], ...inner.map((r) => [toRing(r)])))
           else if (inner.some((r) => pointInRings(lp[0], [r]))) pts = null
         }
         if (!pts || Math.abs(ringArea(pts)) < MIN_BUILDING_AREA) continue

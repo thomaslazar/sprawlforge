@@ -1,4 +1,5 @@
-import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
+import * as clip from '../clip'
+import type { MultiPolygon } from '../clip'
 import { boxOf, makeNearTieCheck, pointInRings, ringArea, segTouchesBox, type Pt } from '../geometry'
 import type { Road, Terrain } from '../types'
 
@@ -380,8 +381,7 @@ export function isPalindromeSpan(ring: Pt[], i: number, j: number): boolean {
 }
 
 /**
- * Safety net for polygon-clipping, which hangs on overlapping collinear edges:
- * excise zero-area zig-zags (a ring that runs forward, back and forward again
+ * Excise zero-area zig-zags (a ring that runs forward, back and forward again
  * along one line), innermost first. Spans with real area and palindromic
  * filaments (cul-de-sacs, bridge streets) are never touched.
  */
@@ -425,7 +425,7 @@ export function degree4Vertices(g: PlanarGraph): Pt[] {
   return out
 }
 
-/** polygon-clipping closes its rings; ours are open (no repeated first point) */
+/** clip rings are closed; ours are open (no repeated first point) */
 function openRing(ring: Pt[]): Pt[] {
   const a = ring[0]
   const b = ring[ring.length - 1]
@@ -449,7 +449,7 @@ function largestRing(result: MultiPolygon): Pt[] | null {
 /**
  * face ∩ land; faces with no land dropped, a face split by water keeps only its largest piece.
  * A face no land edge comes near is wholly on land or wholly at sea: sea drops it, land only
- * needs polygon-clipping's own normalisation of the ring (a lone-ring union), not the
+ * needs the clipper's own normalisation of the ring (a lone-ring union), not the
  * intersection against the whole coastline.
  */
 export function clipFacesToLand(faces: Pt[][], terrain: Terrain): Array<{ poly: Pt[]; footprint: Pt[] }> {
@@ -470,19 +470,13 @@ export function clipFacesToLand(faces: Pt[][], terrain: Terrain): Array<{ poly: 
     const ring = poly.map((p) => [p.x, p.y] as [number, number])
     const box = boxOf(poly)
     let result: MultiPolygon | undefined
-    // a near-tie would make polygon-clipping snap face coordinates to the coastline's: clip for real
+    // a near-tie would snap face coordinates to the coastline's: clip for real
     if (!landEdges.some(([a, b]) => segTouchesBox(a, b, box)) && !nearTie(ring)) {
       const c = { x: (box.x0 + box.x1) / 2, y: (box.y0 + box.y1) / 2 }
       if (!landRings.some((rings) => pointInRings(c, rings))) continue
-      try { result = polygonClipping.union([ring]) } catch { result = undefined }
+      result = clip.union([ring])
     }
-    if (!result) {
-      try {
-        result = polygonClipping.intersection([ring], terrain.land)
-      } catch {
-        continue
-      }
-    }
+    result ??= clip.intersection([ring], terrain.land)
     const footprint = largestRing(result)
     if (footprint) out.push({ poly: openRing(poly), footprint })
   }

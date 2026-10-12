@@ -1,5 +1,4 @@
-import polygonClipping from 'polygon-clipping'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { pointInRings, ringArea, ringCentroid, type Pt } from '../geometry'
 import type { Block, District, SectorParams, Terrain } from '../types'
 import { selectCompounds } from '../landmarks/compounds'
@@ -287,20 +286,6 @@ describe('fillLots', () => {
 
   it('insetByClipping terminates on the seed-7 face', () => {
     expect(insetByClipping(SEED7_RING, 6).length).toBeGreaterThanOrEqual(1)
-  })
-
-  it('a clipping failure drops the lot instead of throwing', () => {
-    const block = makeBlock('D01') // corp 60 m cells on a 108 m inset: straddling lots need clipping
-    const clean = fillLots([corpDistrict], [block], base, dryTerrain, [])
-    const spy = vi.spyOn(polygonClipping, 'intersection')
-    // first clipped lot fails on the initial try and all three epsilon retries
-    for (let i = 0; i < 4; i++) spy.mockImplementationOnce(() => { throw new Error('Unable to complete output ring') })
-    try {
-      const hit = fillLots([corpDistrict], [block], base, dryTerrain, [])
-      expect(hit.length).toBe(clean.length - 1)
-    } finally {
-      spy.mockRestore()
-    }
   })
 })
 

@@ -146,7 +146,7 @@ core (clipping, insetting, filling non-rectangular shapes).
 - **Perf budget unverified** — target 4 km ≤ 1.5 s, 6 km ≤ 4 s on a laptop
   worker; never measured on real hardware. Devcontainer: 3.5-10 s / 13-28 s.
   `src/gen/sector/perf.test.ts` is red at `PERF_SLACK=1` and skipped on CI.
-  Floor: `polygon-clipping` in the lot pass and face clipping, plus tracing.
+  Floor: Clipper2 (`src/gen/clip.ts`) in the lot pass and face clipping, plus tracing.
   Measure on a laptop and profile before optimizing.
 - **Infill streets are a crutch** — they split blocks the tracer leaves
   > 60 000 m² (hundreds on some seeds). The tracer should cover them.
