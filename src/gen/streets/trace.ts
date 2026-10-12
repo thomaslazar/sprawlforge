@@ -223,10 +223,13 @@ export class RoadIndex {
     return best
   }
 
-  /** the point `arc` m along the hit road from the foot (+ toward the segment's b end), clamped to the road's ends */
-  pointAlong(hit: MatchHit, arc: number): Pt {
+  /** the point `arc` m along the hit road from the foot (+ toward the segment's b end), clamped to the road's ends, and the road's unit direction there */
+  pointAlong(hit: MatchHit, arc: number): { at: Pt; tangent: Pt } {
     const pts = this.pointsById.get(hit.id)!
-    return pointAtT(pts, clamp(0, 1, (hit.arcAtFoot + arc) / polylineLength(pts)))
+    const len = polylineLength(pts)
+    const t = clamp(0, 1, (hit.arcAtFoot + arc) / len)
+    const a = pointAtT(pts, Math.max(0, t - 1 / len)), b = pointAtT(pts, Math.min(1, t + 1 / len))
+    return { at: pointAtT(pts, t), tangent: normalize({ x: b.x - a.x, y: b.y - a.y }) }
   }
 }
 
@@ -400,8 +403,9 @@ function traceHalf(
       if (opts.bridgeRivers && hitPar.cls === 'arterial' && !isSourceAt(hitPar.id, next)
         && (foot.x - p.x) * dir.x + (foot.y - p.y) * dir.y >= 0 && approach(hitPar, p, dir) >= Math.sin(JOIN_CONVERGE) && (!before || hitPar.dist <= before.dist + 0.1)) {
         const sign = Math.cos(hitPar.segAngle) * dir.x + Math.sin(hitPar.segAngle) * dir.y > 0 ? 1 : -1
-        const target = index.pointAlong(hitPar, sign * JOIN_AHEAD * sep)
-        const curve = joinCurve(p, dir, target, { x: Math.cos(hitPar.segAngle), y: Math.sin(hitPar.segAngle) }, (q, dirAt) =>
+        // arrive at JOIN_ARRIVE to the road where the curve meets it (a curving road turns between foot and target)
+        const { at: target, tangent } = index.pointAlong(hitPar, sign * JOIN_AHEAD * sep)
+        const curve = joinCurve(p, dir, target, tangent, (q, dirAt) =>
           inWater(terrain, q) || inObstacle(q) || q.x < 0 || q.x > sizeM || q.y < 0 || q.y > sizeM
           || !!index.nearestMatching(q, 0.15 * sep, (h) => h.id !== hitPar.id && h.cls !== 'highway' && sameOrHigher(h.cls) && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE))
         if (curve) pts.push(...curve)

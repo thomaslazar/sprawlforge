@@ -697,3 +697,16 @@ describe('arterial smoothing and singularity stop', () => {
     })
   })
 })
+
+describe('RoadIndex.pointAlong', () => {
+  it('returns the road direction at the target, not at the foot', () => {
+    const index = new RoadIndex(200)
+    index.add('L', [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 300 }], 'arterial')
+    const hit = index.nearestMatching({ x: 50, y: 10 }, 20, () => true)!
+    const { at, tangent } = index.pointAlong(hit, 200)
+    expect(at.x).toBeCloseTo(100, 6)
+    expect(at.y).toBeCloseTo(150, 6)
+    expect(tangent.x).toBeCloseTo(0, 6)
+    expect(tangent.y).toBeCloseTo(1, 6)
+  })
+})
