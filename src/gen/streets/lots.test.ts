@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { pointInRings, ringArea, ringCentroid, type Pt } from '../geometry'
-import type { Block, District, SectorParams, Terrain } from '../types'
+import type { Block, District, Road, SectorParams, Terrain } from '../types'
 import { selectCompounds } from '../landmarks/compounds'
 import { generateSector } from '../sector/generate'
 import { FRONTAGE_OFF, STRIP_HALF } from './highway'
@@ -360,6 +360,22 @@ describe('strip blocks', () => {
         expect(Math.max(...u) - Math.min(...u)).toBeLessThanOrEqual(26)
       }
     }
+  })
+})
+
+describe('isStripBlock', () => {
+  const road = (id: string, y: number, cls: Road['class']): Road => ({ id, class: cls, points: [{ x: 0, y }, { x: 1000, y }], width: 9, name: null })
+  const hw = road('H1', 0, 'highway')
+  const fr = [road('F1', FRONTAGE_OFF, 'street')]
+  const blockOf = (footprint: Pt[]): Block => ({ ...makeBlock('D01'), poly: footprint, footprint })
+  it('a band from the highway to its frontage road is a strip however its centroid falls', () => {
+    // wedge: most of the area hugs the highway, so its centroid sits inside STRIP_HALF; every vertex is within FRONTAGE_OFF
+    const wedge = blockOf([{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: FRONTAGE_OFF }, { x: 900, y: FRONTAGE_OFF }, { x: 0, y: 10 }])
+    expect(distToPolyline(ringCentroid(wedge.footprint), hw.points)).toBeLessThan(STRIP_HALF)
+    expect(isStripBlock(wedge, hw, fr)).toBe(true)
+  })
+  it('a block on the far side of the frontage road is not a strip', () => {
+    expect(isStripBlock(blockOf(rectPoly(0, FRONTAGE_OFF, 1000, 100)), hw, fr)).toBe(false)
   })
 })
 

@@ -378,7 +378,10 @@ function megablockHive(blockFootprint: Pt[], rng: ReturnType<typeof mulberry32>,
 export function isStripBlock(block: Block, highway: Road | undefined, frontage: Road[]): boolean {
   if (!highway || block.flags.arcology || block.flags.megablock) return false
   const cc = ringCentroid(block.footprint)
-  const hwDist = distToPolyline(cc, highway.points)
+  // the 80th-percentile vertex distance, not the centroid: a face from the highway centreline to its frontage
+  // road has its centroid right at STRIP_HALF, and on a bend it falls either side of it (one end may overshoot)
+  const ds = block.footprint.map((p) => distToPolyline(p, highway.points)).sort((a, b) => a - b)
+  const hwDist = ds[Math.floor(0.8 * (ds.length - 1))]
   return hwDist <= FRONTAGE_OFF + 1 && hwDist > STRIP_HALF && frontage.some((f) => distToPolyline(cc, f.points) <= FRONTAGE_OFF + 10)
 }
 
