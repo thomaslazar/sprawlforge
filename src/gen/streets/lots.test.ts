@@ -1,7 +1,6 @@
-import polygonClipping from 'polygon-clipping'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { pointInRings, ringArea, ringCentroid, type Pt } from '../geometry'
-import type { Block, District, SectorParams, Terrain } from '../types'
+import type { Block, District, Road, SectorParams, Terrain } from '../types'
 import { selectCompounds } from '../landmarks/compounds'
 import { generateSector } from '../sector/generate'
 import { FRONTAGE_OFF, STRIP_HALF } from './highway'
@@ -288,20 +287,6 @@ describe('fillLots', () => {
   it('insetByClipping terminates on the seed-7 face', () => {
     expect(insetByClipping(SEED7_RING, 6).length).toBeGreaterThanOrEqual(1)
   })
-
-  it('a clipping failure drops the lot instead of throwing', () => {
-    const block = makeBlock('D01') // corp 60 m cells on a 108 m inset: straddling lots need clipping
-    const clean = fillLots([corpDistrict], [block], base, dryTerrain, [])
-    const spy = vi.spyOn(polygonClipping, 'intersection')
-    // first clipped lot fails on the initial try and all three epsilon retries
-    for (let i = 0; i < 4; i++) spy.mockImplementationOnce(() => { throw new Error('Unable to complete output ring') })
-    try {
-      const hit = fillLots([corpDistrict], [block], base, dryTerrain, [])
-      expect(hit.length).toBe(clean.length - 1)
-    } finally {
-      spy.mockRestore()
-    }
-  })
 })
 
 describe('landmark blocks', () => {
@@ -343,7 +328,8 @@ describe('landmark blocks', () => {
 })
 
 describe('strip blocks', () => {
-  const m = generateSector({ ...base, seed: 42, size: 4, landform: 'coastal', river: true })
+  // clipper2 re-roll (v8): seed 42 no longer has a sunken stretch, seed 15 does
+  const m = generateSector({ ...base, seed: 15, size: 4, landform: 'coastal', river: true })
   it('strip blocks are packed with narrow lots facing the highway', { timeout: 120000 }, () => {
     const hws = m.roads.filter((r) => r.class === 'highway')
     const dHw = (p: Pt) => Math.min(...hws.map((r) => distToPolyline(p, r.points)))
@@ -353,12 +339,19 @@ describe('strip blocks', () => {
       return d <= FRONTAGE_OFF + 1 && d > STRIP_HALF && !b.flags.arcology && !b.flags.megablock
     })
     const hasFr = (b: Block) => fr.some((f) => distToPolyline(ringCentroid(b.footprint), f.points) <= FRONTAGE_OFF + 10)
-    const near = nearHw.filter(hasFr)
+    // a band whose far end overshoots the frontage road by > 10 m is an ordinary block
+    const near = nearHw.filter(hasFr).filter((b) => Math.max(...b.footprint.map(dHw)) <= FRONTAGE_OFF + 10)
     expect(near.length).toBeGreaterThan(0)
     // beside a sunken stretch there is no frontage road: those blocks keep their normal style
     const sunken = nearHw.filter((b) => !hasFr(b))
     expect(sunken.length).toBeGreaterThan(0)
     for (const b of sunken) expect(b.style).not.toBe('strip')
+    // converse: nothing styled strip lies outside the distance band
+    for (const b of m.blocks.filter((x) => x.style === 'strip')) {
+      const ds = b.footprint.map((p) => dHw(p))
+      expect(Math.max(...ds)).toBeLessThanOrEqual(FRONTAGE_OFF + 10)
+      expect(dHw(ringCentroid(b.footprint))).toBeGreaterThan(0)
+    }
     for (const b of near) {
       expect(b.style).toBe('strip')
       expect(b.alleys).toEqual([])
@@ -374,6 +367,29 @@ describe('strip blocks', () => {
         expect(Math.max(...u) - Math.min(...u)).toBeLessThanOrEqual(26)
       }
     }
+  })
+})
+
+describe('isStripBlock', () => {
+  const road = (id: string, y: number, cls: Road['class']): Road => ({ id, class: cls, points: [{ x: 0, y }, { x: 1000, y }], width: 9, name: null })
+  const hw = road('H1', 0, 'highway')
+  const fr = [road('F1', FRONTAGE_OFF, 'street')]
+  const blockOf = (footprint: Pt[]): Block => ({ ...makeBlock('D01'), poly: footprint, footprint })
+  it('a band from the highway to its frontage road is a strip however its centroid falls', () => {
+    // wedge: most of the area hugs the highway, so its centroid sits inside STRIP_HALF; every vertex is within FRONTAGE_OFF
+    const wedge = blockOf([{ x: 0, y: 0 }, { x: 1000, y: 0 }, { x: 1000, y: FRONTAGE_OFF }, { x: 900, y: FRONTAGE_OFF }, { x: 0, y: 10 }])
+    expect(distToPolyline(ringCentroid(wedge.footprint), hw.points)).toBeLessThan(STRIP_HALF)
+    expect(isStripBlock(wedge, hw, fr)).toBe(true)
+  })
+  it('a far-side block with a dense near edge is not a strip', () => {
+    // 10 vertices along the frontage road, 2 a full block-depth further out: vertex count must not decide
+    const pts: Pt[] = []
+    for (let i = 0; i <= 9; i++) pts.push({ x: i * 100, y: FRONTAGE_OFF })
+    pts.push({ x: 1000, y: FRONTAGE_OFF + 60 }, { x: 0, y: FRONTAGE_OFF + 60 })
+    expect(isStripBlock(blockOf(pts), hw, fr)).toBe(false)
+  })
+  it('a block on the far side of the frontage road is not a strip', () => {
+    expect(isStripBlock(blockOf(rectPoly(0, FRONTAGE_OFF, 1000, 100)), hw, fr)).toBe(false)
   })
 })
 
@@ -435,6 +451,17 @@ describe('compound geometry edge cases', () => {
     expect(r.buildings.length).toBeGreaterThanOrEqual(2)
     // gate faces the toward point: the edge along y = 4
     expect(Math.abs(r.compounds[0].gate[0].y - 4)).toBeLessThan(1)
+  })
+  it('a compound whose centre would sit in water is not made', () => {
+    // C-shaped block: the fence centroid (110, 120) falls in the bay between the arms
+    const C = [[0, 0], [240, 0], [240, 80], [60, 80], [60, 160], [240, 160], [240, 240], [0, 240]].map(([x, y]) => ({ x, y }))
+    const block: Block = { ...makeBlock('D01'), poly: C, footprint: C }
+    const bay: Terrain = { ...dryTerrain, water: [[[[60, 80], [240, 80], [240, 160], [60, 160]]]] }
+    const dry = fillLotsFull([corpDistrict], [block], base, dryTerrain, [], undefined, undefined, undefined, [], pick(block.id, 0, 0))
+    expect(dry.compounds.length).toBe(1) // without the bay it is a valid compound
+    const wet = fillLotsFull([corpDistrict], [block], base, bay, [], undefined, undefined, undefined, [], pick(block.id, 0, 0))
+    expect(wet.compounds).toEqual([])
+    expect(wet.blocks[0].style).not.toBe('compound')
   })
   it('a block too small for 2 buildings stays a normal block', () => {
     const r = run(rectPoly(0, 0, 60, 60))

@@ -8,9 +8,11 @@ export function valueNoise2D(seed: number): (x: number, y: number) => number {
   // (x,y) samples). Memoize per noise instance — a 128² sample touches at
   // most ~17k distinct lattice points per octave, so the cache stays small;
   // nothing is ever evicted.
-  const cache = new Map<string, number>()
+  // Numeric key: collision-free for |ix|, |iy| < 2^20 (a lattice index is world
+  // metres / noise scale * octave frequency: at most ~1e5 for a 6 km window).
+  const cache = new Map<number, number>()
   const latticeValue = (ix: number, iy: number): number => {
-    const key = `${ix},${iy}`
+    const key = (ix + 1048576) * 2097152 + (iy + 1048576)
     let v = cache.get(key)
     if (v === undefined) {
       v = mulberry32(hashSeed(seed, ix, iy)).next()

@@ -875,7 +875,9 @@ describe('lakes bound blocks', () => {
       const nearRing = (e: Pt) => m.terrain.water.some((poly) => poly.some((ring) => distToPolyline(e, [...ring, ring[0]].map(([x, y]) => ({ x, y }))) < 6))
       // infill chords end on the lake ring on purpose (it is the block edge); only traced streets are checked. Exact: infill ids continue the traced counter
       const traced = new Set(traceRoads(params, m.terrain, sizeM).streets.map((r) => r.id))
-      const ends = streets.filter((r) => traced.has(r.id.split('-')[0])).flatMap((r) => [r.points[0], r.points.at(-1)!]).filter(nearRing)
+      // an end welded to another road is a junction, not a stub (clipper2 re-roll (v8): S1196 ends on an arterial that hugs a lake)
+      const joined = (e: Pt, self: Road) => m.roads.some((o) => o.id !== self.id && distToPolyline(e, o.points) <= 6)
+      const ends = streets.filter((r) => traced.has(r.id.split('-')[0])).flatMap((r) => [r.points[0], r.points.at(-1)!].filter((e) => !joined(e, r))).filter(nearRing)
       expect(m.terrain.water.length).toBeGreaterThan(1) // lakes exist, so the check below is not vacuous
       expect(ends.filter((e) => isLakeShore(m.terrain, e, sizeM))).toEqual([])
       // river/sea shore stubs of >= 150 m stay: some street end sits at a river/sea shore
@@ -898,7 +900,8 @@ describe('lakes bound blocks', () => {
 })
 
 describe('frontage', () => {
-  const cases = [{ ...base, seed: 42, landform: 'coastal', river: true }, { ...base, seed: 20, size: 2, landform: 'coastal', river: true }] as const
+  // clipper2 re-roll (v8): seed 42 no longer has a sunken stretch, seed 24 does
+  const cases = [{ ...base, seed: 24, landform: 'coastal', river: true }, { ...base, seed: 20, size: 2, landform: 'coastal', river: true }] as const
   for (const c of cases) {
     describe(`seed ${c.seed} ${c.size} km`, () => {
       let m: ReturnType<typeof generateSector>
@@ -939,7 +942,7 @@ describe('frontage', () => {
       })
 
       it('no frontage along sunken segments', () => {
-        if (c.seed === 42) expect(sunken.length).toBeGreaterThan(0) // seed 20 has none; seed 42 must exercise the check
+        if (c.seed === 24) expect(sunken.length).toBeGreaterThan(0) // seed 20 has none; seed 24 must exercise the check
         const total = polylineLength(hwPts)
         const bad: string[] = []
         for (const r of fr) {

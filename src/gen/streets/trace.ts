@@ -59,7 +59,10 @@ function towards(v: Pt, ref: Pt): Pt {
   return v.x * ref.x + v.y * ref.y < 0 ? { x: -v.x, y: -v.y } : v
 }
 
-interface Seg { id: string; cls: RoadClass; a: Pt; b: Pt; arc: number; total: number }
+interface Seg { id: string; cls: RoadClass; a: Pt; b: Pt; arc: number; total: number; x0: number; x1: number; y0: number; y1: number }
+
+/** a segment whose bbox is further than this beyond the query radius can't be a hit; the slack only covers float rounding */
+const BBOX_SLACK = 1e-6
 
 /** a nearestMatching hit; `edge` = arc distance (m) from the hit point to the nearer end of its road */
 export interface MatchHit { id: string; at: Pt; dist: number; segAngle: number; cls: RoadClass; edge: number }
@@ -68,6 +71,8 @@ export interface MatchHit { id: string; at: Pt; dist: number; segAngle: number; 
 export class RoadIndex {
   private cellSize: number
   private cells = new Map<number, Seg[]>()
+  /** road id -> keys of the buckets holding its segments, so remove() touches only those */
+  private keysById = new Map<string, Set<number>>()
 
   constructor(cellSize: number) {
     this.cellSize = cellSize
@@ -75,9 +80,15 @@ export class RoadIndex {
 
   add(id: string, points: Pt[], cls: RoadClass): void {
     const total = polylineLength(points)
+    let keys = this.keysById.get(id)
+    if (!keys) { keys = new Set(); this.keysById.set(id, keys) }
     let arc = 0
     for (let i = 1; i < points.length; i++) {
-      const seg: Seg = { id, cls, a: points[i - 1], b: points[i], arc, total }
+      const a = points[i - 1], b = points[i]
+      const seg: Seg = {
+        id, cls, a, b, arc, total,
+        x0: Math.min(a.x, b.x), x1: Math.max(a.x, b.x), y0: Math.min(a.y, b.y), y1: Math.max(a.y, b.y),
+      }
       arc += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y)
       const cx0 = Math.floor(Math.min(seg.a.x, seg.b.x) / this.cellSize)
       const cx1 = Math.floor(Math.max(seg.a.x, seg.b.x) / this.cellSize)
@@ -89,13 +100,28 @@ export class RoadIndex {
           let bucket = this.cells.get(key)
           if (!bucket) { bucket = []; this.cells.set(key, bucket) }
           bucket.push(seg)
+          keys.add(key)
         }
       }
     }
   }
 
   remove(id: string): void {
-    for (const [k, b] of this.cells) this.cells.set(k, b.filter((seg) => seg.id !== id))
+    const keys = this.keysById.get(id)
+    if (!keys) return
+    for (const k of keys) this.cells.set(k, this.cells.get(k)!.filter((seg) => seg.id !== id))
+    this.keysById.delete(id)
+  }
+
+  has(id: string): boolean {
+    return this.keysById.has(id)
+  }
+
+  /** add the id of every road with a segment within `reach` m of segment a-b (sampled every 4 m, so the query radius is padded by 2 m) */
+  markNear(a: Pt, b: Pt, reach: number, out: Set<string>): void {
+    const visit = (seg: Seg) => { out.add(seg.id) }
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 4))
+    for (let k = 0; k <= n; k++) this.forEachInRadius({ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n }, reach + 2, visit)
   }
 
   private forEachInRadius(p: Pt, radius: number, visit: (seg: Seg, pt: Pt, d: number, edge: number) => void): void {
@@ -103,11 +129,14 @@ export class RoadIndex {
     const cx1 = Math.floor((p.x + radius) / this.cellSize)
     const cy0 = Math.floor((p.y - radius) / this.cellSize)
     const cy1 = Math.floor((p.y + radius) / this.cellSize)
+    const lim = radius + BBOX_SLACK
     for (let cx = cx0; cx <= cx1; cx++) {
       for (let cy = cy0; cy <= cy1; cy++) {
         const bucket = this.cells.get(cx * 100003 + cy)
         if (!bucket) continue
-        for (const seg of bucket) {
+        for (let i = 0; i < bucket.length; i++) {
+          const seg = bucket[i]
+          if (p.x < seg.x0 - lim || p.x > seg.x1 + lim || p.y < seg.y0 - lim || p.y > seg.y1 + lim) continue
           // nearest point on the segment; only allocate the point for hits
           const abx = seg.b.x - seg.a.x
           const aby = seg.b.y - seg.a.y
@@ -128,12 +157,37 @@ export class RoadIndex {
   nearest(
     p: Pt, radius: number, filter?: (cls: RoadClass) => boolean,
   ): { id: string; at: Pt; dist: number; segAngle: number; edge: number } | null {
+    // same scan as forEachInRadius, inlined so a hit is only allocated when it becomes the best (and no closure per call)
     let best: { id: string; at: Pt; dist: number; segAngle: number; edge: number } | null = null
-    this.forEachInRadius(p, radius, (seg, pt, d, edge) => {
-      if (filter && !filter(seg.cls)) return
-      if (!best || d < best.dist)
-        best = { id: seg.id, at: pt, dist: d, segAngle: Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x), edge }
-    })
+    let bestD = Infinity
+    const cx0 = Math.floor((p.x - radius) / this.cellSize)
+    const cx1 = Math.floor((p.x + radius) / this.cellSize)
+    const cy0 = Math.floor((p.y - radius) / this.cellSize)
+    const cy1 = Math.floor((p.y + radius) / this.cellSize)
+    const lim = radius + BBOX_SLACK
+    for (let cx = cx0; cx <= cx1; cx++) {
+      for (let cy = cy0; cy <= cy1; cy++) {
+        const bucket = this.cells.get(cx * 100003 + cy)
+        if (!bucket) continue
+        for (let i = 0; i < bucket.length; i++) {
+          const seg = bucket[i]
+          if (p.x < seg.x0 - lim || p.x > seg.x1 + lim || p.y < seg.y0 - lim || p.y > seg.y1 + lim) continue
+          if (filter && !filter(seg.cls)) continue
+          const abx = seg.b.x - seg.a.x
+          const aby = seg.b.y - seg.a.y
+          const len2 = abx * abx + aby * aby || 1
+          const t = clamp(0, 1, ((p.x - seg.a.x) * abx + (p.y - seg.a.y) * aby) / len2)
+          const qx = seg.a.x + t * abx
+          const qy = seg.a.y + t * aby
+          const d = Math.hypot(p.x - qx, p.y - qy)
+          if (d <= radius && d < bestD) {
+            const at = seg.arc + t * Math.sqrt(len2)
+            bestD = d
+            best = { id: seg.id, at: { x: qx, y: qy }, dist: d, segAngle: Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x), edge: Math.min(at, seg.total - at) }
+          }
+        }
+      }
+    }
     return best
   }
 
@@ -559,11 +613,24 @@ export interface PruneOpts {
  * remainder under `minLength`, drops the road. `index` must hold every road
  * (incl. `roads`) and is kept in sync as roads are cut; repeats until stable
  * (a cut can un-anchor a neighbour), max 10 passes. Only changed roads are new objects.
+ * Pass 0 checks every road; later passes re-check only roads a change could have affected: those with a segment
+ * within 2 * weld of the geometry that changed (a check reads the index within `weld` of its polyline, and the
+ * `edge` of a hit segment, which moves when its road is cut, reaches `weld` further), plus the cut road itself.
  */
 export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain, sizeM: number, opts: PruneOpts): Road[] {
   const weld = opts.weld ?? 6
   const exempt = opts.exemptPrefixes ?? [RING_ID_PREFIX, FRONTAGE_ID_PREFIX]
   const onEdge = (p: Pt) => p.x < 1 || p.y < 1 || p.x > sizeM - 1 || p.y > sizeM - 1
+  const dirty = new Set<string>()
+  // old/new polylines differ only in segments whose endpoints are not both shared (cuts keep point refs)
+  const markChange = (old: Pt[], neu: Pt[]) => {
+    for (const [a, b] of [[old, neu], [neu, old]]) {
+      const other = new Set(b)
+      for (let i = 1; i < a.length; i++) {
+        if (!other.has(a[i - 1]) || !other.has(a[i])) index.markNear(a[i - 1], a[i], 2 * weld, dirty)
+      }
+    }
+  }
   let cur = roads
   for (let pass = 0; pass < 10; pass++) {
     let changed = false
@@ -572,6 +639,7 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
       // F roads end on water, obstacles or the window by construction
       // K roads are never pruned: a closed ring has no ends, an open half ring ends on its end spokes
       if (exempt.some((x) => r.id.startsWith(x))) { next.push(r); continue }
+      if (!dirty.delete(r.id) && pass > 0 && index.has(r.id)) { next.push(r); continue }
       const near = (p: Pt, anyEnd = false) => index.nearestMatching(p, weld, (h) => h.id !== r.id && opts.accept(h.cls) && (anyEnd || !opts.interiorOnly || h.edge >= weld))
       let pts = r.points
       let dead = false
@@ -610,11 +678,14 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
         pts = fromEnd ? kept.reverse() : kept
       }
       if (dead || (pts !== r.points && polylineLength(pts) < opts.minLength)) {
+        markChange(r.points, [])
         index.remove(r.id); changed = true; continue
       }
       if (pts !== r.points) {
         const nr = { ...r, points: pts }
+        markChange(r.points, pts)
         index.remove(r.id); index.add(r.id, pts, r.class)
+        dirty.add(r.id)
         next.push(nr); changed = true
       } else next.push(r)
     }

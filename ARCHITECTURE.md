@@ -106,9 +106,8 @@ and patch sizing so planned-grid quarters flow into organic ones spatially.
 Marked with greppable `ponytail:` comments at the site — the ledger of
 known shortcuts (river corridor constant width, islet moat overlaps,
 label-width estimates, silent lot drops, …). One structural one:
-`polygon-clipping` throws on numerically hard input, so lot clipping goes
-through a fixed-epsilon retry wrapper (`safeClip` in `streets/lots.ts`)
-and drops the lot if every attempt throws.
+all polygon clipping goes through `src/gen/clip.ts` (clipper2-js on a 1 mm grid;
+it never throws, but its output rings need the adapter's cleanup).
 
 ## Tunables (where knobs live)
 

@@ -201,6 +201,8 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
           if (best) r.points[end] = best
         }
       }
+      // welding can pull both ends of a short piece onto the same neighbour: a piece left shorter than a cut may be (add's 5 m) goes
+      for (let i = pieces.length - 1; i >= 0; i--) if (Math.hypot(pieces[i].points[1].x - pieces[i].points[0].x, pieces[i].points[1].y - pieces[i].points[0].y) <= 5) pieces.splice(i, 1)
       // loose ends were run on above: one that now reaches into a core goes
       for (let i = pieces.length - 1; i >= 0; i--) if (inCore(pieces[i].points[0], pieces[i].points[1])) pieces.splice(i, 1)
       // a piece must be anchored at both ends (another piece, or the face ring away from the highway); dead ends go

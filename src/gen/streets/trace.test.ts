@@ -589,3 +589,25 @@ describe('obstacles', () => {
     expect(kept.some((s) => pointInRings(s.at, [square]))).toBe(false)
   })
 })
+
+describe('RoadIndex.remove', () => {
+  const line = (y: number): Pt[] => [{ x: 0, y }, { x: 500, y }]
+  const build = (ids: string[]) => {
+    const idx = new RoadIndex(200)
+    for (const id of ids) idx.add(id, id === 'a' ? line(0) : id === 'b' ? line(0) : line(30), 'street')
+    return idx
+  }
+  const probe = (idx: RoadIndex) => [
+    ...[{ x: 10, y: 5 }, { x: 250, y: 0 }, { x: 450, y: 20 }].map((p) => [idx.nearest(p, 100), idx.nearestMatching(p, 100, () => true)]),
+  ]
+  it('matches a fresh index, keeping tie order (a and b overlap exactly)', () => {
+    const idx = build(['a', 'b', 'c'])
+    idx.remove('b')
+    expect(probe(idx)).toEqual(probe(build(['a', 'c'])))
+    idx.add('b', line(0), 'street')
+    expect(probe(idx)).toEqual(probe(build(['a', 'c', 'b'])))
+    idx.remove('a')
+    expect(probe(idx)).toEqual(probe(build(['c', 'b'])))
+    idx.remove('zzz')
+  })
+})
