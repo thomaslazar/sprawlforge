@@ -8,15 +8,15 @@ import type { RoadIndex } from './trace'
 /** how far along the target road (fraction of separation) a join aims past the foot */
 export const JOIN_AHEAD = 0.5
 /** end pass: how far (fraction of separation) a dangling end may reach for a road to join */
-export const JOIN_REACH = 1.5
+const JOIN_REACH = 1.5
 /** end pass: widest angle from the end's heading to a join target */
-export const JOIN_CONE = Math.PI / 2
+const JOIN_CONE = Math.PI / 2
 
 /** a join this short (m) is a straight connector, not a cubic */
-export const JOIN_SNAP = 40
+const JOIN_SNAP = 40
 
 /** angle at which a join curve meets the target road */
-export const JOIN_ARRIVE = (60 * Math.PI) / 180
+const JOIN_ARRIVE = (60 * Math.PI) / 180
 
 /**
  * Cubic Bezier from p, leaving along dir, ending exactly on target at JOIN_ARRIVE to the target road
@@ -60,7 +60,7 @@ export function joinCurve(p: Pt, dir: Pt, target: Pt, tangent: Pt, reject: (q: P
   return out
 }
 
-export const END_TRY = 8
+const END_TRY = 8
 
 /**
  * End pass: a non-ring arterial end that is still free (not on a road, the window edge or water)

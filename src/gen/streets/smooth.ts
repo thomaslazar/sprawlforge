@@ -1,7 +1,7 @@
 import type { Pt } from '../geometry'
 
-export const BEND_MIN = (15 * Math.PI) / 180
-export const SMOOTH_STEP = 10
+const BEND_MIN = (15 * Math.PI) / 180
+const SMOOTH_STEP = 10
 
 /**
  * Replace every polyline bend sharper than BEND_MIN by a circular fillet of
