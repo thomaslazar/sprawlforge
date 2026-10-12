@@ -79,7 +79,9 @@ arterials (`opts.bridgeRivers`): a walker that would stop joins instead.
 `joinCurve(p, dir, target, tangent)` in a new module
 `src/gen/streets/join.ts`: a cubic Bézier from `p` leaving along `dir`
 to `target`, arriving at 60° to the road (from `p`'s side, continuing in
-the travel direction along the road): with D = |target − p|, controls
+the travel direction along the road; a walker already heading into the
+road more steeply than 60° arrives along its own heading, so a grid T
+stays straight): with D = |target − p|, controls
 `p + dir × D/3` and `target − arrive × D/3`, sampled every 10 m (at least
 4 points). `target` is a point on the road being joined, `tangent` that
 road's direction there. The fixed arrival angle keeps every join a
@@ -98,7 +100,9 @@ ahead of the foot in the walker's travel direction (clamped to the road's
 end), the curve from §3.1 is appended, and the half ends on the target. If
 the curve is rejected the walker stops as today (the end pass handles it).
 The walker joins only a road it is converging on (foot ahead, distance
-not growing since the last step), never one it is leaving. An arterial
+not growing since the last step, heading into the road's line at 5° or
+more), never one it is leaving and never an exactly parallel neighbour (a
+planned grid: the walker stops as before). An arterial
 whose two ends land on the same road and that is shorter than 3 ×
 separation is a crescent (a U-turn that joined back): dropped in
 `traceStreamline`. Streets (`!opts.bridgeRivers`) keep the existing

@@ -280,8 +280,17 @@ export const PARALLEL_ANGLE = (25 * Math.PI) / 180
 const SINGULARITY_TURN = (60 * Math.PI) / 180
 /** a street may end on a near-parallel road only broadside and after a real run (a stub right beside its parent is a wedge) */
 const JOIN_MIN_ANGLE = (60 * Math.PI) / 180
+/** an arterial joins a near-parallel road only when heading into it at least this steeply: a parallel neighbour (planned grid) is not converging */
+const JOIN_CONVERGE = (5 * Math.PI) / 180
 /** an arterial with both ends on the same road is a crescent when shorter than this many separations: dropped */
 const CRESCENT_MAX = 3
+
+/** how steeply (sine of the angle) a walker at p heading dir closes on the hit road's line: <= 0 parallel or leaving */
+function approach(hit: MatchHit, p: Pt, dir: Pt): number {
+  let nx = -Math.sin(hit.segAngle), ny = Math.cos(hit.segAngle)
+  if (nx * (p.x - hit.at.x) + ny * (p.y - hit.at.y) < 0) { nx = -nx; ny = -ny }
+  return -(nx * dir.x + ny * dir.y)
+}
 
 function traceHalf(
   field: RoadField, axis: 'major' | 'minor', start: Pt, initDir: Pt,
@@ -387,7 +396,7 @@ function traceHalf(
       const before = opts.bridgeRivers ? index.nearestMatching(p, 0.7 * sep, (h) => h.id === hitPar.id) : null
       // only onto an arterial: a frontage road (class street) is indexed before the arterials and must stop, not catch, a walker
       if (opts.bridgeRivers && hitPar.cls === 'arterial' && !isSourceAt(hitPar.id, next)
-        && (foot.x - p.x) * dir.x + (foot.y - p.y) * dir.y >= 0 && (!before || hitPar.dist <= before.dist + 0.1)) {
+        && (foot.x - p.x) * dir.x + (foot.y - p.y) * dir.y >= 0 && approach(hitPar, p, dir) >= Math.sin(JOIN_CONVERGE) && (!before || hitPar.dist <= before.dist + 0.1)) {
         const sign = Math.cos(hitPar.segAngle) * dir.x + Math.sin(hitPar.segAngle) * dir.y > 0 ? 1 : -1
         const target = index.pointAlong(hitPar, sign * JOIN_AHEAD * sep)
         const curve = joinCurve(p, dir, target, { x: Math.cos(hitPar.segAngle), y: Math.sin(hitPar.segAngle) }, (q, dirAt) =>

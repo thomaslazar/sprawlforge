@@ -663,12 +663,17 @@ describe('arterial smoothing and singularity stop', () => {
   })
 
   describe('arterial join', () => {
-    const joinRun = (xEnd: number) => {
+    // the walker converges on X at `deg` (0 = exactly parallel)
+    const joinRun = (xEnd: number, deg = 10) => {
       const index = new RoadIndex(200)
       index.add('X', [{ x: 0, y: 150 }, { x: xEnd, y: 150 }], 'arterial')
-      const f: RoadField = { sizeM: 4000, patches: [], sample: () => ({ major: { x: 1, y: 0 }, minor: { x: 0, y: 1 } }) }
-      return traceLayer(f, 'major', [{ at: { x: 100, y: 0 }, dir: { x: 1, y: 0 } }], dryTerrain, 4000, index, MAJOR, mulberry32(1), () => 0.2, 'A', 'arterial')
+      const a = (deg * Math.PI) / 180, d = { x: Math.cos(a), y: Math.sin(a) }
+      const f: RoadField = { sizeM: 4000, patches: [], sample: () => ({ major: d, minor: { x: -d.y, y: d.x } }) }
+      return traceLayer(f, 'major', [{ at: { x: 100, y: 0 }, dir: d }], dryTerrain, 4000, index, MAJOR, mulberry32(1), () => 0.2, 'A', 'arterial')
     }
+    it('an arterial beside an exactly parallel arterial does not join it (a planned grid stays straight)', () => {
+      for (const r of joinRun(2000, 0)) expect(Math.abs(r.points[r.points.length - 1].y - 150)).toBeGreaterThan(50)
+    })
     it('an arterial diverging from a road does not hook back into it', () => {
       const a = (20 * Math.PI) / 180, d = { x: Math.cos(a), y: Math.sin(a) }
       const index = new RoadIndex(200)

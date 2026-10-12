@@ -28,6 +28,10 @@ describe('joinCurve', () => {
     const a = c.at(-2)!, b = c.at(-1)!
     expect(Math.abs((Math.atan2(Math.abs(b.y - a.y), b.x - a.x) * 180) / Math.PI - 60)).toBeLessThan(2)
   })
+  it('a walker heading into the road more steeply than 60° keeps its heading (a grid T is straight)', () => {
+    const c = joinCurve({ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 0, y: 200 }, { x: 1, y: 0 }, () => false)!
+    for (const q of c) expect(Math.abs(q.x)).toBeLessThan(1e-9)
+  })
   it('is null when a sample is rejected', () => {
     expect(joinCurve({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 200, y: 100 }, { x: 1, y: 0 }, (q) => q.x > 100)).toBeNull()
   })

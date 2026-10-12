@@ -34,7 +34,9 @@ export function joinCurve(p: Pt, dir: Pt, target: Pt, tangent: Pt, reject: (q: P
   const t = { x: f * tangent.x, y: f * tangent.y }
   let n = { x: -t.y, y: t.x }
   if (n.x * (p.x - target.x) + n.y * (p.y - target.y) < 0) n = { x: -n.x, y: -n.y }
-  const a = { x: t.x * Math.cos(JOIN_ARRIVE) - n.x * Math.sin(JOIN_ARRIVE), y: t.y * Math.cos(JOIN_ARRIVE) - n.y * Math.sin(JOIN_ARRIVE) }
+  // a walker already heading into the road more steeply than JOIN_ARRIVE keeps its own heading (a grid T stays straight)
+  const a = -(n.x * dir.x + n.y * dir.y) > Math.sin(JOIN_ARRIVE) ? dir
+    : { x: t.x * Math.cos(JOIN_ARRIVE) - n.x * Math.sin(JOIN_ARRIVE), y: t.y * Math.cos(JOIN_ARRIVE) - n.y * Math.sin(JOIN_ARRIVE) }
   const c1 = { x: p.x + dir.x * (len / 3), y: p.y + dir.y * (len / 3) }
   const c2 = { x: target.x - a.x * (len / 3), y: target.y - a.y * (len / 3) }
   const m = Math.max(4, Math.ceil(len / 10))
