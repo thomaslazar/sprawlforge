@@ -1,4 +1,4 @@
-import { bboxOf, pointAtT, pointInRings, polylineLength, ringsContainsFn, segmentCrossesPolyline, slicePolyline, type Pt } from '../geometry'
+import { bboxOf, onWindowEdge, pointAtT, pointInRings, polylineLength, ringsContainsFn, segmentCrossesPolyline, slicePolyline, type Pt } from '../geometry'
 import { RING_ID_PREFIX } from '../landmarks/place'
 import type { RoadIndex } from '../streets/trace'
 import { smoothBends } from '../streets/smooth'
@@ -377,7 +377,6 @@ interface StubEnd { road: Road; atStart: boolean; pt: Pt; dir: Pt }
 export function joinRiverStubs(roads: Road[], terrain: Terrain, sizeM: number, index: RoadIndex): Road[] {
   const river = terrain.riverSlice
   if (!river || terrain.water.length === 0) return roads
-  const onEdge = (p: Pt) => p.x < 1 || p.y < 1 || p.x > sizeM - 1 || p.y > sizeM - 1
   const ends: StubEnd[] = []
   for (const road of roads) {
     const n = road.points.length
@@ -385,7 +384,7 @@ export function joinRiverStubs(roads: Road[], terrain: Terrain, sizeM: number, i
     for (const atStart of [true, false]) {
       const pt = road.points[atStart ? 0 : n - 1], q = road.points[atStart ? 1 : n - 2]
       const len = Math.hypot(pt.x - q.x, pt.y - q.y)
-      if (len === 0 || onEdge(pt) || inWater(terrain, pt)) continue
+      if (len === 0 || onWindowEdge(pt, sizeM, 1) || inWater(terrain, pt)) continue
       const dir = { x: (pt.x - q.x) / len, y: (pt.y - q.y) / len }
       if (nearWater(terrain, pt, 15) || inWater(terrain, { x: pt.x + dir.x * 15, y: pt.y + dir.y * 15 })) ends.push({ road, atStart, pt, dir })
     }

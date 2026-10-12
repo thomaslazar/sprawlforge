@@ -277,3 +277,13 @@ export function angleGapLines(a: number, b: number): number {
 
 /** two roads closer than this in direction are near-parallel */
 export const PARALLEL_ANGLE = (25 * Math.PI) / 180
+
+/** inside the square window [0, sizeM]², edges included */
+export function inWindow(p: Pt, sizeM: number): boolean {
+  return p.x >= 0 && p.x <= sizeM && p.y >= 0 && p.y <= sizeM
+}
+
+/** within `tol` m of the window edge (inclusive) */
+export function onWindowEdge(p: Pt, sizeM: number, tol: number): boolean {
+  return p.x <= tol || p.y <= tol || p.x >= sizeM - tol || p.y >= sizeM - tol
+}

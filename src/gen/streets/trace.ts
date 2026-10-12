@@ -1,4 +1,4 @@
-import { angleGapLines, bboxOf, PARALLEL_ANGLE, pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, simplifyPolyline, type Pt } from '../geometry'
+import { angleGapLines, bboxOf, inWindow, onWindowEdge, PARALLEL_ANGLE, pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, simplifyPolyline, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import { RING_ID_PREFIX } from '../landmarks/place'
 import { inWater, nearWater } from '../sector/bridges'
@@ -318,7 +318,7 @@ function traceHalf(
     const newDir = clampTurn(dir, rawDir, maxTurn)
     const next = { x: p.x + newDir.x * opts.step, y: p.y + newDir.y * opts.step }
 
-    if (next.x < 0 || next.x > sizeM || next.y < 0 || next.y > sizeM) {
+    if (!inWindow(next, sizeM)) {
       pts.push(clampToWindow(next, sizeM))
       break
     }
@@ -330,7 +330,7 @@ function traceHalf(
       let d = opts.step
       while (d <= CROSSING_MAX_REACH && inWater(terrain, { x: p.x + dir.x * d, y: p.y + dir.y * d })) d += CROSSING_SAMPLE_STEP
       const land = { x: p.x + dir.x * d, y: p.y + dir.y * d }
-      if (d > CROSSING_MAX_REACH || land.x < 0 || land.x > sizeM || land.y < 0 || land.y > sizeM) break
+      if (d > CROSSING_MAX_REACH || !inWindow(land, sizeM)) break
       // the deck must cross the river course (not a sea inlet / lake) and clear every road of its own rank or higher
       if (!segmentCrossesPolyline(p, land, river.course)) break
       let blocked = false
@@ -399,7 +399,7 @@ function traceHalf(
         // arrive at JOIN_ARRIVE to the road where the curve meets it (a curving road turns between foot and target)
         const { at: target, tangent } = index.pointAlong(hitPar, sign * JOIN_AHEAD * sep)
         const curve = joinCurve(p, dir, target, tangent, (q, dirAt) =>
-          inWater(terrain, q) || inObstacle(q) || q.x < 0 || q.x > sizeM || q.y < 0 || q.y > sizeM
+          inWater(terrain, q) || inObstacle(q) || !inWindow(q, sizeM)
           || !!index.nearestMatching(q, 0.15 * sep, (h) => h.id !== hitPar.id && h.cls !== 'highway' && sameOrHigher(h.cls) && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE))
         if (curve) pts.push(...curve)
       }
@@ -423,7 +423,7 @@ export function traceStreamline(
   // window edge (Terrain's own doc comment) — a seed out there would put an
   // out-of-window point straight into the result, breaking window
   // containment. No road for a seed that isn't even on the map.
-  if (seed.at.x < 0 || seed.at.x > sizeM || seed.at.y < 0 || seed.at.y > sizeM) return null
+  if (!inWindow(seed.at, sizeM)) return null
   const useAxis = seed.axis ?? axis
   const irr = irregularityAt(seed.at)
   const jitterScale = (Math.max(0, irr - 0.4) / 0.55) * (rng.next() - 0.5) * 2
@@ -664,7 +664,6 @@ export interface PruneOpts {
 export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain, sizeM: number, opts: PruneOpts): Road[] {
   const weld = opts.weld ?? 6
   const exempt = opts.exemptPrefixes ?? [RING_ID_PREFIX, FRONTAGE_ID_PREFIX]
-  const onEdge = (p: Pt) => p.x < 1 || p.y < 1 || p.x > sizeM - 1 || p.y > sizeM - 1
   const dirty = new Set<string>()
   // old/new polylines differ only in segments whose endpoints are not both shared (cuts keep point refs)
   const markChange = (old: Pt[], neu: Pt[]) => {
@@ -690,7 +689,7 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
       for (const fromEnd of [false, true]) {
         const seq = fromEnd ? pts.slice().reverse() : pts
         const end = seq[0]
-        if (seq.length < 2 || onEdge(end) || opts.keep?.has(endKey(end)) || near(end)) continue
+        if (seq.length < 2 || onWindowEdge(end, sizeM, 1) || opts.keep?.has(endKey(end)) || near(end)) continue
         const dx = end.x - seq[1].x
         const dy = end.y - seq[1].y
         const len = Math.hypot(dx, dy) || 1

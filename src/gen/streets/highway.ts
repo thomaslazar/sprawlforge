@@ -1,4 +1,4 @@
-import { pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, simplifyPolyline, slicePolyline, type Pt } from '../geometry'
+import { inWindow, onWindowEdge, pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, simplifyPolyline, slicePolyline, type Pt } from '../geometry'
 import { hashSeed, mulberry32, type Rng } from '../rng'
 import { effectiveIrregularity } from '../sector/zoning'
 import { inWater } from '../sector/bridges'
@@ -472,7 +472,6 @@ export function buildInterchanges(
   const arterials = new Map(roads.filter((r) => r.class === 'arterial').map((r) => [r.id, r]))
   const starts = segments.filter((s) => s.transition).map((s) => s.from * len)
   let target = 0
-  const inWindow = (p: Pt) => p.x >= 0 && p.x <= sizeM && p.y >= 0 && p.y <= sizeM
   /** the four ramps' [arterial end, control, highway end], or null unless all four fit */
   const rampTriples = (c: HighwayCrossing): Array<[Pt, Pt, Pt]> | null => {
     const art = arterials.get(c.roadId)!
@@ -490,7 +489,7 @@ export function buildInterchanges(
         const th = c.at + (dir * RAMP_HWY_M) / len
         if (th < 0 || th > 1) return null
         const h = pointAtT(hp, th)
-        if (![a, ctrl, h].every(inWindow)) return null
+        if (![a, ctrl, h].every((q) => inWindow(q, sizeM))) return null
         // a ramp never runs over water (an interchange beside a highway bridge)
         if (ramp('', a, ctrl, h).points.some((q) => inWater(terrain, q))) return null
         res.push([a, ctrl, h])
@@ -610,16 +609,15 @@ export function frontageRoads(highway: Road, terrain: Terrain, sizeM: number, ob
   const core = Array.from({ length: n0 + 1 }, (_, i) => pointAtT(hp, i / n0))
   // run the end tangents on past the window so the offset lines reach the edge instead of stopping short of it
   // (only at an end on the window edge: past a highway that stops at the shore there is nothing to line)
-  const onEdge = (p: Pt) => p.x <= SPAN_TOL || p.y <= SPAN_TOL || p.x >= sizeM - SPAN_TOL || p.y >= sizeM - SPAN_TOL
   const ext = (a: Pt, b: Pt) => {
-    if (!onEdge(b)) return []
+    if (!onWindowEdge(b, sizeM, SPAN_TOL)) return []
     const u = normalize({ x: b.x - a.x, y: b.y - a.y })
     return Array.from({ length: EXTEND_N }, (_, k) => ({ x: b.x + u.x * SAMPLE_M * (k + 1), y: b.y + u.y * SAMPLE_M * (k + 1) }))
   }
   const samples = [...ext(core[1], core[0]).reverse(), ...core, ...ext(core[n0 - 1] ?? core[0], core[n0])]
   const n = samples.length - 1
   // distToPolyline: an offset point folded in on the inside of a sharp highway bend sits closer than FRONTAGE_OFF
-  const ok = (p: Pt) => p.x >= 0 && p.x <= sizeM && p.y >= 0 && p.y <= sizeM && !inWater(terrain, p) && !pointInRings(p, obstacles)
+  const ok = (p: Pt) => inWindow(p, sizeM) && !inWater(terrain, p) && !pointInRings(p, obstacles)
     && distToPolyline(p, hp) >= FRONTAGE_OFF - 2
   return ([['L', 1], ['R', -1]] as const).flatMap(([tag, sign]) => {
     const off = samples.map((p, i) => {

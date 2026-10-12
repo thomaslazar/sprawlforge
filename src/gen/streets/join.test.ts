@@ -2,20 +2,9 @@ import { describe, expect, it } from 'vitest'
 import type { Pt } from '../geometry'
 import { distToPolyline } from '../terrain/rivers'
 import { joinCurve, joinFreeEnds } from './join'
+import { maxBendDeg } from './testutil'
 import { MAJOR, RoadIndex } from './trace'
 import type { Road, Terrain } from '../types'
-
-function maxBendDeg(pts: Pt[]): number {
-  let m = 0
-  for (let i = 1; i < pts.length - 1; i++) {
-    const a = Math.atan2(pts[i].y - pts[i - 1].y, pts[i].x - pts[i - 1].x)
-    const b = Math.atan2(pts[i + 1].y - pts[i].y, pts[i + 1].x - pts[i].x)
-    let d = Math.abs(b - a)
-    if (d > Math.PI) d = 2 * Math.PI - d
-    m = Math.max(m, (d * 180) / Math.PI)
-  }
-  return m
-}
 
 describe('joinCurve', () => {
   it('leaves along dir and ends on target', () => {

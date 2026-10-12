@@ -7,7 +7,7 @@ import { sampleTerrain } from '../terrain'
 import { nearestOnPolyline } from '../terrain/rivers'
 import type { Road, SectorParams, Terrain } from '../types'
 import { buildRoadField, type RoadField } from './field'
-import { bboxesFar, maxCloseRun } from './testutil'
+import { bboxesFar, maxBendDeg, maxCloseRun } from './testutil'
 import {
   MAJOR, MINOR, RoadIndex, endKey, poissonSeeds, pruneDangling, riverCrossingSeeds, seedsAlong, traceLayer, traceStreamline,
   type Seed, type TraceOpts,
@@ -653,16 +653,6 @@ describe('arterial smoothing and singularity stop', () => {
     sizeM: 4000, patches: [],
     sample: (p) => { const a = f(p); return { major: { x: Math.cos(a), y: Math.sin(a) }, minor: { x: -Math.sin(a), y: Math.cos(a) } } },
   })
-  const maxBendDeg = (pts: Pt[]) => {
-    let m = 0
-    for (let i = 1; i < pts.length - 1; i++) {
-      const a = Math.atan2(pts[i].y - pts[i - 1].y, pts[i].x - pts[i - 1].x)
-      const b = Math.atan2(pts[i + 1].y - pts[i].y, pts[i + 1].x - pts[i].x)
-      let d = Math.abs(b - a); if (d > Math.PI) d = 2 * Math.PI - d
-      m = Math.max(m, (d * 180) / Math.PI)
-    }
-    return m
-  }
   const run = (f: RoadField, opts: TraceOpts) =>
     traceLayer(f, 'major', [{ at: { x: 500, y: 2000 } }], dryTerrain, 4000, new RoadIndex(200), opts, mulberry32(1), () => 0.2, 'A', 'arterial')
 
