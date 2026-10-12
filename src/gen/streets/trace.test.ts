@@ -444,6 +444,18 @@ describe('pruneDangling', () => {
     const out = run([A, E], wet)
     expect(out.every((r, i) => r === [A, E][i])).toBe(true)
   })
+  describe('a deck landing', () => {
+    const band = { water: [[[[500, 0], [600, 0], [600, 1000], [500, 1000], [500, 0]]]] } as unknown as Terrain
+    const A = road('A', [{ x: 0, y: 500 }, { x: 612, y: 500 }])
+    it('is not a water anchor: a bridge to nowhere is cut back to the near-side junction', () => {
+      const out = run([A, B], band).find((r) => r.id === 'A')!
+      expect(Math.abs(out.points[out.points.length - 1].x - 300)).toBeLessThan(1)
+    })
+    it('keeps the deck when the far side has a junction', () => {
+      const F = road('F', [{ x: 612, y: 0 }, { x: 612, y: 1000 }])
+      expect(run([A, B, F], band).find((r) => r.id === 'A')).toBe(A)
+    })
+  })
   it('pruneDangling unravels a chain of end-to-end streets hanging off an arterial', () => {
     const st = (id: string, a: Pt, b: Pt) => road(id, [a, b], 'street')
     const chain = [

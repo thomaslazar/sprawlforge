@@ -146,6 +146,22 @@ export function bspSplit(rect: Rect, opts: BspOpts): { cells: Rect[]; cuts: Cut[
   return { cells, cuts }
 }
 
+const orient = (a: Pt, b: Pt, c: Pt): number => Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x))
+const onSeg = (a: Pt, b: Pt, c: Pt): boolean =>
+  c.x >= Math.min(a.x, b.x) && c.x <= Math.max(a.x, b.x) && c.y >= Math.min(a.y, b.y) && c.y <= Math.max(a.y, b.y)
+
+/** segments a-b and c-d share a point (proper crossing or touching) */
+export function segmentsIntersect(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
+  const o1 = orient(a, b, c), o2 = orient(a, b, d), o3 = orient(c, d, a), o4 = orient(c, d, b)
+  if (o1 !== o2 && o3 !== o4) return true
+  return (o1 === 0 && onSeg(a, b, c)) || (o2 === 0 && onSeg(a, b, d)) || (o3 === 0 && onSeg(c, d, a)) || (o4 === 0 && onSeg(c, d, b))
+}
+
+export function segmentCrossesPolyline(a: Pt, b: Pt, line: Pt[]): boolean {
+  for (let i = 1; i < line.length; i++) if (segmentsIntersect(a, b, line[i - 1], line[i])) return true
+  return false
+}
+
 export function polylineLength(pts: Pt[]): number {
   let len = 0
   for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)

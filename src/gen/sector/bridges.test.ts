@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Road, Terrain } from '../types'
-import { inWater, markWetSpans, truncateUnlandableRoads, waterIntervals } from './bridges'
+import { RoadIndex } from '../streets/trace'
+import { inWater, joinRiverStubs, markWetSpans, truncateUnlandableRoads, waterIntervals } from './bridges'
 
 // hand terrain: vertical river band x∈[450,550] in a 1000² window
 const banded: Terrain = {
@@ -124,5 +125,60 @@ describe('truncateUnlandableRoads', () => {
   it('leaves a bridgeable river crossing untouched', () => {
     const r = road('A01', 'arterial', 300)
     expect(truncateUnlandableRoads([r], banded)).toEqual([r])
+  })
+})
+
+describe('joinRiverStubs', () => {
+  const stub = (id: string, pts: Array<[number, number]>, cls: Road['class'] = 'arterial'): Road =>
+    ({ id, class: cls, points: pts.map(([x, y]) => ({ x, y })), width: 18, name: null })
+  const indexOf = (rs: Road[]) => { const i = new RoadIndex(200); rs.forEach((r) => i.add(r.id, r.points, r.class)); return i }
+  const A = stub('A001', [[100, 500], [440, 500]])
+  const B = stub('A002', [[560, 500], [900, 500]])
+
+  it('joins two facing stubs across the river into one road', () => {
+    const roads = [A, B]
+    const out = joinRiverStubs(roads, banded, 1000, indexOf(roads))
+    expect(out.map((r) => r.id)).toEqual(['A001'])
+    expect(out[0].points).toEqual([...A.points, ...B.points])
+  })
+  it('does not join when a highway runs along the water between them', () => {
+    const hw = stub('H1', [[500, 0], [500, 1000]], 'highway')
+    const roads = [A, B]
+    const out = joinRiverStubs(roads, banded, 1000, indexOf([...roads, hw]))
+    expect(out).toHaveLength(2)
+  })
+  it('does not join stubs whose heading is 70 degrees off the span', () => {
+    const t = (70 * Math.PI) / 180
+    const bent = stub('A003', [[440 - 100 * Math.cos(t), 500 - 100 * Math.sin(t)], [440, 500]])
+    const roads = [bent, B]
+    expect(joinRiverStubs(roads, banded, 1000, indexOf(roads))).toHaveLength(2)
+  })
+  it('does not join across more than 550 m', () => {
+    const wide: Terrain = { ...banded, water: [[[[200, 0], [800, 0], [800, 1000], [200, 1000]]]] }
+    const l = stub('A001', [[50, 500], [190, 500]]), r = stub('A002', [[810, 500], [950, 500]])
+    expect(joinRiverStubs([l, r], wide, 1000, indexOf([l, r]))).toHaveLength(2)
+  })
+  it('joins a road given end-first (reversed orientation)', () => {
+    const rev = stub('A002', [[900, 500], [560, 500]])
+    const roads = [A, rev]
+    const out = joinRiverStubs(roads, banded, 1000, indexOf(roads))
+    expect(out.map((r) => r.id)).toEqual(['A001'])
+    expect(out[0].points).toEqual([...A.points, ...rev.points.slice().reverse()])
+  })
+  it('chains A|river|B|river|C into one road when B joins on both ends', () => {
+    const two: Terrain = {
+      ...banded,
+      water: [[[[450, 0], [550, 0], [550, 1000], [450, 1000]]], [[[950, 0], [1050, 0], [1050, 1000], [950, 1000]]]],
+      riverSlice: { course: [{ x: 500, y: -100 }, { x: 500, y: 1100 }, { x: 1000, y: 1100 }, { x: 1000, y: -100 }], width: 100 },
+    }
+    const b = stub('A002', [[560, 500], [940, 500]]), c = stub('A003', [[1060, 500], [1400, 500]])
+    const roads = [A, b, c]
+    const out = joinRiverStubs(roads, two, 2000, indexOf(roads))
+    expect(out.map((r) => r.id)).toEqual(['A001'])
+    expect(out[0].points).toEqual([...A.points, ...b.points, ...c.points])
+  })
+  it('returns the same array when there is no river', () => {
+    const roads = [A, B]
+    expect(joinRiverStubs(roads, { ...banded, riverSlice: null }, 1000, indexOf(roads))).toBe(roads)
   })
 })

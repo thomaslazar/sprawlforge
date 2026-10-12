@@ -7,7 +7,7 @@ import {
   MAJOR, MINOR, RoadIndex, endKey, poissonSeeds, pruneDangling, riverCrossingSeeds, seedsAlong, traceLayer, trimStubs, type Seed,
 } from '../streets/trace'
 import type { Arcology, Megablock, Road, SectorParams, Terrain } from '../types'
-import { dryStreetPieces, inWater, isLakeShore, truncateUnlandableRoads } from './bridges'
+import { dryStreetPieces, inWater, isLakeShore, joinRiverStubs, truncateUnlandableRoads } from './bridges'
 import { distToPolyline } from '../terrain/rivers'
 import { effectiveIrregularity } from './zoning'
 
@@ -111,7 +111,6 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     terrain, sizeM, index, MAJOR_OPTS, mulberry32(hashSeed(params.seed, 'arterials-2')), irregularityAt, 'B', 'arterial',
   )
   // truncate before seeding so S/L seeds come from the final arterials
-  let arterials = [...ringRoads, ...dropHairpins(finalize([...arterialsRaw, ...crossRaw], terrain, index, ARTERIAL_STUB_M), ringsOrNull, arcologies)]
   const indexOf = (rs: Road[]) => {
     const idx = new RoadIndex(200)
     if (highway) idx.add(highway.id, highway.points, 'highway')
@@ -119,9 +118,12 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     rs.forEach((r) => idx.add(r.id, r.points, r.class))
     return idx
   }
-  // prune, never invent: an arterial ends on an arterial / the highway / water / the edge, or the tail is cut
+  let arterials = [...ringRoads, ...dropHairpins(finalize([...arterialsRaw, ...crossRaw], terrain, index, ARTERIAL_STUB_M), ringsOrNull, arcologies)]
+  // stubs facing each other across the river become one road (bridged later by markWetSpans)
+  arterials = joinRiverStubs(arterials, terrain, sizeM, indexOf(arterials))
+  // prune, never invent: an arterial ends on an arterial / water / the edge, or the tail is cut (never on the highway: it crosses it)
   arterials = pruneDangling(arterials, indexOf(arterials), terrain, sizeM, {
-    accept: (c) => c === 'arterial' || c === 'highway', minLength: 300,
+    accept: (c) => c === 'arterial', minLength: 300,
   })
   index = indexOf(arterials)
   const decayEnds: Pt[] = []

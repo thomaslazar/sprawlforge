@@ -160,6 +160,8 @@ core (clipping, insetting, filling non-rectangular shapes).
 - **Highway v2** — a second highway, highway-to-highway junctions and
   cloverleafs; a tag to force one highway level; ground-level noise walls
   as geometry (render-only today).
+- **Half interchanges** — an arterial that cannot continue past the highway (water/edge/obstacle beyond it) could keep a T-end there with two ramps instead of being cut back; needs T ramp geometry and spacing against full interchanges. Today such an arterial is cut back to its last arterial junction; seeds 2982258224 (one arterial fewer, blocks B0419/B0423 ≈ 61 431 and 63 192 m²) and 11 (ring spoke lost) show the cost.
+- **Arterials at water fronts** — too many arterials simply end at a lake or sea shore (the prune accepts any wet end). Revisit: an arterial reaching water should turn and run along the shore (or merge into the nearest arterial) instead of stopping; a dead end at the water should be the exception, not the rule.
 - **Tributaries and confluences** — see Deferred.
 
 ## Cross-cutting

@@ -1,7 +1,7 @@
-import { bboxOf, pointAtT, pointInRings, polylineLength, type Pt } from '../geometry'
+import { bboxOf, pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import { RING_ID_PREFIX } from '../landmarks/place'
-import { inWater } from '../sector/bridges'
+import { inWater, nearWater } from '../sector/bridges'
 import { distToPolyline } from '../terrain/rivers'
 import type { Road, RoadClass, Terrain } from '../types'
 import type { RoadField } from './field'
@@ -249,11 +249,17 @@ function traceHalf(
       // arterials bridge a narrow river along their current heading (at most 2 per half)
       const river = terrain.riverSlice
       if (!opts.bridgeRivers || crossWater || bridges >= 2 || !river) break
-      if (distToPolyline(next, river.course) > river.width * 1.5) break
       let d = opts.step
       while (d <= CROSSING_MAX_REACH && inWater(terrain, { x: p.x + dir.x * d, y: p.y + dir.y * d })) d += CROSSING_SAMPLE_STEP
       const land = { x: p.x + dir.x * d, y: p.y + dir.y * d }
       if (d > CROSSING_MAX_REACH || land.x < 0 || land.x > sizeM || land.y < 0 || land.y > sizeM) break
+      // the deck must cross the river course (not a sea inlet / lake) and clear every road of its own rank or higher
+      if (!segmentCrossesPolyline(p, land, river.course)) break
+      let blocked = false
+      for (let s = 0; s < d && !blocked; s += CROSSING_SAMPLE_STEP) {
+        blocked = !!index.nearest({ x: p.x + dir.x * s, y: p.y + dir.y * s }, 0.3 * sep, sameOrHigher)
+      }
+      if (blocked) break
       pts.push(land)
       p = land
       bridges++
@@ -265,7 +271,8 @@ function traceHalf(
     // segment (not a blanket grace window, and not for the whole trace —
     // R6) lets the child immediately leave its parent while every OTHER
     // road, and the parent itself once far enough away, is still checked.
-    const hitSame = index.nearest(next, 0.3 * sep, sameOrHigher)
+    // an arterial crosses the highway (over/under, decided later); only the river-deck check above treats it as an obstacle
+    const hitSame = index.nearest(next, 0.3 * sep, opts.bridgeRivers ? (c) => c !== 'highway' && sameOrHigher(c) : sameOrHigher)
     if (hitSame && !isSourceAt(hitSame.id, next)) {
       // the walker overshot the target by < 1 step: backtrack (at most 2 points) so the road ends on it without doubling back.
       // A foot still behind after that means the walker is leaving this road (e.g. its own parent), not hitting it: keep walking.
@@ -295,7 +302,9 @@ function traceHalf(
       next, 25, (hit) => hit.id === sourceId && angleGapLines(Math.atan2(newDir.y, newDir.x), hit.segAngle) < PARALLEL_ANGLE,
     )) return []
     const hitPar = index.nearestMatching(
-      next, 0.7 * sep, (hit) => !isSourceAt(hit.id, next) && !isRing(hit.id) && angleGapLines(dirAngle, hit.segAngle) < PARALLEL_ANGLE,
+      // an arterial that has crossed the highway and walks away from it is not running along it (the foot is behind)
+      next, 0.7 * sep, (hit) => !isSourceAt(hit.id, next) && !isRing(hit.id) && angleGapLines(dirAngle, hit.segAngle) < PARALLEL_ANGLE
+        && !(opts.bridgeRivers && hit.cls === 'highway' && (hit.at.x - p.x) * dir.x + (hit.at.y - p.y) * dir.y < 0),
     )
     if (hitPar) {
       // a street stopped by a near-parallel road would end free and the prune would drop it (and the
@@ -374,7 +383,8 @@ export function trimStubs(roads: Road[], index: RoadIndex, maxStub = 40, weld = 
       }
       // only a tail: the end itself must NOT already sit on another road
       const endHit = index.nearestMatching(seq[0], weld, (h) => h.id !== r.id)
-      if (cutAt > 0 && joinPt && !endHit) {
+      // cutAt on the last point would leave a 1-point (zero-length) road: a road shorter than maxStub keeps its tail
+      if (cutAt > 0 && cutAt < seq.length - 1 && joinPt && !endHit) {
         const kept = seq.slice(cutAt)
         kept[0] = joinPt
         pts = fromEnd ? kept.reverse() : kept
@@ -527,12 +537,6 @@ export function traceLayer(
 
 export const endKey = (p: Pt): string => `${p.x},${p.y}`
 
-const nearWater = (terrain: Terrain, p: Pt, r: number): boolean => {
-  if (inWater(terrain, p)) return true
-  for (let a = 0; a < 16; a++) if (inWater(terrain, { x: p.x + r * Math.cos((a * Math.PI) / 8), y: p.y + r * Math.sin((a * Math.PI) / 8) })) return true
-  return false
-}
-
 export interface PruneOpts {
   /** classes a road end may legitimately meet */
   accept: (cls: RoadClass) => boolean
@@ -578,7 +582,9 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
         const dx = end.x - seq[1].x
         const dy = end.y - seq[1].y
         const len = Math.hypot(dx, dy) || 1
-        const wet = nearWater(terrain, end, 15) || inWater(terrain, { x: end.x + (dx / len) * 15, y: end.y + (dy / len) * 15 })
+        // an end reached FROM water is a deck landing, not a water anchor: it needs a junction like any dry end
+        const landing = inWater(terrain, { x: end.x - (dx / len) * 20, y: end.y - (dy / len) * 20 })
+        const wet = !landing && (nearWater(terrain, end, 15) || inWater(terrain, { x: end.x + (dx / len) * 15, y: end.y + (dy / len) * 15 }))
         if (wet && !opts.waterAnchor) continue
         // walk inward in ~5 m samples to the first junction
         let kept: Pt[] | null = null

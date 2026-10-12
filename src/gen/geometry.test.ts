@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { bboxOf, bspSplit, insetRect, pointAtT, pointInRings, polylineLength, ringArea, ringCentroid, rotatePt, simplifyPolyline, slicePolyline, type Rect } from './geometry'
+import { bboxOf, bspSplit, insetRect, pointAtT, pointInRings, polylineLength, ringArea, ringCentroid, rotatePt, segmentCrossesPolyline, segmentsIntersect, simplifyPolyline, slicePolyline, type Rect } from './geometry'
 import { mulberry32 } from './rng'
 
 const within = (inner: Rect, outer: Rect) =>
@@ -142,5 +142,26 @@ describe('simplifyPolyline', () => {
   it('leaves two-point lines alone', () => {
     const pts = [{ x: 0, y: 0 }, { x: 5, y: 5 }]
     expect(simplifyPolyline(pts, 1)).toEqual(pts)
+  })
+})
+
+describe('segmentsIntersect', () => {
+  const P = (x: number, y: number) => ({ x, y })
+  it('detects a proper crossing', () => {
+    expect(segmentsIntersect(P(0, 0), P(10, 10), P(0, 10), P(10, 0))).toBe(true)
+  })
+  it('rejects parallel disjoint segments', () => {
+    expect(segmentsIntersect(P(0, 0), P(10, 0), P(0, 5), P(10, 5))).toBe(false)
+  })
+  it('counts touching at an endpoint', () => {
+    expect(segmentsIntersect(P(0, 0), P(10, 0), P(10, 0), P(10, 10))).toBe(true)
+  })
+  it('rejects collinear disjoint segments', () => {
+    expect(segmentsIntersect(P(0, 0), P(4, 0), P(6, 0), P(10, 0))).toBe(false)
+  })
+  it('segmentCrossesPolyline tests every segment', () => {
+    const line = [P(5, -10), P(5, 10), P(20, 10)]
+    expect(segmentCrossesPolyline(P(0, 0), P(10, 0), line)).toBe(true)
+    expect(segmentCrossesPolyline(P(0, 20), P(10, 20), line)).toBe(false)
   })
 })
