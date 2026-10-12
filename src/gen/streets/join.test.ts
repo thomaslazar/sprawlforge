@@ -32,6 +32,14 @@ describe('joinCurve', () => {
     const c = joinCurve({ x: 0, y: 0 }, { x: 0, y: 1 }, { x: 0, y: 200 }, { x: 1, y: 0 }, () => false)!
     for (const q of c) expect(Math.abs(q.x)).toBeLessThan(1e-9)
   })
+  it('a steep heading with the target offset along the road ends on target and bends gently', () => {
+    const target = { x: 30, y: 200 }
+    const c = joinCurve({ x: 0, y: 0 }, { x: 0, y: 1 }, target, { x: 1, y: 0 }, () => false)!
+    expect(c.at(-1)!.x).toBeCloseTo(target.x, 6)
+    expect(c.at(-1)!.y).toBeCloseTo(target.y, 6)
+    const pts = [{ x: 0, y: 0 }, ...c].filter((q, i, all) => i === 0 || Math.hypot(q.x - all[i - 1].x, q.y - all[i - 1].y) >= 1)
+    expect(maxBendDeg(pts)).toBeLessThanOrEqual(15)
+  })
   it('is null when a sample is rejected', () => {
     expect(joinCurve({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 200, y: 100 }, { x: 1, y: 0 }, (q) => q.x > 100)).toBeNull()
   })
