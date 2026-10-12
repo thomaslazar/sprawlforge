@@ -1,9 +1,9 @@
-import { pointAtT, pointInRings, polylineLength, type Pt } from '../geometry'
+import { angleGapLines, PARALLEL_ANGLE, pointAtT, pointInRings, polylineLength, type Pt } from '../geometry'
 import { RING_ID_PREFIX } from '../landmarks/place'
 import { inWater, nearWater } from '../sector/bridges'
 import type { Road, Terrain } from '../types'
 import { smoothBends } from './smooth'
-import { MAJOR, PARALLEL_ANGLE, angleGapLines, type RoadIndex } from './trace'
+import type { RoadIndex } from './trace'
 
 /** how far along the target road (fraction of separation) a join aims past the foot */
 export const JOIN_AHEAD = 0.5
@@ -67,7 +67,7 @@ export const END_TRY = 8
  * curves into the nearest arterial ahead of it, instead of being pruned later.
  */
 export function joinFreeEnds(
-  roads: Road[], terrain: Terrain, sizeM: number, index: RoadIndex, obstacles: Pt[][],
+  roads: Road[], terrain: Terrain, sizeM: number, index: RoadIndex, obstacles: Pt[][], separation: number,
 ): { roads: Road[]; joined: number } {
   const out = roads.slice()
   let joined = 0
@@ -91,7 +91,7 @@ export function joinFreeEnds(
         if (hl === 0) continue
         const dir = { x: (end.x - back.x) / hl, y: (end.y - back.y) / hl }
         const byRoad = new Map<string, { id: string; at: Pt; dist: number; ang: number }>()
-        index.forEachInRadius(end, JOIN_REACH * MAJOR.separation, (seg, at, dist, edge) => {
+        index.forEachInRadius(end, JOIN_REACH * separation, (seg, at, dist, edge) => {
           if (seg.cls !== 'arterial' || seg.id === road.id || edge < 30) return
           const vx = at.x - end.x, vy = at.y - end.y
           const vl = Math.hypot(vx, vy)
@@ -105,7 +105,7 @@ export function joinFreeEnds(
           if (index.nearestMatching(other, 6, (h) => h.id === c.id)) continue
           const reject = (q: Pt, dirAt: Pt) => inWater(terrain, q) || !inWindow(q)
             || obstacles.some((r) => pointInRings(q, [r]))
-            || !!index.nearestMatching(q, 0.15 * MAJOR.separation, (h) => h.id !== road.id && h.id !== c.id && h.cls === 'arterial' && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE)
+            || !!index.nearestMatching(q, 0.15 * separation, (h) => h.id !== road.id && h.id !== c.id && h.cls === 'arterial' && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE)
           const curve = joinCurve(end, dir, c.at, { x: Math.cos(c.ang), y: Math.sin(c.ang) }, reject)
           if (!curve) continue
           const pinned = (v: Pt, t: number) => !!index.nearestMatching(v, t + 6, (h) => h.id !== road.id && h.edge < 1)

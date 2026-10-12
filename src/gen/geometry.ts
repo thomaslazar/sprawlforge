@@ -267,3 +267,13 @@ export function simplifyPolyline(points: Pt[], tolerance: number): Pt[] {
   if (worst <= tolerance) return [a, b]
   return [...simplifyPolyline(points.slice(0, at + 1), tolerance).slice(0, -1), ...simplifyPolyline(points.slice(at), tolerance)]
 }
+
+/** gap between two line directions (angles, sign-agnostic), 0..π/2 */
+export function angleGapLines(a: number, b: number): number {
+  let d = Math.abs(a - b) % Math.PI
+  if (d > Math.PI / 2) d = Math.PI - d
+  return d
+}
+
+/** two roads closer than this in direction are near-parallel */
+export const PARALLEL_ANGLE = (25 * Math.PI) / 180

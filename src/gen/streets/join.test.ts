@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Pt } from '../geometry'
 import { distToPolyline } from '../terrain/rivers'
 import { joinCurve, joinFreeEnds } from './join'
-import { RoadIndex } from './trace'
+import { MAJOR, RoadIndex } from './trace'
 import type { Road, Terrain } from '../types'
 
 function maxBendDeg(pts: Pt[]): number {
@@ -55,7 +55,7 @@ const dry = { landform: 'inland', river: false, lakes: false, islands: false, me
 const lake = { ...dry, water: [[[[600, -100], [700, -100], [700, 600], [600, 600]]]] } as Terrain
 const road = (id: string, pts: Pt[]): Road => ({ id, class: 'arterial', points: pts, width: 18, name: null })
 const idx = (rs: Road[]) => { const i = new RoadIndex(200); rs.forEach((r) => i.add(r.id, r.points, 'arterial')); return i }
-const run = (rs: Road[], t: Terrain = dry) => joinFreeEnds(rs, t, 2000, idx(rs), [])
+const run = (rs: Road[], t: Terrain = dry) => joinFreeEnds(rs, t, 2000, idx(rs), [], MAJOR.separation)
 const line = (x0: number, y0: number, x1: number, y1: number): Pt[] => {
   const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 10)
   return Array.from({ length: n + 1 }, (_, i) => ({ x: x0 + ((x1 - x0) * i) / n, y: y0 + ((y1 - y0) * i) / n }))

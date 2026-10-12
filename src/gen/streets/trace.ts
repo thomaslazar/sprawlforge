@@ -1,4 +1,4 @@
-import { bboxOf, pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, simplifyPolyline, type Pt } from '../geometry'
+import { angleGapLines, bboxOf, PARALLEL_ANGLE, pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, simplifyPolyline, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import { RING_ID_PREFIX } from '../landmarks/place'
 import { inWater, nearWater } from '../sector/bridges'
@@ -256,12 +256,6 @@ function clampTurn(prevDir: Pt, rawDir: Pt, maxTurn: number): Pt {
   return { x: Math.cos(a), y: Math.sin(a) }
 }
 
-export function angleGapLines(a: number, b: number): number {
-  let d = Math.abs(a - b) % Math.PI
-  if (d > Math.PI / 2) d = Math.PI - d
-  return d
-}
-
 /**
  * a crossWater seed may wet-cross the river corridor only; sea/lake still
  * stop it. `corridorWidth` (from a Seed measured by riverCrossingSeeds)
@@ -280,7 +274,6 @@ function clampToWindow(p: Pt, sizeM: number): Pt {
 
 const CROSSING_MAX_REACH = 450
 const CROSSING_SAMPLE_STEP = 10
-export const PARALLEL_ANGLE = (25 * Math.PI) / 180
 /** a raw direction flip beyond this between two steps is a field singularity: stop, never clamp (a clamped hairpin is a U-loop) */
 const SINGULARITY_TURN = (60 * Math.PI) / 180
 /** a street may end on a near-parallel road only broadside and after a real run (a stub right beside its parent is a wedge) */
