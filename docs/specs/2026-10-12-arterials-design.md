@@ -77,10 +77,13 @@ arterials (`opts.bridgeRivers`): a walker that would stop joins instead.
 ### 3.1 Connector curve
 
 `joinCurve(p, dir, target, tangent)` in a new module
-`src/gen/streets/join.ts`: a quadratic Bézier from `p` leaving along `dir`
-to `target`, control point `p + dir × (|target − p| / 2)`, sampled every
-10 m (at least 4 points). `target` is a point on the road being joined,
-`tangent` that road's direction there. It is the one connector shape used
+`src/gen/streets/join.ts`: a cubic Bézier from `p` leaving along `dir`
+to `target`, arriving at 60° to the road (from `p`'s side, continuing in
+the travel direction along the road): with D = |target − p|, controls
+`p + dir × D/3` and `target − arrive × D/3`, sampled every 10 m (at least
+4 points). `target` is a point on the road being joined, `tangent` that
+road's direction there. The fixed arrival angle keeps every join a
+proper T, never an acute Y merge. It is the one connector shape used
 everywhere in this spec (in-trace join, end pass, and in phase 3 the T
 end). The curve is rejected (returns null) when any sample is in water,
 inside an obstacle, outside the window, or within 0.3 × separation of a
