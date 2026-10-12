@@ -8,6 +8,12 @@ describe('themes', () => {
       for (const k of ['trench', 'column', 'hatch'] as const) expect(t.highway[k]).toMatch(/^#[0-9a-f]{6}$/i)
     }
   })
+  it('every theme defines compound colours', () => {
+    for (const t of Object.values(themes)) for (const c of [t.compound.fence, t.compound.ground]) expect(c).toMatch(/^#[0-9a-f]{6}$/i)
+  })
+  it('every theme defines frontage colours', () => {
+    for (const t of Object.values(themes)) for (const c of [t.frontage.fill, t.frontage.stroke]) expect(c).toMatch(/^#[0-9a-f]{6}$/i)
+  })
   it('every theme defines arcology and megablock colours', () => {
     for (const t of Object.values(themes)) {
       for (const c of [t.arcology.fill, t.arcology.stroke, t.arcology.ring, t.megablock.fill, t.megablock.alley])

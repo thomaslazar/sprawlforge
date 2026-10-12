@@ -1,4 +1,5 @@
 import { bboxOf, bspSplit, pointInRings, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
+import { RING_ID_PREFIX } from '../landmarks/place'
 import { generateName } from '../names/names'
 import { getPack } from '../names/packs'
 import { hashSeed, mulberry32 } from '../rng'
@@ -8,16 +9,17 @@ import {
 import {
   buildPlanarGraph, clipFacesToLand, facesOf, dropSlivers, pruneDanglers, windowRing,
 } from '../streets/graph'
-import { RoadIndex, endKey, pruneDangling } from '../streets/trace'
+import { FRONTAGE_ID_PREFIX, RoadIndex, endKey, pruneDangling } from '../streets/trace'
 import { distToPolyline } from '../terrain/rivers'
-import { SIDEWALK, clipSegmentToRing, corridorRects, fillLots, insetRing, longestEdgeAngle } from '../streets/lots'
+import { SIDEWALK, clipSegmentToRing, corridorRects, fillLots, insetRing, isStripBlock, longestEdgeAngle } from '../streets/lots'
 import { sampleTerrain } from '../terrain'
-import { HIGHWAY_WIDTH } from '../streets/highway'
-import { GENERATOR_VERSION, type Block, type District, type Road, type SectorModel, type SectorParams, type Terrain } from '../types'
+import { HIGHWAY_WIDTH, trimFrontage } from '../streets/highway'
+import { GENERATOR_VERSION, type Block, type District, type HighwaySegment, type Road, type SectorModel, type SectorParams, type Terrain } from '../types'
 import { placePiers } from './piers'
 import { placePois } from './pois'
-import { dryRuns, inWater, markWetSpans } from './bridges'
-import { traceRoads } from './streets'
+import { selectCompounds } from '../landmarks/compounds'
+import { dryRuns, inWater, landM2 as landM2Of, markWetSpans } from './bridges'
+import { streetWaterAnchor, traceRoads } from './streets'
 import { assignZones } from './zoning'
 
 /**
@@ -100,16 +102,7 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
   let next = Math.max(0, ...roads.map((r) => Number(/^S(\d+)/.exec(r.id)?.[1] ?? 0)))
   const rng = mulberry32(hashSeed(terrain.metroSeed, 'infill'))
   const infill: Road[] = []
-  // ponytail: land area on a 20 m sample grid (called only for faces over MAX_BLOCK_M2 raw), so +-1 % noise at the threshold
-  const landM2 = (ring: Pt[]) => {
-    const b = bboxOf(ring)
-    let land = 0
-    for (let x = b.x; x < b.x + b.w; x += 20) for (let y = b.y; y < b.y + b.h; y += 20) {
-      const s = { x: x + 10, y: y + 10 }
-      if (pointInRings(s, [ring]) && !inWater(terrain, s)) land += 400
-    }
-    return land
-  }
+  const landM2 = (ring: Pt[]) => landM2Of(terrain, ring)
   const tooBig = (f: Face) => {
     if (Math.abs(ringArea(f.footprint)) <= MAX_BLOCK_M2) return false
     // a face holding an arcology / megablock centre is the landmark's ground: nothing is split there
@@ -280,12 +273,40 @@ function pruneCutStreets(streets: Road[], arterials: Road[], highway: Road, terr
   return pruneDangling(streets, index, terrain, sizeM, { accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, keep })
 }
 
+/**
+ * Frontage roads were traced along the whole highway; drop the stretches beside sunken segments, then cut back
+ * streets that ended on a dropped stretch. ponytail: the decay cul-de-sac set is not available here, so every
+ * street end not resting on a dropped stretch is kept as is.
+ */
+function withTrimmedFrontage(
+  traced: Road[], frontage: Road[], highway: Road, segments: HighwaySegment[], arterials: Road[], terrain: Terrain, sizeM: number,
+): Road[] {
+  const kept = trimFrontage(frontage, highway, segments)
+  // frontage is exempt from pruning inside traceRoads (ends on window/water/obstacle cuts), but here a trimmed remnant is an ordinary street
+  const fids = new Set(frontage.map((r) => r.id))
+  const streets = traced.filter((r) => !fids.has(r.id))
+  const onAny = (rs: Road[], p: Pt) => rs.some((r) => distToPolyline(p, r.points) <= 6)
+  const orphan = (p: Pt) => onAny(frontage, p) && !onAny(kept, p)
+  const endsOf = (rs: Road[]) => rs.flatMap((r) => [r.points[0], r.points[r.points.length - 1]])
+  const origEnds = endsOf(frontage)
+  const cutEnd = (p: Pt) => !origEnds.some((q) => Math.hypot(p.x - q.x, p.y - q.y) < 1) // a trim made this end: it hangs at a sunken boundary
+  if (!endsOf(streets).some(orphan) && !endsOf(kept).some(cutEnd)) return [...streets, ...kept]
+  const all = [...streets, ...kept]
+  const index = new RoadIndex(200)
+  for (const r of [...arterials, ...all]) index.add(r.id, r.points, r.class)
+  // ponytail: decay cul-de-sacs are not protected here (the decay set is not available), so a pass may cut one back
+  return pruneDangling(all, index, terrain, sizeM, {
+    accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, exemptPrefixes: [RING_ID_PREFIX],
+    keep: new Set([...endsOf(streets).filter((p) => !orphan(p)), ...endsOf(kept).filter((p) => !cutEnd(p))].map(endKey)), waterAnchor: streetWaterAnchor(terrain, sizeM),
+  })
+}
+
 export function generateSector(params: SectorParams): SectorModel {
   const sizeM = params.size * 1000
   const pack = getPack(params.pack)
 
   const terrain = sampleTerrain(params, sizeM)
-  const { highway, arterials, streets, arcologies, megablocks } = traceRoads(params, terrain, sizeM)
+  const { highway, arterials, streets: tracedStreets, frontage, arcologies, megablocks } = traceRoads(params, terrain, sizeM)
   const boundaries = [windowRing(sizeM), ...terrain.land.map((poly) => poly[0].map(([x, y]) => ({ x, y })))]
 
   const districtFaces = facesFor([...(highway ? [highway] : []), ...arterials], boundaries, terrain)
@@ -297,6 +318,7 @@ export function generateSector(params: SectorParams): SectorModel {
   // highway levels decide where streets stop at the ground-level highway
   const levelRng = mulberry32(hashSeed(params.seed, 'highway-levels'))
   const segments = highway ? assignHighwayLevels(highway, districts, terrain, levelRng) : []
+  const streets = highway ? withTrimmedFrontage(tracedStreets, frontage, highway, segments, arterials, terrain, sizeM) : tracedStreets
   const minorAll = highway ? pruneCutStreets(cutStreetsAtGround(streets, highway, segments), arterials, highway, terrain, sizeM) : streets
   const crossings = highway ? highwayCrossings(highway, [...arterials, ...minorAll], segments, levelRng) : []
   const { crossings: finalCrossings, ramps } = highway
@@ -328,13 +350,20 @@ export function generateSector(params: SectorParams): SectorModel {
   const namedArcologies = arcologies.map((a) => ({ ...a, name: generateName(nameRng.pick(pack.arcologyPatternsByDesign[a.design] ?? pack.arcologyPatterns), pack.tables, nameRng) }))
   const namedMegablocks = megablocks.map((m) => ({ ...m, name: generateName(nameRng.pick(pack.megablockPatterns), pack.tables, nameRng) }))
 
-  const { buildings, blocks, megablockFootprints } = fillLots(namedDistricts, rawBlocks, params, terrain, [
+  // compound names come after the landmark names, still the last draws
+  const compoundNames = (n: number) => Array.from({ length: n }, () => generateName(nameRng.pick(pack.compoundPatterns), pack.tables, nameRng))
+
+  const frontageRoads = roads.filter((r) => r.id.startsWith(FRONTAGE_ID_PREFIX))
+  const compoundPicks = selectCompounds(namedDistricts, rawBlocks, params, terrain, (b) => isStripBlock(b, highway, frontageRoads), roads.filter((r) => r.class !== 'highway'), { arcologies, megablocks })
+  const { buildings, blocks, megablockFootprints, compounds } = fillLots(namedDistricts, rawBlocks, params, terrain, [
     ...(highway ? noBuildStrips(highway, segments) : []),
     ...roads.filter((r) => r.class !== 'highway').flatMap((r) => corridorRects(r.points, r.width / 2 + SIDEWALK)),
-  ], undefined, { arcologies, megablocks })
+  ], undefined, { arcologies, megablocks }, highway, frontageRoads, compoundPicks)
+  const names = compoundNames(compounds.length)
+  const compoundsOut = compounds.map((c, i) => ({ ...c, name: names[i] }))
   const megablocksOut = namedMegablocks.map((m) => ({ ...m, footprint: megablockFootprints.get(m.id) ?? [] }))
   const finalDistricts = deriveDistricts(namedDistricts, blocks)
-  const pois = placePois(finalDistricts, buildings, pack, params, { arcologies: namedArcologies, megablocks: megablocksOut })
+  const pois = placePois(finalDistricts, buildings, pack, params, { arcologies: namedArcologies, megablocks: megablocksOut }, compoundsOut)
   const piers = placePiers(finalDistricts, terrain, params)
 
   return {
@@ -354,5 +383,6 @@ export function generateSector(params: SectorParams): SectorModel {
     piers,
     arcologies: namedArcologies,
     megablocks: megablocksOut,
+    compounds: compoundsOut,
   }
 }

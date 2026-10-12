@@ -6,6 +6,8 @@ import { distToPolyline } from '../terrain/rivers'
 import type { Road, RoadClass, Terrain } from '../types'
 import type { RoadField } from './field'
 
+export const FRONTAGE_ID_PREFIX = 'F'
+
 export interface Seed {
   at: Pt
   dir?: Pt
@@ -540,6 +542,8 @@ export interface PruneOpts {
   weld?: number
   /** a junction must be >= weld m of arc from both ends of the other road (end-to-end chains don't anchor) */
   interiorOnly?: boolean
+  /** id prefixes of roads never pruned (default K rings and F frontage); the post-trim pass in generate.ts passes only K */
+  exemptPrefixes?: string[]
   /** replaces the plain "near water" acceptance of an end; `stubLength` = arc length from the end to the nearest accepted junction (whole road if none) */
   waterAnchor?: (p: Pt, stubLength: number) => boolean
 }
@@ -554,14 +558,16 @@ export interface PruneOpts {
  */
 export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain, sizeM: number, opts: PruneOpts): Road[] {
   const weld = opts.weld ?? 6
+  const exempt = opts.exemptPrefixes ?? [RING_ID_PREFIX, FRONTAGE_ID_PREFIX]
   const onEdge = (p: Pt) => p.x < 1 || p.y < 1 || p.x > sizeM - 1 || p.y > sizeM - 1
   let cur = roads
   for (let pass = 0; pass < 10; pass++) {
     let changed = false
     const next: Road[] = []
     for (const r of cur) {
+      // F roads end on water, obstacles or the window by construction
       // K roads are never pruned: a closed ring has no ends, an open half ring ends on its end spokes
-      if (r.id.startsWith(RING_ID_PREFIX)) { next.push(r); continue }
+      if (exempt.some((x) => r.id.startsWith(x))) { next.push(r); continue }
       const near = (p: Pt, anyEnd = false) => index.nearestMatching(p, weld, (h) => h.id !== r.id && opts.accept(h.cls) && (anyEnd || !opts.interiorOnly || h.edge >= weld))
       let pts = r.points
       let dead = false

@@ -11,6 +11,10 @@ export interface Theme {
   districtLabel: string
   road: Record<RoadClass, string>
   building: { fill: string; stroke: string }
+  /** strip lots along the highway frontage */
+  frontage: { fill: string; stroke: string }
+  /** walled corporate compounds */
+  compound: { fence: string; ground: string }
   poi: { marker: string; label: string }
   bridge: { deck: string; shadow: string }
   highway: { trench: string; column: string; hatch: string }
@@ -42,6 +46,8 @@ const neon: Theme = {
   districtLabel: '#9fb8c8',
   road: { highway: '#e8577f', arterial: '#4fc9d9', street: '#3a4560', ramp: '#44879c' },
   building: { fill: '#202840', stroke: '#4a5a7a' },
+  frontage: { fill: '#3a2a12', stroke: '#d08a45' },
+  compound: { fence: '#4fc9d9', ground: '#10202a' },
   poi: { marker: '#ffb454', label: '#ffdca8' },
   bridge: { deck: '#8a93a6', shadow: '#04060a' },
   highway: { trench: '#080a0f', column: '#04060a', hatch: '#8a93a6' },
@@ -69,6 +75,8 @@ const print: Theme = {
   districtLabel: '#333333',
   road: { highway: '#222222', arterial: '#555555', street: '#bbbbbb', ramp: '#888888' },
   building: { fill: '#e2e2dc', stroke: '#88888a' },
+  frontage: { fill: '#c9c9c4', stroke: '#6a6a66' },
+  compound: { fence: '#444444', ground: '#d4d8cf' },
   poi: { marker: '#b03030', label: '#222222' },
   bridge: { deck: '#e8e8e2', shadow: '#b5b5b0' },
   highway: { trench: '#d9d9d9', column: '#b5b5b0', hatch: '#e8e8e2' },
@@ -100,6 +108,8 @@ const blueprint: Theme = {
   districtLabel: '#dff3ff',
   road: { highway: '#ffffff', arterial: '#f1fbff', street: '#9dc4e0', ramp: '#c7e0f0' },
   building: { fill: '#0e335f', stroke: '#e4f4ff' },
+  frontage: { fill: '#1a4f8c', stroke: '#e4f4ff' },
+  compound: { fence: '#f1fbff', ground: '#0d3a6e' },
   poi: { marker: '#eaf7ff', label: '#dff3ff' },
   bridge: { deck: '#e4f4ff', shadow: '#071c38' },
   highway: { trench: '#09274c', column: '#071c38', hatch: '#e4f4ff' },
@@ -127,6 +137,8 @@ const synthwave: Theme = {
   districtLabel: '#d9b8ff',
   road: { highway: '#ff3fa4', arterial: '#33c2e6', street: '#4a3a66', ramp: '#3e7ea6' },
   building: { fill: '#251a3a', stroke: '#6b4f99' },
+  frontage: { fill: '#3d2b5e', stroke: '#6b4f99' },
+  compound: { fence: '#33c2e6', ground: '#1d1433' },
   poi: { marker: '#ffe14d', label: '#fff2cc' },
   bridge: { deck: '#a893c9', shadow: '#0c0616' },
   highway: { trench: '#11081a', column: '#0c0616', hatch: '#a893c9' },
@@ -154,6 +166,8 @@ const tokyoNight: Theme = {
   districtLabel: '#c0caf5',
   road: { highway: '#f7768e', arterial: '#7dcfff', street: '#414868', ramp: '#5f8cb4' },
   building: { fill: '#24283b', stroke: '#565f89' },
+  frontage: { fill: '#3a4160', stroke: '#565f89' },
+  compound: { fence: '#7dcfff', ground: '#16202e' },
   poi: { marker: '#e0af68', label: '#f0c894' },
   bridge: { deck: '#a9b1d6', shadow: '#0d0e14' },
   highway: { trench: '#161720', column: '#0d0e14', hatch: '#a9b1d6' },

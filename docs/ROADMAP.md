@@ -26,8 +26,9 @@
    - a dangling half-ring end if its end spoke dies later (K roads are never pruned)
    - boulevard may still meet the plaza when neither side is tangential
    - design/detail/access tests cover a handful of seeds
-2d. **Cyberpunk layer, part 2** — *next, wanted:* highway frontage strips
-   and walled corporate compounds.
+2d. **Cyberpunk layer, part 2** — *done:* highway frontage strips and walled
+   corporate compounds (generator version 7). **Next: a perf round.**
+   Later idea: markets and stalls under the highway deck.
 3. **Metroplex generator** — parent of sectors, proves linkage chain.
    Candidate metroplex-scale landform: **city on an island** — a whole
    metro occupying an island, distinct from the sector-scale `islands`
@@ -162,6 +163,8 @@ core (clipping, insetting, filling non-rectangular shapes).
 - **Tributaries and confluences** — see Deferred.
 
 ## Cross-cutting
+
+- **Compound draw lost to highway** — highway-hugging largest corp block can waste a compound draw (falls back to normal lots); fix sketch: try up to 3 candidates per draw in a `fillLots` pre-pass without consuming rng.
 
 - **Single tag-cloud UI** — present all tags as one cloud (as popular
   generator tools do) instead of labeled group rows; exclusivity and

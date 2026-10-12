@@ -1,6 +1,6 @@
 import type { Pt, Rect } from './geometry'
 
-export const GENERATOR_VERSION = 6
+export const GENERATOR_VERSION = 7
 
 export const ZONE_TYPES = [
   'corp', 'residential', 'slum', 'industrial', 'entertainment', 'docks',
@@ -115,7 +115,7 @@ export interface Arcology {
   detail: { count: number; twist: number }
 }
 export interface Megablock { id: string; name: string; center: Pt; core: Pt[]; footprint: Pt[] }
-export type LandmarkFlags = Partial<{ arcology: string; megablock: string }>
+export type LandmarkFlags = Partial<{ arcology: string; megablock: string; compound: string }>
 
 export interface District {
   id: string
@@ -133,7 +133,7 @@ export interface District {
   flags: LandmarkFlags
 }
 
-export type BlockStyle = 'rows' | 'courtyard' | 'plaza' | 'sheds' | 'megablock'
+export type BlockStyle = 'rows' | 'courtyard' | 'plaza' | 'sheds' | 'megablock' | 'strip' | 'compound'
 
 export interface Block {
   id: string
@@ -175,6 +175,18 @@ export interface Poi {
   at: Pt
 }
 
+export interface Compound {
+  id: string
+  name: string
+  blockId: string
+  districtId: string
+  center: Pt
+  /** the wall ring, meters */
+  fence: Pt[]
+  /** the 12 m gap in the fence */
+  gate: [Pt, Pt]
+}
+
 export interface SectorModel {
   meta: {
     seed: number
@@ -193,4 +205,5 @@ export interface SectorModel {
   piers: Pier[]
   arcologies: Arcology[]
   megablocks: Megablock[]
+  compounds: Compound[]
 }

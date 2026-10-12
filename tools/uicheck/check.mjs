@@ -375,6 +375,17 @@ if (!(await page.getByRole('button', { name: 'Megablock', pressed: true }).isVis
 const megSig = (await page.locator('svg [data-arcology]').evaluateAll((els) => els.map((e) => `${e.dataset.design}/${e.dataset.access ?? ''}`))).sort().join()
 if (arcSig === megSig) fail('landmark shots do not differ in arcology design/access')
 
+// cyberpunk part 2: highway frontage strips and walled corporate compounds
+await page.goto(`${BASE}/?seed=42&tags=coastal,river`)
+await page.waitForSelector('svg')
+await page.screenshot({ path: `${OUT}/frontage.png` })
+if ((await page.locator('svg [data-frontage]').count()) < 1) fail('coastal,river: no frontage strip rendered')
+
+await page.goto(`${BASE}/?seed=42&tags=inland,corp-run`)
+await page.waitForSelector('svg')
+await page.screenshot({ path: `${OUT}/compound.png` })
+if ((await page.locator('svg [data-compound]').count()) < 1) fail('corp-run: no compound rendered')
+
 // water-heavy organic fabric: crooked streets + bridges coexist
 await page.goto(`${BASE}/?seed=42&tags=coastal,river,sprawl,small`)
 await page.waitForSelector('svg')

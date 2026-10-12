@@ -364,6 +364,50 @@ export function facesOf(g: PlanarGraph): Pt[][] {
   return rings.filter((r) => new Set(r.map((p) => `${p.x},${p.y}`)).size >= 3 && ringArea(r) > 0)
 }
 
+const samePt = (a: Pt, b: Pt): boolean => Math.hypot(a.x - b.x, a.y - b.y) < 1e-6
+
+/** repeated-vertex spans v[i..j] (i < j) of a ring */
+export function repeatSpans(ring: Pt[]): Array<[number, number]> {
+  const out: Array<[number, number]> = []
+  for (let i = 0; i < ring.length; i++) for (let j = i + 1; j < ring.length; j++) if (samePt(ring[i], ring[j])) out.push([i, j])
+  return out
+}
+
+/** out-and-back filament (cul-de-sac / bridge street): span reads the same both ways */
+export function isPalindromeSpan(ring: Pt[], i: number, j: number): boolean {
+  for (let k = 0; i + k < j - k; k++) if (!samePt(ring[i + k], ring[j - k])) return false
+  return true
+}
+
+/**
+ * Safety net for polygon-clipping, which hangs on overlapping collinear edges:
+ * excise zero-area zig-zags (a ring that runs forward, back and forward again
+ * along one line), innermost first. Spans with real area and palindromic
+ * filaments (cul-de-sacs, bridge streets) are never touched.
+ */
+export function simplifyFace(ring: Pt[]): Pt[] {
+  let out = [...ring]
+  search: for (;;) {
+    if (!repeatSpans(out).length) return out
+    // spans may wrap the ring start, so look from every rotation
+    for (let r = 0; r < out.length; r++) {
+      const rot = [...out.slice(r), ...out.slice(0, r)]
+      let best: [number, number] | null = null
+      for (const [i, j] of repeatSpans(rot)) {
+        if (best && j - i >= best[1] - best[0]) continue
+        if (isPalindromeSpan(rot, i, j) || Math.abs(ringArea(rot.slice(i, j))) >= 1) continue
+        best = [i, j]
+      }
+      if (best) {
+        rot.splice(best[0] + 1, best[1] - best[0])
+        out = rot
+        continue search
+      }
+    }
+    return out
+  }
+}
+
 /** vertices with exactly four incident edges, all belonging to roads (not boundary pseudo-edges) */
 export function degree4Vertices(g: PlanarGraph): Pt[] {
   const n = g.vertices.length

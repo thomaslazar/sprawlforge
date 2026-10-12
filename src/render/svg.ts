@@ -1,7 +1,7 @@
 import type { SectorModel } from '../gen/types'
 import type { Theme } from './theme'
 import { renderHighway, renderJunctionMarkers } from './highway'
-import { hiveBuildingIds, renderLandmarks } from './landmarks'
+import { renderCompounds, hiveBuildingIds, stripBuildingIds, renderLandmarks } from './landmarks'
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
@@ -41,6 +41,7 @@ function clampShift(box: Box, S: number): { dx: number; dy: number } {
 const POI_RANK: Record<string, number> = {
   corp_hq: 0,
   matrix_hub: 1,
+  corp_campus: 1,
   corp_office: 2,
   clinic: 3,
   market: 4,
@@ -177,8 +178,11 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   }
   out.push('</g>')
 
+  renderCompounds(model, theme, out)
+
   const hive = hiveBuildingIds(model)
-  const generic = hive.size ? model.buildings.filter((b) => !hive.has(b.id)) : model.buildings
+  const strip = stripBuildingIds(model)
+  const generic = hive.size || strip.size ? model.buildings.filter((b) => !hive.has(b.id) && !strip.has(b.id)) : model.buildings
   if (interactive) {
     const byDistrict = new Map<string, string[]>()
     for (const b of generic) {
@@ -189,7 +193,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     }
     for (const [, rings] of byDistrict)
       out.push(
-        `<path data-buildings data-count="${rings.length}" d="${rings.join(' ')}" fill="${theme.building.fill}" stroke="${theme.building.stroke}" stroke-width="1"/>`,
+        `<path data-buildings="1" data-count="${rings.length}" d="${rings.join(' ')}" fill="${theme.building.fill}" stroke="${theme.building.stroke}" stroke-width="1"/>`,
       )
   } else {
     for (const b of generic) {
@@ -221,7 +225,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   const batch: Record<'street' | 'ramp', string[]> = { street: [], ramp: [] }
   const flush = (c: 'street' | 'ramp') => {
     if (!batch[c].length) return
-    const w = c === 'street' ? ' data-streets' : ' data-ramps'
+    const w = c === 'street' ? ' data-streets="1"' : ' data-ramps="1"'
     const width = ordered.find(([r]) => r.class === c)![0].width
     out.push(
       `<path${w} data-count="${batch[c].length}" d="${batch[c].join(' ')}" fill="none" stroke="${theme.road[c]}" stroke-width="${width}"/>`,

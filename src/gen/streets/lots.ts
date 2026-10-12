@@ -2,8 +2,11 @@ import polygonClipping, { type MultiPolygon } from 'polygon-clipping'
 import { BOX_MARGIN, boxOf, bboxOf, bspSplit, makeNearTieCheck, pointInRings, segTouchesBox, simplifyPolyline, type Box, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import { fractalNoise2D } from '../terrain/noise'
+import { distToPolyline } from '../terrain/rivers'
+import { simplifyFace } from './graph'
+import { FRONTAGE_OFF, STRIP_HALF } from './highway'
 import { dryRuns, inWater } from '../sector/bridges'
-import type { Block, BlockStyle, Building, District, SectorParams, Terrain, ZoneType } from '../types'
+import type { Block, Compound, Road, BlockStyle, Building, District, SectorParams, Terrain, ZoneType } from '../types'
 import type { Landmarks } from '../landmarks/place'
 
 export const ZONE_BUILD: Record<ZoneType, { minCell: number; fill: number }> = {
@@ -275,6 +278,7 @@ function subtractNoBuild(
 export function insetByClipping(full: Pt[], d: number): Pt[][] {
   // dense near-collinear vertices (curved streets) make polygon-clipping crawl
   // or hang on the overlapping strips; 0.5 m is far below the inset itself
+  full = simplifyFace(full) // zero-area zig-zags (overlapping collinear edges) hang polygon-clipping
   const ring = simplifyPolyline([...full, full[0]], 0.5).slice(0, -1)
   const strips: [number, number][][][] = []
   for (let i = 0; i < ring.length; i++) {
@@ -310,7 +314,7 @@ export function insetByClipping(full: Pt[], d: number): Pt[][] {
   }).filter((r) => r.length >= 3 && Math.abs(ringArea(r)) >= MIN_BLOCK_AREA)
 }
 
-const NOTCH_P: Record<BlockStyle, number> = { plaza: 0.5, courtyard: 0.35, rows: 0.1, sheds: 0, megablock: 0 }
+const NOTCH_P: Record<BlockStyle, number> = { plaza: 0.5, courtyard: 0.35, rows: 0.1, sheds: 0, megablock: 0, strip: 0, compound: 0 }
 
 /**
  * Notch to cut from rect `r`: a corner square (L) or a side slot (U), 30-45 %
@@ -402,6 +406,57 @@ function megablockHive(blockFootprint: Pt[], rng: ReturnType<typeof mulberry32>,
   return { footprint: hive, cells, alleys }
 }
 
+/** a block in the band between a frontage road and the highway; a kept frontage road must sit beside it (blocks beside a sunken stretch keep their normal style) */
+export function isStripBlock(block: Block, highway: Road | undefined, frontage: Road[]): boolean {
+  if (!highway || block.flags.arcology || block.flags.megablock) return false
+  const cc = ringCentroid(block.footprint)
+  const hwDist = distToPolyline(cc, highway.points)
+  return hwDist <= FRONTAGE_OFF + 1 && hwDist > STRIP_HALF && frontage.some((f) => distToPolyline(cc, f.points) <= FRONTAGE_OFF + 10)
+}
+
+/** the landmark predicates fillLots branches on; selectCompounds uses isLandmarkBlock so it never picks a block fillLots would give to a landmark */
+const ringArcologyOf = (block: Block, landmarks?: Landmarks) => landmarks?.arcologies.find((a) => a.access === 'ring' && pointInRings(ringCentroid(block.footprint), [a.plaza]))
+const megablockOf = (block: Block, landmarks?: Landmarks) => landmarks?.megablocks.find((m) => pointInRings(m.center, [block.footprint]))
+export const isLandmarkBlock = (block: Block, landmarks?: Landmarks): boolean => !!(ringArcologyOf(block, landmarks) ?? megablockOf(block, landmarks))
+
+const COMPOUND_GATE = 12
+/** cells (and so buildings) thinner than this mean width 2A/P are slivers the highway strip shaved */
+const COMPOUND_MIN_WIDTH = 14
+const ringPerimeter = (r: Pt[]): number => r.reduce((t, p, i) => t + Math.hypot(r[(i + 1) % r.length].x - p.x, r[(i + 1) % r.length].y - p.y), 0)
+const largestPiece = (pieces: Pt[][]): Pt[] | null => pieces.sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)))[0] ?? null
+export const insetOrLargest = (ring: Pt[], d: number): Pt[] | null => insetRing(ring, d) ?? largestPiece(insetByClipping(ring, d))
+
+/** a walled compound: fence 4 m in from the block, a 12 m gate gap toward the road, 2-4 buildings in the fence inset by 10 m (null: too small, block falls back to normal lots) */
+function compoundLots(footprint: Pt[], gateToward: Pt, rng: ReturnType<typeof mulberry32>, subtract: (clipped: MultiPolygon) => MultiPolygon): { fence: Pt[]; gate: [Pt, Pt]; cells: Pt[][] } | null {
+  const fence = insetOrLargest(footprint, 4)
+  if (!fence || fence.length < 3) return null
+  const edges = fence.map((p, i) => ({ a: p, b: fence[(i + 1) % fence.length] }))
+  const len = (e: { a: Pt; b: Pt }) => Math.hypot(e.b.x - e.a.x, e.b.y - e.a.y)
+  const mid = (e: { a: Pt; b: Pt }) => ({ x: (e.a.x + e.b.x) / 2, y: (e.a.y + e.b.y) / 2 })
+  const d2 = (e: { a: Pt; b: Pt }) => Math.hypot(mid(e).x - gateToward.x, mid(e).y - gateToward.y)
+  const wide = edges.filter((e) => len(e) >= COMPOUND_GATE + 2)
+  const edge = (wide.length > 0 ? wide : edges).reduce((best, e) => (wide.length > 0 ? (d2(e) < d2(best) ? e : best) : len(e) > len(best) ? e : best))
+  const m = mid(edge)
+  const L = len(edge)
+  const ux = (edge.b.x - edge.a.x) / L
+  const uy = (edge.b.y - edge.a.y) / L
+  const gate: [Pt, Pt] = [{ x: m.x - (ux * COMPOUND_GATE) / 2, y: m.y - (uy * COMPOUND_GATE) / 2 }, { x: m.x + (ux * COMPOUND_GATE) / 2, y: m.y + (uy * COMPOUND_GATE) / 2 }]
+  // from the footprint, not the fence: clipping the fence's many offset vertices again can stall polygon-clipping
+  const inner = insetOrLargest(footprint, 14)
+  if (!inner) return null
+  const theta = longestEdgeAngle(inner)
+  const c = ringCentroid(inner)
+  const bsp = bspSplit(bboxOf(inner.map((p) => rotatePt(p, -theta, c))), { minCell: 40, gap: 10, jitter: 0.2, rng })
+  const cells: Pt[][] = []
+  for (const r of bsp.cells) {
+    const lot = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }].map((p) => rotatePt(p, theta, c))
+    const pts = largestRing(safeClip(lot, (ring) => subtract(polygonClipping.intersection([ring], [toRing(inner)]))))
+    if (pts && Math.abs(ringArea(pts)) >= 400 && (2 * Math.abs(ringArea(pts))) / ringPerimeter(pts) >= COMPOUND_MIN_WIDTH) cells.push(pts)
+  }
+  cells.sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)))
+  return cells.length < 2 ? null : { fence, gate, cells: cells.slice(0, 4) }
+}
+
 export function fillLots(
   districts: District[],
   blocks: Block[],
@@ -410,7 +465,10 @@ export function fillLots(
   noBuildIn: Pt[][],
   forceStyle?: BlockStyle,
   landmarks?: Landmarks,
-): { buildings: Building[]; blocks: Block[]; megablockFootprints: Map<string, Pt[]> } {
+  highway?: Road,
+  frontage: Road[] = [],
+  compoundsIn: Array<{ blockId: string; gateToward: Pt }> = [],
+): { buildings: Building[]; blocks: Block[]; megablockFootprints: Map<string, Pt[]>; compounds: Compound[] } {
   const rng = mulberry32(hashSeed(params.seed, 'buildings'))
   // own stream: notches must not reshuffle the lots the main stream lays out
   const notchRng = mulberry32(hashSeed(params.seed, 'notches'))
@@ -419,6 +477,7 @@ export function fillLots(
   // a non-ring arcology sits in an ordinary face: its plaza is ground nobody builds on (ring plazas are their own block)
   const noBuild = [...noBuildIn, ...(landmarks?.arcologies ?? []).filter((a) => a.access !== 'ring').map((a) => a.plaza)]
   const megaRng = mulberry32(hashSeed(params.seed, 'megablocks'))
+  const frontageRng = mulberry32(hashSeed(params.seed, 'frontage'))
   const noBuildPolys = noBuild.map((nb) => [toRing(nb)])
   const noBuildBoxes = noBuild.map(boxOf)
   const convexNb = noBuild.map(isConvex)
@@ -443,16 +502,18 @@ export function fillLots(
   const buildings: Building[] = []
   const outBlocks: Block[] = []
   const megablockFootprints = new Map<string, Pt[]>()
+  const compounds: Compound[] = []
+  const compoundRng = mulberry32(hashSeed(params.seed, 'compound-lots'))
   let n = 0
 
   for (const block of blocks) {
     const district = districtById.get(block.districtId)
     if (!district) { outBlocks.push(block); continue }
     const cc = ringCentroid(block.footprint)
-    const arc = landmarks?.arcologies.find((a) => a.access === 'ring' && pointInRings(cc, [a.plaza]))
+    const arc = ringArcologyOf(block, landmarks)
     if (arc) { outBlocks.push({ ...block, style: 'plaza', alleys: [], flags: { ...block.flags, arcology: arc.id } }); continue }
     // a second megablock centred in the same block gets no hive (placement keeps them >= 700 m apart)
-    const mega = landmarks?.megablocks.find((m) => pointInRings(m.center, [block.footprint]))
+    const mega = megablockOf(block, landmarks)
     if (mega) {
       const hive = megablockHive(block.footprint, megaRng, (clipped) => (noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, near, convexNb, nearTie) : clipped))
       for (const footprint of hive.cells) {
@@ -461,6 +522,45 @@ export function fillLots(
       }
       if (hive.footprint) megablockFootprints.set(mega.id, hive.footprint)
       outBlocks.push({ ...block, style: 'megablock', alleys: hive.alleys, flags: { ...block.flags, megablock: mega.id } })
+      continue
+    }
+    const comp = compoundsIn.find((k) => k.blockId === block.id)
+    if (comp) {
+      const res = compoundLots(block.footprint, comp.gateToward, compoundRng, (clipped) => (noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, near, convexNb, nearTie) : clipped))
+      if (res) {
+        for (const footprint of res.cells) {
+          n += 1
+          buildings.push({ id: `BLD${String(n).padStart(4, '0')}`, blockId: block.id, districtId: district.id, footprint })
+        }
+        const cid = `CMP${compounds.length + 1}`
+        compounds.push({ id: cid, name: '', blockId: block.id, districtId: district.id, center: ringCentroid(res.fence), fence: res.fence, gate: res.gate })
+        outBlocks.push({ ...block, style: 'compound', alleys: [], flags: { ...block.flags, compound: cid } })
+        continue
+      }
+    }
+    // frontage strip: the band between a frontage road and the highway, packed with narrow lots facing the highway
+    if (isStripBlock(block, highway, frontage)) {
+      const sub = (clipped: MultiPolygon) => (noBuildPolys.length > 0 ? subtractNoBuild(clipped, noBuild, noBuildPolys, noBuildBoxes, near, convexNb, nearTie) : clipped)
+      const ins = insetRing(block.footprint, SIDEWALK)
+      const insetsS = ins ? [ins] : insetByClipping(block.footprint, SIDEWALK)
+      for (const inset of insetsS) {
+        const th = longestEdgeAngle(inset)
+        const c = ringCentroid(inset)
+        const bsp = bspSplit(bboxOf(inset.map((p) => rotatePt(p, -th, c))), { minCell: 10, gap: 1, jitter: 0.3, rng: frontageRng })
+        for (const r0 of bsp.cells) {
+          // a cell longer than 25 m along the road splits again into equal parts
+          const parts = Math.ceil(r0.w / 25)
+          for (let k = 0; k < parts; k++) {
+            const r = { x: r0.x + (r0.w * k) / parts, y: r0.y, w: r0.w / parts, h: r0.h }
+            const lot = [{ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y }, { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h }].map((p) => rotatePt(p, th, c))
+            const pts = largestRing(safeClip(lot, (ring) => sub(polygonClipping.intersection([ring], [toRing(inset)]))))
+            if (!pts || Math.abs(ringArea(pts)) < MIN_BUILDING_AREA || inWater(terrain, ringCentroid(pts))) continue
+            n += 1
+            buildings.push({ id: `BLD${String(n).padStart(4, '0')}`, blockId: block.id, districtId: district.id, footprint: pts })
+          }
+        }
+      }
+      outBlocks.push({ ...block, style: 'strip', alleys: [] })
       continue
     }
     const home = landmarks?.arcologies.find((a) => a.access !== 'ring' && pointInRings(a.center, [block.footprint]))
@@ -500,7 +600,7 @@ export function fillLots(
       plaza: { cell: Math.max(profile.minCell * 1.6, 0.4 * short), gap: 12, fill: 0.6 },
       sheds: { cell: profile.minCell, gap: 10, fill: 0.65 },
       megablock: { cell, gap: 3, fill },
-    }[style]
+    }[style as Exclude<BlockStyle, 'strip' | 'compound'>]
     // courtyard: only the band between the inset and a deeper inset is buildable
     let inner: Pt[][] = []
     if (style === 'courtyard') {
@@ -592,5 +692,5 @@ export function fillLots(
     outBlocks.push({ ...block, style: blockStyle, alleys, ...(home ? { flags: { ...block.flags, arcology: home.id } } : {}) })
   }
 
-  return { buildings, blocks: outBlocks, megablockFootprints }
+  return { buildings, blocks: outBlocks, megablockFootprints, compounds }
 }

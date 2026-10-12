@@ -1,4 +1,4 @@
-import { pointAtT, polylineLength, ringsContainsFn, slicePolyline, type Pt } from '../geometry'
+import { bboxOf, pointAtT, pointInRings, polylineLength, ringsContainsFn, slicePolyline, type Pt } from '../geometry'
 import { distToPolyline, nearestOnPolyline } from '../terrain/rivers'
 import type { Road, Terrain } from '../types'
 
@@ -12,6 +12,17 @@ const MIN_SHORE_ANGLE = Math.PI / 4 // 45°
 
 // terrain is immutable during a generation; index its water polygons once
 const waterIndexCache = new WeakMap<Terrain, Array<(p: Pt) => boolean>>()
+
+/** ponytail: land area on a 20 m sample grid, so +-1 % noise near a threshold */
+export const landM2 = (terrain: Terrain, ring: Pt[]): number => {
+  const b = bboxOf(ring)
+  let land = 0
+  for (let x = b.x; x < b.x + b.w; x += 20) for (let y = b.y; y < b.y + b.h; y += 20) {
+    const s = { x: x + 10, y: y + 10 }
+    if (pointInRings(s, [ring]) && !inWater(terrain, s)) land += 400
+  }
+  return land
+}
 
 export const inWater = (terrain: Terrain, p: Pt): boolean => {
   let fns = waterIndexCache.get(terrain)

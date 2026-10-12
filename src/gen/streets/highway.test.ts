@@ -6,7 +6,7 @@ import { sampleTerrain } from '../terrain'
 import { distToPolyline } from '../terrain/rivers'
 import type { District, HighwaySegment, Road, SectorParams, Terrain, ZoneType } from '../types'
 import {
-  HIGHWAY_WIDTH, assignHighwayLevels, buildInterchanges, cutStreetsAtGround, highwayCrossings, levelAt, noBuildStrips, traceHighway,
+  FRONTAGE_ID_PREFIX, HIGHWAY_WIDTH, FRONTAGE_OFF, assignHighwayLevels, buildInterchanges, cutStreetsAtGround, highwayCrossings, levelAt, noBuildStrips, traceHighway, frontageRoads, trimFrontage,
 } from './highway'
 import { MAJOR } from './trace'
 
@@ -350,5 +350,32 @@ describe('highway levels', () => {
     const strips = noBuildStrips(hw, segs)
     expect(strips).toHaveLength(2)
     for (const st of strips) expect(st.some((p) => Math.abs(p.x - 2000) > HIGHWAY_WIDTH / 2)).toBe(true)
+  })
+})
+
+describe('frontage roads', () => {
+  const OFF = FRONTAGE_OFF
+  it('offsets both sides and skips water', () => {
+    const fr = frontageRoads(hw, dry, 4000, [])
+    expect(fr.map((r) => r.id).sort()).toEqual([FRONTAGE_ID_PREFIX + '1L', FRONTAGE_ID_PREFIX + '1R'])
+    for (const r of fr) {
+      expect(r).toMatchObject({ class: 'street', width: 9, name: null })
+      for (const p of r.points) expect(Math.abs(Math.abs(p.x - 2000) - OFF)).toBeLessThan(1)
+    }
+    expect(new Set(fr.map((r) => Math.sign(r.points[0].x - 2000))).size).toBe(2)
+    expect(frontageRoads(hw, wet(0, 4000), 4000, [])).toEqual([])
+    const cut = frontageRoads(hw, wet(1000, 1100), 4000, [])
+    expect(cut).toHaveLength(4)
+    for (const r of cut) for (const p of r.points) expect(p.y <= 1000 || p.y >= 1100).toBe(true)
+    const around = frontageRoads(hw, dry, 4000, [[{ x: 1900, y: 1500 }, { x: 2100, y: 1500 }, { x: 2100, y: 2500 }, { x: 1900, y: 2500 }]])
+    for (const r of around) for (const p of r.points) expect(p.y <= 1500 || p.y >= 2500).toBe(true)
+  })
+
+  it('trimFrontage removes sunken stretches', () => {
+    const fr = frontageRoads(hw, dry, 4000, [])
+    const out = trimFrontage(fr, hw, [seg(0, 0.4, 'elevated'), seg(0.4, 0.6, 'sunken', true), seg(0.6, 1, 'ground', true)])
+    expect(out).toHaveLength(4)
+    for (const r of out) for (const p of r.points) expect(p.y <= 1600.5 || p.y >= 2399.5).toBe(true)
+    expect(trimFrontage(fr, hw, [seg(0, 1, 'ground')])).toEqual(fr)
   })
 })

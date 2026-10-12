@@ -21,11 +21,13 @@ export const shadowrunish: FlavorPack = {
     stack: ['{corpA} Stack', 'The {corpA} Terraces', '{corpA} Terrace Complex'],
   },
   megablockPatterns: ['{adj} Sprawl Block', 'The {adj} Warrens', '{adj} Housing Stack', '{adj} Barrens Tower'],
+  compoundPatterns: ['{corpA} Campus', '{corpA} Research Park', '{corpA} Corporate Compound', 'The {corpA} Enclave'],
   poiTypes: [
-    ...generic.poiTypes.filter((p) => p.type !== 'arcology' && p.type !== 'megablock'),
+    ...generic.poiTypes.filter((p) => p.type !== 'arcology' && p.type !== 'megablock' && p.type !== 'corp_campus'),
     { type: 'talismonger', label: 'Talismonger', zones: ['slum', 'residential', 'entertainment'], namePatterns: ['{adj} Talismans', '{street} Charms'] },
     { type: 'matrix_hub', label: 'Matrix hub', zones: ['corp', 'entertainment', 'residential'], namePatterns: ['{corpA} Grid Node', '{street} Hub'] },
     { type: 'arcology', label: 'Arcology', zones: ['corp'], namePatterns: ['{corpA} Arcology Complex', '{corpA} Corporate Court', '{corpA} Spire', 'The {corpA} Tower'] },
     { type: 'megablock', label: 'Megablock', zones: ['slum'], namePatterns: ['{adj} Sprawl Block', 'The {adj} Warrens', '{adj} Housing Stack', '{adj} Barrens Tower'] },
+    { type: 'corp_campus', label: 'Corporate campus', zones: ['corp'], namePatterns: ['{corpA} Campus', '{corpA} Research Park', '{corpA} Corporate Compound', 'The {corpA} Enclave'] },
   ],
 }

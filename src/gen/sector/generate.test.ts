@@ -1,16 +1,17 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { pointAtT, pointInRings, polylineLength, ringArea, ringCentroid, type Pt } from '../geometry'
 import { ISLET_MOAT_OUTER_FACTOR, ISLET_RADIUS_MAX } from '../terrain/field'
-import { GENERATOR_VERSION, type Block, type District, type SectorParams, type Terrain } from '../types'
+import { GENERATOR_VERSION, type Block, type District, type Road, type SectorParams, type Terrain } from '../types'
 import { hashSeed, mulberry32 } from '../rng'
 import { distToPolyline } from '../terrain/rivers'
 import { RoadIndex, riverCrossingSeeds } from '../streets/trace'
 import { traceRoads } from './streets'
 import { ringRoad } from '../landmarks/place'
-import { HIGHWAY_WIDTH } from '../streets/highway'
+import { FRONTAGE_ID_PREFIX, HIGHWAY_WIDTH, STRIP_HALF } from '../streets/highway'
 import { inWater, isLakeShore } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
 import { bboxesFar, endMeetings, maxCloseRun } from '../streets/testutil'
+import { materializeTags, resolveTags } from '../../app/tags'
 import { deriveDistricts, generateSector } from './generate'
 
 // full pipeline is ~3-10 s per 4 km generation (tracing + land clipping dominate)
@@ -532,6 +533,12 @@ describe('coast-aligned streets', () => {
 })
 
 describe('block size', () => {
+  it('does not hang on seed 7 coastal,small (zero-area zig-zag face in lot inset)', { timeout: 120000 }, () => {
+    const params = { ...resolveTags(materializeTags(7, ['coastal', 'small'] as any)), seed: 7, pack: 'generic', theme: 'neon' } as SectorParams
+    const model = generateSector(params)
+    expect(model.blocks.length).toBeGreaterThan(0)
+  })
+
   const cases: SectorParams[] = [
     { ...base, seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, irregularity: 0.85, landform: 'bay', pack: 'generic', theme: 'print' },
     { ...base, seed: 4280430344, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15, landform: 'coastal', river: true, lakes: true },
@@ -545,8 +552,9 @@ describe('block size', () => {
       const big = m.blocks.filter((b) => {
         const c = ringCentroid(b.footprint)
         // blocks beside a megablock, and an arcology's own block, stay big on purpose
+        // a strip block is a long band between frontage road and highway (about 40 m wide): its area says nothing about street spacing
         const nearCore = m.megablocks.some((k) => k.core.some((p) => pointInRings(p, [b.footprint])) || pointInRings(k.center, [b.footprint]))
-        return Math.abs(ringArea(b.footprint)) > 60000 && Math.min(c.x, c.y, s - c.x, s - c.y) >= 150 && !wet(c) && !nearCore && !m.arcologies.some((a) => pointInRings(a.center, [b.footprint]))
+        return Math.abs(ringArea(b.footprint)) > 60000 && Math.min(c.x, c.y, s - c.x, s - c.y) >= 150 && !wet(c) && !nearCore && b.style !== 'strip' && !m.arcologies.some((a) => pointInRings(a.center, [b.footprint]))
       })
       expect(big.map((b) => `${b.id} ${Math.round(Math.abs(ringArea(b.footprint)))}`), `seed ${params.seed}`).toEqual([])
     }
@@ -831,5 +839,118 @@ describe('lakes bound blocks', () => {
       }).map((b) => b.id)
       expect(bad).toEqual([])
     })
+  })
+})
+
+describe('frontage', () => {
+  const cases = [{ ...base, seed: 42, landform: 'coastal', river: true }, { ...base, seed: 20, size: 2, landform: 'coastal', river: true }] as const
+  for (const c of cases) {
+    describe(`seed ${c.seed} ${c.size} km`, () => {
+      let m: ReturnType<typeof generateSector>
+      let hwPts: Pt[]
+      let sunken: Array<[number, number]>
+      let fr: Road[]
+      beforeAll(() => {
+        m = generateSector(c)
+        const pieces = m.roads.filter((r) => r.class === 'highway')
+        hwPts = pieces.flatMap((r) => r.points)
+        sunken = (pieces[0].segments ?? []).filter((s) => s.level === 'sunken').map((s) => [s.from, s.to])
+        fr = m.roads.filter((r) => r.id.startsWith(FRONTAGE_ID_PREFIX))
+      }, 120000)
+      const beside = (t: number) => sunken.some(([a, b]) => t >= a - 0.01 && t <= b + 0.01)
+      const wetNear = (p: Pt) => [-15, 0, 15].some((dx) => [-15, 0, 15].some((dy) => inWater(m.terrain, { x: p.x + dx, y: p.y + dy })))
+
+      // plazas/cores are not excluded from the sampling: neither seed has one
+      it('frontage roads line the highway', () => {
+        expect(fr.length).toBeGreaterThan(0)
+        const total = polylineLength(hwPts)
+        const idx = new RoadIndex(200)
+        for (const r of fr) idx.add(r.id, r.points, r.class)
+        const miss: string[] = []
+        for (let d = 50; d < total; d += 100) {
+          const t = d / total
+          const a = pointAtT(hwPts, Math.max(0, t - 0.002))
+          const b = pointAtT(hwPts, Math.min(1, t + 0.002))
+          const n = { x: -(b.y - a.y), y: b.x - a.x }
+          const l = Math.hypot(n.x, n.y) || 1
+          const p = pointAtT(hwPts, t)
+          for (const sg of [1, -1]) {
+            const q = { x: p.x + (n.x / l) * (STRIP_HALF + 22) * sg, y: p.y + (n.y / l) * (STRIP_HALF + 22) * sg }
+            if (wetNear(q) || beside(t) || q.x < 0 || q.y < 0 || q.x > m.meta.sizeM || q.y > m.meta.sizeM) continue
+            if (!idx.nearestMatching(q, 6, () => true)) miss.push(`${Math.round(q.x)},${Math.round(q.y)}`)
+          }
+        }
+        expect(miss).toEqual([])
+      })
+
+      it('no frontage along sunken segments', () => {
+        if (c.seed === 42) expect(sunken.length).toBeGreaterThan(0) // seed 20 has none; seed 42 must exercise the check
+        const total = polylineLength(hwPts)
+        const bad: string[] = []
+        for (const r of fr) {
+          for (const p of r.points) {
+            let best = Infinity, bt = 0, acc = 0
+            for (let i = 0; i < hwPts.length - 1; i++) {
+              const l = Math.hypot(hwPts[i + 1].x - hwPts[i].x, hwPts[i + 1].y - hwPts[i].y)
+              const f = Math.max(0, Math.min(1, ((p.x - hwPts[i].x) * (hwPts[i + 1].x - hwPts[i].x) + (p.y - hwPts[i].y) * (hwPts[i + 1].y - hwPts[i].y)) / (l * l || 1)))
+              const dd = Math.hypot(p.x - hwPts[i].x - f * (hwPts[i + 1].x - hwPts[i].x), p.y - hwPts[i].y - f * (hwPts[i + 1].y - hwPts[i].y))
+              if (dd < best) { best = dd; bt = (acc + f * l) / total }
+              acc += l
+            }
+            if (sunken.some(([a, b]) => bt > a + 0.003 && bt < b - 0.003)) bad.push(`${r.id}@${Math.round(p.x)},${Math.round(p.y)}`)
+          }
+        }
+        expect(bad).toEqual([])
+      })
+
+      it('frontage roads have no dangling ends', () => {
+        const idx = new RoadIndex(200)
+        for (const r of m.roads) idx.add(r.id, r.points, r.class)
+        const lim = m.meta.sizeM
+        const bad: string[] = []
+        for (const r of fr) {
+          for (const p of [r.points[0], r.points[r.points.length - 1]]) {
+            const edge = p.x < 20 || p.y < 20 || p.x > lim - 20 || p.y > lim - 20 // 10 m sampling stops a piece up to 10 m short, more where the offset line meets the edge obliquely
+            const nearSunkenEnd = (() => { const total = polylineLength(hwPts); return sunken.some(([a, b]) => [a, b].some((t) => distToPolyline(p, [pointAtT(hwPts, Math.max(0, t - 40 / total)), pointAtT(hwPts, Math.min(1, t + 40 / total))]) < 60)) })()
+            if (edge || wetNear(p) || nearSunkenEnd || idx.nearestMatching(p, 6, (h) => h.id !== r.id)) continue
+            bad.push(`${r.id}@${Math.round(p.x)},${Math.round(p.y)}`)
+          }
+        }
+        expect(bad).toEqual([])
+      })
+    })
+  }
+})
+
+describe('compound names', () => {
+  it('are drawn after the landmark names, which stay as before', { timeout: 300000 }, () => {
+    const m = generateSector({ ...base, corpDominance: 0.85, arcology: true, megablock: true })
+    expect(m.arcologies.map((a) => a.name)).toEqual(['Kessler Twin Towers'])
+    expect(m.megablocks.map((a) => a.name)).toEqual(['Gardens Block'])
+    expect(m.compounds.length).toBeGreaterThan(0)
+    for (const c of m.compounds) expect(c.name.length).toBeGreaterThan(0)
+    expect(m.pois.filter((p) => p.type === 'corp_campus').map((p) => p.name)).toEqual(m.compounds.map((c) => c.name))
+  })
+})
+
+describe('compounds', () => {
+  const corp = [0.85, 0.5, 0.15]
+  const runs = [42, 7, 11].flatMap((seed) => corp.map((c) => [seed, c] as const))
+  it('compound counts follow the power band', { timeout: 900000 }, () => {
+    const total: Record<number, number> = { 0.85: 0, 0.5: 0, 0.15: 0 }
+    for (const [seed, corpDominance] of runs) {
+      const m = generateSector({ ...base, seed, corpDominance })
+      const corpDistricts = m.districts.filter((d) => d.zone === 'corp' && !d.flags.arcology).length
+      expect(m.compounds.length, `seed ${seed} corp ${corpDominance}`).toBeLessThanOrEqual(2 * corpDistricts)
+      if (seed === 42 && corpDominance === 0.85) expect(m.compounds.length).toBeGreaterThanOrEqual(1)
+      total[corpDominance] += m.compounds.length
+    }
+    expect(total[0.85]).toBeGreaterThanOrEqual(total[0.5])
+    expect(total[0.5]).toBeGreaterThanOrEqual(total[0.15])
+    expect(total[0.85]).toBeGreaterThan(total[0.15])
+  })
+  it('same seed gives the same compounds', { timeout: 300000 }, () => {
+    const p = { ...base, corpDominance: 0.85 }
+    expect(generateSector(p).compounds).toEqual(generateSector(p).compounds)
   })
 })

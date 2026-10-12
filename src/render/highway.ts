@@ -79,7 +79,7 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
   // one translucent path for every segment: overlapping caps/joints composite once
   if (halo)
     out.push(
-      `<path data-halo="highway" d="${segs.map((s) => `M${pts(slice(s)).replace(/ /g, 'L')}`).join(' ')}" fill="none" stroke="${theme.road.highway}" stroke-width="${n(W * 2.2)}" stroke-opacity="0.35" stroke-linecap="round" stroke-linejoin="round"/>`,
+      `<path data-halo="highway" d="${segs.map((s) => `M${pts(slice(s)).replace(/ /g, 'L')}`).join(' ')}" fill="none" stroke="${theme.road.highway}" stroke-width="${n(W * 1.6)}" stroke-opacity="0.35" stroke-linecap="round" stroke-linejoin="round"/>`,
     )
   const total = polylineLength(line) || 1
   for (const s of segs) {
