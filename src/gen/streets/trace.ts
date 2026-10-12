@@ -133,7 +133,7 @@ export class RoadIndex {
     for (let k = 0; k <= n; k++) this.forEachInRadius({ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n }, reach + 2, visit)
   }
 
-  private forEachInRadius(p: Pt, radius: number, visit: (seg: Seg, pt: Pt, d: number, edge: number, arcAtFoot: number) => void): void {
+  forEachInRadius(p: Pt, radius: number, visit: (seg: Seg, pt: Pt, d: number, edge: number, arcAtFoot: number) => void): void {
     const cx0 = Math.floor((p.x - radius) / this.cellSize)
     const cx1 = Math.floor((p.x + radius) / this.cellSize)
     const cy0 = Math.floor((p.y - radius) / this.cellSize)

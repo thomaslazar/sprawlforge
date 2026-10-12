@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Pt } from '../geometry'
-import { joinCurve } from './join'
+import { joinCurve, joinFreeEnds } from './join'
+import { RoadIndex } from './trace'
+import type { Road, Terrain } from '../types'
 
 function maxBendDeg(pts: Pt[]): number {
   let m = 0
@@ -23,5 +25,44 @@ describe('joinCurve', () => {
   })
   it('is null when a sample is rejected', () => {
     expect(joinCurve({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 200, y: 100 }, (q) => q.x > 100)).toBeNull()
+  })
+})
+
+const dry = { landform: 'inland', river: false, lakes: false, islands: false, metroSeed: 1, water: [], land: [], riverSlice: null } as Terrain
+const lake = { ...dry, water: [[[[600, -100], [700, -100], [700, 600], [600, 600]]]] } as Terrain
+const road = (id: string, pts: Pt[]): Road => ({ id, class: 'arterial', points: pts, width: 18, name: null })
+const idx = (rs: Road[]) => { const i = new RoadIndex(200); rs.forEach((r) => i.add(r.id, r.points, 'arterial')); return i }
+const run = (rs: Road[], t: Terrain = dry) => joinFreeEnds(rs, t, 2000, idx(rs), [])
+const line = (x0: number, y0: number, x1: number, y1: number): Pt[] => {
+  const n = Math.ceil(Math.hypot(x1 - x0, y1 - y0) / 10)
+  return Array.from({ length: n + 1 }, (_, i) => ({ x: x0 + ((x1 - x0) * i) / n, y: y0 + ((y1 - y0) * i) / n }))
+}
+const near = (p: Pt, pts: Pt[]) => Math.min(...pts.map((q) => Math.hypot(p.x - q.x, p.y - q.y)))
+
+describe('joinFreeEnds', () => {
+  it('a free end curves into the nearest arterial ahead', () => {
+    const A = road('A', line(100, 500, 500, 500)), B = road('B', line(800, 300, 800, 900))
+    const r = run([A, B])
+    expect(r.joined).toBeGreaterThanOrEqual(1)
+    const a = r.roads[0].points
+    expect(near(a.at(-1)!, B.points)).toBeLessThan(1)
+    expect(maxBendDeg(a)).toBeLessThan(15 + 1e-6)
+  })
+  it('never joins its own road, and never across water', () => {
+    const own = road('A', [...line(100, 500, 500, 500), ...line(500, 500, 500, 400)])
+    expect(run([own]).joined).toBe(0)
+    const r = run([road('A', line(100, 500, 500, 500)), road('B', line(800, 300, 800, 900))], lake)
+    expect(r.joined).toBe(0)
+  })
+  it('ignores targets outside the heading cone', () => {
+    const r = run([road('A', line(0, 500, 400, 500)), road('B', line(100, 100, 100, 900))])
+    expect(r.roads[0].points).toEqual(line(0, 500, 400, 500))
+  })
+  it('a road ending on A stays anchored after A is re-smoothed', () => {
+    const A = road('A', [...line(100, 800, 400, 800), ...line(400, 800, 500, 700), ...line(500, 700, 600, 700)])
+    const C = road('C', line(400, 800, 400, 1100))
+    const B = road('B', line(900, 500, 900, 900))
+    const r = run([A, C, B])
+    expect(near(C.points[0], r.roads[0].points)).toBeLessThan(6)
   })
 })
