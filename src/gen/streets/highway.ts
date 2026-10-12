@@ -335,10 +335,10 @@ export function highwayCrossings(highway: Road, roads: Road[], segments: Highway
       for (let j = 0; j < hp.length - 1; j++) {
         const l = Math.hypot(hp[j + 1].x - hp[j].x, hp[j + 1].y - hp[j].y)
         const f = segHit(hp[j], hp[j + 1], road.points[i], road.points[i + 1])
-        // a road that merely ends on the highway (T-junction) does not cross it
+        // a road that merely ends on the highway (T-junction, or an end inside the highway strip) does not cross it
         const rp = road.points
         const hitPt = f === null ? null : { x: hp[j].x + f * (hp[j + 1].x - hp[j].x), y: hp[j].y + f * (hp[j + 1].y - hp[j].y) }
-        const atEnd = hitPt && [rp[0], rp[rp.length - 1]].some((e) => Math.hypot(e.x - hitPt.x, e.y - hitPt.y) < 6)
+        const atEnd = hitPt && [rp[0], rp[rp.length - 1]].some((e) => Math.hypot(e.x - hitPt.x, e.y - hitPt.y) < HIGHWAY_WIDTH / 2 + 6)
         if (f !== null && !atEnd) {
           const at = (acc + f * l) / total
           const level = levelAt(segments, at)
@@ -491,6 +491,8 @@ export function buildInterchanges(
         if (th < 0 || th > 1) return null
         const h = pointAtT(hp, th)
         if (![a, ctrl, h].every(inWindow)) return null
+        // a ramp never runs over water (an interchange beside a highway bridge)
+        if (ramp('', a, ctrl, h).points.some((q) => inWater(terrain, q))) return null
         res.push([a, ctrl, h])
       }
     }
