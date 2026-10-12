@@ -106,6 +106,17 @@ export class RoadIndex {
     this.keysById.delete(id)
   }
 
+  has(id: string): boolean {
+    return this.keysById.has(id)
+  }
+
+  /** add the id of every road with a segment within `reach` m of segment a-b (sampled every 4 m, so the query radius is padded by 2 m) */
+  markNear(a: Pt, b: Pt, reach: number, out: Set<string>): void {
+    const visit = (seg: Seg) => { out.add(seg.id) }
+    const n = Math.max(1, Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / 4))
+    for (let k = 0; k <= n; k++) this.forEachInRadius({ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n }, reach + 2, visit)
+  }
+
   private forEachInRadius(p: Pt, radius: number, visit: (seg: Seg, pt: Pt, d: number, edge: number) => void): void {
     const cx0 = Math.floor((p.x - radius) / this.cellSize)
     const cx1 = Math.floor((p.x + radius) / this.cellSize)
@@ -567,11 +578,24 @@ export interface PruneOpts {
  * remainder under `minLength`, drops the road. `index` must hold every road
  * (incl. `roads`) and is kept in sync as roads are cut; repeats until stable
  * (a cut can un-anchor a neighbour), max 10 passes. Only changed roads are new objects.
+ * Pass 0 checks every road; later passes re-check only roads a change could have affected: those with a segment
+ * within 2 * weld of the geometry that changed (a check reads the index within `weld` of its polyline, and the
+ * `edge` of a hit segment, which moves when its road is cut, reaches `weld` further), plus the cut road itself.
  */
 export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain, sizeM: number, opts: PruneOpts): Road[] {
   const weld = opts.weld ?? 6
   const exempt = opts.exemptPrefixes ?? [RING_ID_PREFIX, FRONTAGE_ID_PREFIX]
   const onEdge = (p: Pt) => p.x < 1 || p.y < 1 || p.x > sizeM - 1 || p.y > sizeM - 1
+  const dirty = new Set<string>()
+  // old/new polylines differ only in segments whose endpoints are not both shared (cuts keep point refs)
+  const markChange = (old: Pt[], neu: Pt[]) => {
+    for (const [a, b] of [[old, neu], [neu, old]]) {
+      const other = new Set(b)
+      for (let i = 1; i < a.length; i++) {
+        if (!other.has(a[i - 1]) || !other.has(a[i])) index.markNear(a[i - 1], a[i], 2 * weld, dirty)
+      }
+    }
+  }
   let cur = roads
   for (let pass = 0; pass < 10; pass++) {
     let changed = false
@@ -580,6 +604,7 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
       // F roads end on water, obstacles or the window by construction
       // K roads are never pruned: a closed ring has no ends, an open half ring ends on its end spokes
       if (exempt.some((x) => r.id.startsWith(x))) { next.push(r); continue }
+      if (!dirty.delete(r.id) && pass > 0 && index.has(r.id)) { next.push(r); continue }
       const near = (p: Pt, anyEnd = false) => index.nearestMatching(p, weld, (h) => h.id !== r.id && opts.accept(h.cls) && (anyEnd || !opts.interiorOnly || h.edge >= weld))
       let pts = r.points
       let dead = false
@@ -618,11 +643,14 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
         pts = fromEnd ? kept.reverse() : kept
       }
       if (dead || (pts !== r.points && polylineLength(pts) < opts.minLength)) {
+        markChange(r.points, [])
         index.remove(r.id); changed = true; continue
       }
       if (pts !== r.points) {
         const nr = { ...r, points: pts }
+        markChange(r.points, pts)
         index.remove(r.id); index.add(r.id, pts, r.class)
+        dirty.add(r.id)
         next.push(nr); changed = true
       } else next.push(r)
     }
