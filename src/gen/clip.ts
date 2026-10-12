@@ -10,8 +10,11 @@ export type Geom = Polygon | MultiPolygon
 // nothing, since the generator's own geometry is not accurate to 0.1 mm.
 const S = 1000
 
-const polys = (g: Geom): Polygon[] =>
-  g.length === 0 ? [] : typeof (g as Polygon)[0][0][0] === 'number' ? [g as Polygon] : (g as MultiPolygon)
+const polys = (g: Geom): Polygon[] => {
+  const first = (g as Polygon[]).find((x) => x.length > 0) // skip empty rings / polygons when sniffing the depth
+  if (!first) return []
+  return typeof (first as unknown as Ring)[0]?.[0] === 'number' ? [g as Polygon] : (g as MultiPolygon)
+}
 
 const area = (p: Path64): number => {
   let a = 0
@@ -19,11 +22,14 @@ const area = (p: Path64): number => {
   return a
 }
 
-function load(c: Clipper64, g: Geom, subject: boolean): void {
+/** false if any coordinate is not finite */
+function load(c: Clipper64, g: Geom, subject: boolean): boolean {
   const paths: Paths64 = []
+  let ok = true
   for (const poly of polys(g)) {
     poly.forEach((ring, i) => {
       const n = ring.length
+      if (ring.some(([x, y]) => !Number.isFinite(x) || !Number.isFinite(y))) { ok = false; return }
       const closed = n > 1 && ring[0][0] === ring[n - 1][0] && ring[0][1] === ring[n - 1][1]
       const p = ring.slice(0, closed ? n - 1 : n).map(([x, y]) => ({ x: Math.round(x * S), y: Math.round(y * S) }))
       if (p.length < 3) return
@@ -34,6 +40,7 @@ function load(c: Clipper64, g: Geom, subject: boolean): void {
   }
   if (subject) c.addSubjectPaths(paths)
   else c.addClipPaths(paths)
+  return ok
 }
 
 const inside = (pt: { x: number; y: number }, r: Path64): boolean => {
@@ -45,10 +52,11 @@ const inside = (pt: { x: number; y: number }, r: Path64): boolean => {
 
 function run(op: ClipType, subj: Geom, clips: Geom[]): MultiPolygon {
   const c = new Clipper64()
-  load(c, subj, true)
-  for (const g of clips) load(c, g, false)
+  let ok = load(c, subj, true)
+  for (const g of clips) ok = load(c, g, false) && ok
+  if (!ok) return [] // NaN / Infinity in the input
   const sol: Paths64 = []
-  c.execute(op, FillRule.NonZero, sol)
+  if (!c.execute(op, FillRule.NonZero, sol)) return []
   // clipper2-js 1.2.4 emits consecutive duplicate and collinear vertices: trim both
   const rings = sol
     .map((p) => Clipper.trimCollinear(p.filter((q, i) => { const r = p[(i + p.length - 1) % p.length]; return q.x !== r.x || q.y !== r.y }), false))
@@ -58,13 +66,18 @@ function run(op: ClipType, subj: Geom, clips: Geom[]): MultiPolygon {
   const outers: { r: Path64; a: number; holes: Path64[] }[] = []
   const holes: Path64[] = []
   for (const r of rings) { const a = area(r); if (a > 0) outers.push({ r, a, holes: [] }); else holes.push(r) }
+  // a hole vertex may lie ON its outer's edge (ray test is then arbitrary): the outer holding most vertices wins
   for (const h of holes) {
     let best: (typeof outers)[number] | undefined
-    for (const o of outers) if (inside(h[0], o.r) && (!best || o.a < best.a)) best = o
+    let bestN = 0
+    for (const o of outers) {
+      const n = h.reduce((t, q) => t + (inside(q, o.r) ? 1 : 0), 0)
+      if (n > bestN || (n === bestN && n > 0 && best && o.a < best.a)) { best = o; bestN = n }
+    }
     best?.holes.push(h)
   }
   // closed rings (first point repeated), as polygon-clipping returned them
-  const ring = (p: Path64): Ring => { const r = p.map((q) => [q.x / S, q.y / S] as [number, number]); r.push(r[0]); return r }
+  const ring = (p: Path64): Ring => { const r = p.map((q) => [q.x / S, q.y / S] as [number, number]); r.push([...r[0]]); return r }
   return outers.map((o) => [ring(o.r), ...o.holes.map(ring)])
 }
 

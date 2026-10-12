@@ -53,4 +53,22 @@ describe('clip adapter', () => {
     expect(union([], [])).toEqual([])
     expect(intersection([], [rect(0, 0, 1, 1)])).toEqual([])
   })
+  it('empty rings and NaN input give no result, not a throw', () => {
+    expect(union([[]], [rect(0, 0, 1, 1)])).toHaveLength(1)
+    expect(union([[[]]] as never, [])).toEqual([])
+    expect(intersection([[[NaN, 0], [1, 0], [1, 1]]], [rect(0, 0, 1, 1)])).toEqual([])
+  })
+  it('a hole touching its outer edge stays a hole of that outer', () => {
+    const r = difference([rect(0, 0, 10, 10)], [[[3, 3], [6, 3], [6, 6], [3, 6]]], [[[3, 6], [6, 6], [6, 6.5], [3, 6.5]]])
+    expect(r).toHaveLength(1)
+    expect(r[0]).toHaveLength(2)
+    // pass-through hole sharing an edge with the outer: a notch, no hole
+    const n = difference([rect(0, 0, 10, 10)], [[[0, 3], [4, 3], [4, 6], [0, 6]]])
+    expect(n).toHaveLength(1)
+    expect(n[0]).toHaveLength(1)
+    // a hole with a vertex on the outer's boundary: the outer with the other two outers present
+    const two = union(difference([rect(0, 0, 30, 30)], [rect(5, 5, 25, 25)]), [rect(10, 10, 20, 20)])
+    expect(two).toHaveLength(2)
+    expect(two.every((p) => p.length <= 2)).toBe(true)
+  })
 })
