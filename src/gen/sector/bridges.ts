@@ -1,6 +1,7 @@
 import { bboxOf, pointAtT, pointInRings, polylineLength, ringsContainsFn, segmentCrossesPolyline, slicePolyline, type Pt } from '../geometry'
 import { RING_ID_PREFIX } from '../landmarks/place'
 import type { RoadIndex } from '../streets/trace'
+import { smoothBends } from '../streets/smooth'
 import { distToPolyline, nearestOnPolyline } from '../terrain/rivers'
 import type { Road, Terrain } from '../types'
 
@@ -426,5 +427,11 @@ export function joinRiverStubs(roads: Road[], terrain: Terrain, sizeM: number, i
     root.set(rb, ra)
     for (const id of members.get(rb)!) members.get(ra)!.add(id)
   }
-  return root.size === 0 ? roads : roads.filter((r) => !root.has(r.id)).map((r) => (points.get(r.id) === r.points ? r : { ...r, points: points.get(r.id)! }))
+  // the deck join is a hard bend: smooth the merged road, keeping vertices that sit on another road's end
+  return root.size === 0 ? roads : roads.filter((r) => !root.has(r.id)).map((r) => {
+    if (points.get(r.id) === r.points) return r
+    const mine = members.get(r.id)!
+    const pinned = (v: Pt) => !!index.nearestMatching(v, 6, (h) => !mine.has(h.id) && h.edge < 1)
+    return { ...r, points: smoothBends(points.get(r.id)!, 60, pinned) }
+  })
 }

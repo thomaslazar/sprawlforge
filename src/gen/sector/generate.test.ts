@@ -6,7 +6,8 @@ import { hashSeed, mulberry32 } from '../rng'
 import { distToPolyline } from '../terrain/rivers'
 import { RoadIndex, riverCrossingSeeds } from '../streets/trace'
 import { traceRoads } from './streets'
-import { ringRoad } from '../landmarks/place'
+import { sampleTerrain } from '../terrain'
+import { RING_ID_PREFIX, ringRoad } from '../landmarks/place'
 import { FRONTAGE_ID_PREFIX, HIGHWAY_WIDTH, STRIP_HALF } from '../streets/highway'
 import { inWater, isLakeShore } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
@@ -1011,4 +1012,57 @@ describe('compounds', () => {
     const p = { ...base, corpDominance: 0.85 }
     expect(generateSector(p).compounds).toEqual(generateSector(p).compounds)
   })
+})
+
+describe('arterial ends (model seeds)', () => {
+const F = { river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'print' }
+const p1 = { ...resolveTags(['coastal','medium','dense','fringe','lively','mixed','river']), seed: 42, pack: 'generic', theme: 'print' } as any
+  const MODEL_SETS: Record<string, any> = {
+  P1: p1,
+  P2: { seed: 42, size: 4, density: 0.6, corpDominance: 0.85, poiDensity: 0.5, irregularity: 0.5, landform: 'inland', river: false, lakes: false, islands: false, piers: false, arcology: true, megablock: true, pack: 'generic', theme: 'print' },
+  P3: { seed: 42, size: 6, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', river: true, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon' },
+  S7: { ...p1, seed: 7 },
+  S3017268931: { ...p1, seed: 3017268931 },
+  S2982258224: { ...F, seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, poiDensity: 0.5, irregularity: 0.85, landform: 'bay' },
+  S4280430344: { ...F, seed: 4280430344, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15, landform: 'coastal', river: true, lakes: true },
+  S11: { ...F, seed: 11, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.5, irregularity: 0.5, landform: 'inland', arcology: true, megablock: true },
+  S782008753: { ...F, seed: 782008753, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', lakes: true },
+  R1: { ...F, seed: 123456789, size: 2, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', islands: true, piers: true },
+  R2: { ...F, seed: 987654321, size: 2, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'bay', islands: true, piers: true },
+  R3: { ...F, seed: 555555555, size: 2, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', river: true, islands: true, piers: true },
+}
+  const onEdge = (p: Pt, s: number) => p.x < 1 || p.y < 1 || p.x > s - 1 || p.y > s - 1
+  /** largest turn (deg) at vertices farther than skipM of arc from both ends */
+  const maxBendDegInterior = (pts: Pt[], skipM: number) => {
+    const total = polylineLength(pts)
+    let arc = 0, worst = 0
+    for (let i = 1; i < pts.length - 1; i++) {
+      arc += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
+      if (arc <= skipM || total - arc <= skipM) continue
+      const a = Math.atan2(pts[i].y - pts[i - 1].y, pts[i].x - pts[i - 1].x), b = Math.atan2(pts[i + 1].y - pts[i].y, pts[i + 1].x - pts[i].x)
+      let d = Math.abs(b - a); if (d > Math.PI) d = 2 * Math.PI - d
+      worst = Math.max(worst, (d * 180) / Math.PI)
+    }
+    return worst
+  }
+  for (const [name, p] of Object.entries(MODEL_SETS)) {
+    it(`${name}: every arterial end is anchored and nothing was pruned`, { timeout: 120000 }, () => {
+      const sizeM = p.size * 1000
+      const terrain = sampleTerrain(p, sizeM)
+      const t = traceRoads(p, terrain, sizeM)
+      expect(t.pruned, 'prune fired').toBe(0)
+      const idx = new RoadIndex(200)
+      for (const r of [...t.arterials, ...(t.highway ? [t.highway] : [])]) idx.add(r.id, r.points, r.class)
+      for (const r of t.arterials) {
+        const first = r.points[0], last = r.points.at(-1)!
+        if (r.id.startsWith(RING_ID_PREFIX) && Math.hypot(first.x - last.x, first.y - last.y) < 1) continue
+        for (const e of [first, last]) {
+          const near = idx.nearestMatching(e, 6, (h) => h.id !== r.id && h.cls === 'arterial')
+          const ok = onEdge(e, sizeM) || near || nearWater(terrain, e, 15)
+          expect(ok, `${name} ${r.id} end ${e.x.toFixed(0)},${e.y.toFixed(0)}`).toBeTruthy()
+        }
+      }
+      for (const r of t.arterials) expect(maxBendDegInterior(r.points, 15), `${name} ${r.id} bend`).toBeLessThan(15 + 1e-6)
+    })
+  }
 })

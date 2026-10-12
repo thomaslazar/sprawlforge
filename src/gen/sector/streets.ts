@@ -24,6 +24,8 @@ export interface TracedRoads {
   streets: Road[]
   /** highway frontage roads (F prefix, class street, whole highway); also present in `streets` */
   frontage: Road[]
+  /** arterials the last-resort prune dropped or cut (0 when every end is anchored) */
+  pruned: number
 }
 
 const SIMPLIFY_M = 1
@@ -124,9 +126,11 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   arterials = joinRiverStubs(arterials, terrain, sizeM, indexOf(arterials))
   ;({ roads: arterials } = joinFreeEnds(arterials, terrain, sizeM, indexOf(arterials), plazas))
   // prune, never invent: an arterial ends on an arterial / water / the edge, or the tail is cut (never on the highway: it crosses it)
+  const beforePrune = arterials
   arterials = pruneDangling(arterials, indexOf(arterials), terrain, sizeM, {
     accept: (c) => c === 'arterial', minLength: 300,
   })
+  const pruned = beforePrune.length - arterials.length + arterials.filter((r) => { const b = beforePrune.find((x) => x.id === r.id); return b && b.points !== r.points }).length
   index = indexOf(arterials)
   const decayEnds: Pt[] = []
   // FIFO seed queue: arterial seeds first, then every kept street seeds its own
@@ -139,7 +143,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   const streets = dryStreetPieces(finalize(raw, terrain, index), terrain)
   // streets may keep genuine decay cul-de-sacs; every other dangling end is pruned (the highway never anchors a street)
   const all = indexOf([...arterials, ...streets])
-  const pruned = pruneDangling(streets, all, terrain, sizeM, { accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, keep: new Set(decayEnds.map(endKey)),
+  const prunedStreets = pruneDangling(streets, all, terrain, sizeM, { accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, keep: new Set(decayEnds.map(endKey)),
     waterAnchor: streetWaterAnchor(terrain, sizeM),
   })
   return {
@@ -148,7 +152,8 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     ringRoads,
     arcologies,
     megablocks,
-    streets: [...pruned, ...frontage],
+    streets: [...prunedStreets, ...frontage],
     frontage,
+    pruned,
   }
 }
