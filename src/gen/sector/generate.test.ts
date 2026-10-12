@@ -13,7 +13,7 @@ import { inWater, isLakeShore } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
 import { bboxesFar, endMeetings, maxCloseRun } from '../streets/testutil'
 import { materializeTags, resolveTags } from '../../app/tags'
-import { deriveDistricts, generateSector, toBlocks } from './generate'
+import { deriveDistricts, footprintTouchPoints, generateSector, toBlocks } from './generate'
 
 // full pipeline is ~3-10 s per 4 km generation (tracing + land clipping dominate)
 vi.setConfig({ testTimeout: 90000 })
@@ -95,7 +95,7 @@ describe('generateSector', () => {
       const d = m.districts.find((x) => x.id === b.districtId)!
       const c = ringCentroid(b.poly)
       const inside = pointInRings(c, [d.poly])
-      const touches = b.footprint.some((p) => pointInRings(p, [d.poly]))
+      const touches = footprintTouchPoints(b.footprint).some((p) => pointInRings(p, [d.poly]))
       expect(inside || touches).toBe(true)
     }
   })

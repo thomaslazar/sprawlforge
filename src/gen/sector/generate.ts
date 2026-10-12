@@ -238,13 +238,17 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
 }
 
 /** block -> district by centroid containment, else the first district its footprint touches; a block in no district (a dropped sliver district) is dropped */
+/** Vertices, then edge midpoints: a block can straddle a boundary with every corner outside. */
+export function footprintTouchPoints(footprint: Pt[]): Pt[] {
+  return [...footprint, ...footprint.map((a, i) => { const b = footprint[(i + 1) % footprint.length]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } })]
+}
+
 export function toBlocks(faces: Face[], districts: District[]): Block[] {
   const perDistrict = new Map<string, number>()
   return faces.flatMap((f) => {
     const c = ringCentroid(f.poly)
     let di = districts.findIndex((d) => pointInRings(c, [d.poly]))
-    // vertices, then edge midpoints: a block can straddle a boundary with every corner outside
-    const touch = [...f.footprint, ...f.footprint.map((a, i) => { const b = f.footprint[(i + 1) % f.footprint.length]; return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 } })]
+    const touch = footprintTouchPoints(f.footprint)
     if (di < 0) di = districts.findIndex((d) => touch.some((p) => pointInRings(p, [d.poly])))
     if (di < 0) return []
     const districtId = districts[di].id
