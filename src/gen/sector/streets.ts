@@ -30,9 +30,11 @@ export interface TracedRoads {
 
 const SIMPLIFY_M = 1
 const simplify = (r: Road): Road => ({ ...r, points: simplifyPolyline(r.points, SIMPLIFY_M) })
-// streets are skipped by truncateUnlandableRoads' own contract; only arterials can be cut
+// streets are skipped by truncateUnlandableRoads' own contract; only arterials can be cut.
+// No simplify here: traceLayer already simplified each road before smoothing it, and re-simplifying
+// drops every other fillet sample, doubling the turn at the vertices left (smoothed before indexed, never after)
 const finalize = (roads: Road[], terrain: Terrain, index: RoadIndex, maxStub = 40) =>
-  truncateUnlandableRoads(trimStubs(roads, index, maxStub).map(simplify), terrain)
+  truncateUnlandableRoads(trimStubs(roads, index, maxStub), terrain)
 /** a ~1 km ring gets only 2 seeds at the 400 m arterial spacing, and some die on neighbours: 200 m keeps >= 4 spokes */
 const RING_SEED_M = 200
 /** a spoke that leaves its ring and snaps back onto it (both ends within 6 m, shorter than half a lap) is a hairpin: drop it; zero-length ones too */
