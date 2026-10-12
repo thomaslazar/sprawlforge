@@ -374,7 +374,8 @@ export function trimStubs(roads: Road[], index: RoadIndex, maxStub = 40, weld = 
       }
       // only a tail: the end itself must NOT already sit on another road
       const endHit = index.nearestMatching(seq[0], weld, (h) => h.id !== r.id)
-      if (cutAt > 0 && joinPt && !endHit) {
+      // cutAt on the last point would leave a 1-point (zero-length) road: a road shorter than maxStub keeps its tail
+      if (cutAt > 0 && cutAt < seq.length - 1 && joinPt && !endHit) {
         const kept = seq.slice(cutAt)
         kept[0] = joinPt
         pts = fromEnd ? kept.reverse() : kept
