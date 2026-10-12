@@ -237,20 +237,14 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
   return { faces: work, infill, dropped }
 }
 
-const centroidDist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y)
-
-/** block -> district by centroid containment, else nearest district centroid */
+/** block -> district by centroid containment, else the first district its footprint touches; a block in no district (a dropped sliver district) is dropped */
 function toBlocks(faces: Face[], districts: District[]): Block[] {
-  if (districts.length === 0) return []
-  const centers = districts.map((d) => ringCentroid(d.poly))
   const perDistrict = new Map<string, number>()
-  return faces.map((f) => {
+  return faces.flatMap((f) => {
     const c = ringCentroid(f.poly)
     let di = districts.findIndex((d) => pointInRings(c, [d.poly]))
-    if (di < 0) {
-      di = 0
-      centers.forEach((dc, k) => { if (centroidDist(c, dc) < centroidDist(c, centers[di])) di = k })
-    }
+    if (di < 0) di = districts.findIndex((d) => f.footprint.some((p) => pointInRings(p, [d.poly])))
+    if (di < 0) return []
     const districtId = districts[di].id
     const n = (perDistrict.get(districtId) ?? 0) + 1
     perDistrict.set(districtId, n)
