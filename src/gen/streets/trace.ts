@@ -59,7 +59,10 @@ function towards(v: Pt, ref: Pt): Pt {
   return v.x * ref.x + v.y * ref.y < 0 ? { x: -v.x, y: -v.y } : v
 }
 
-interface Seg { id: string; cls: RoadClass; a: Pt; b: Pt; arc: number; total: number }
+interface Seg { id: string; cls: RoadClass; a: Pt; b: Pt; arc: number; total: number; x0: number; x1: number; y0: number; y1: number }
+
+/** a segment whose bbox is further than this beyond the query radius can't be a hit; the slack only covers float rounding */
+const BBOX_SLACK = 1e-6
 
 /** a nearestMatching hit; `edge` = arc distance (m) from the hit point to the nearer end of its road */
 export interface MatchHit { id: string; at: Pt; dist: number; segAngle: number; cls: RoadClass; edge: number }
@@ -81,7 +84,11 @@ export class RoadIndex {
     if (!keys) { keys = new Set(); this.keysById.set(id, keys) }
     let arc = 0
     for (let i = 1; i < points.length; i++) {
-      const seg: Seg = { id, cls, a: points[i - 1], b: points[i], arc, total }
+      const a = points[i - 1], b = points[i]
+      const seg: Seg = {
+        id, cls, a, b, arc, total,
+        x0: Math.min(a.x, b.x), x1: Math.max(a.x, b.x), y0: Math.min(a.y, b.y), y1: Math.max(a.y, b.y),
+      }
       arc += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y)
       const cx0 = Math.floor(Math.min(seg.a.x, seg.b.x) / this.cellSize)
       const cx1 = Math.floor(Math.max(seg.a.x, seg.b.x) / this.cellSize)
@@ -122,11 +129,14 @@ export class RoadIndex {
     const cx1 = Math.floor((p.x + radius) / this.cellSize)
     const cy0 = Math.floor((p.y - radius) / this.cellSize)
     const cy1 = Math.floor((p.y + radius) / this.cellSize)
+    const lim = radius + BBOX_SLACK
     for (let cx = cx0; cx <= cx1; cx++) {
       for (let cy = cy0; cy <= cy1; cy++) {
         const bucket = this.cells.get(cx * 100003 + cy)
         if (!bucket) continue
-        for (const seg of bucket) {
+        for (let i = 0; i < bucket.length; i++) {
+          const seg = bucket[i]
+          if (p.x < seg.x0 - lim || p.x > seg.x1 + lim || p.y < seg.y0 - lim || p.y > seg.y1 + lim) continue
           // nearest point on the segment; only allocate the point for hits
           const abx = seg.b.x - seg.a.x
           const aby = seg.b.y - seg.a.y
@@ -147,12 +157,37 @@ export class RoadIndex {
   nearest(
     p: Pt, radius: number, filter?: (cls: RoadClass) => boolean,
   ): { id: string; at: Pt; dist: number; segAngle: number; edge: number } | null {
+    // same scan as forEachInRadius, inlined so a hit is only allocated when it becomes the best (and no closure per call)
     let best: { id: string; at: Pt; dist: number; segAngle: number; edge: number } | null = null
-    this.forEachInRadius(p, radius, (seg, pt, d, edge) => {
-      if (filter && !filter(seg.cls)) return
-      if (!best || d < best.dist)
-        best = { id: seg.id, at: pt, dist: d, segAngle: Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x), edge }
-    })
+    let bestD = Infinity
+    const cx0 = Math.floor((p.x - radius) / this.cellSize)
+    const cx1 = Math.floor((p.x + radius) / this.cellSize)
+    const cy0 = Math.floor((p.y - radius) / this.cellSize)
+    const cy1 = Math.floor((p.y + radius) / this.cellSize)
+    const lim = radius + BBOX_SLACK
+    for (let cx = cx0; cx <= cx1; cx++) {
+      for (let cy = cy0; cy <= cy1; cy++) {
+        const bucket = this.cells.get(cx * 100003 + cy)
+        if (!bucket) continue
+        for (let i = 0; i < bucket.length; i++) {
+          const seg = bucket[i]
+          if (p.x < seg.x0 - lim || p.x > seg.x1 + lim || p.y < seg.y0 - lim || p.y > seg.y1 + lim) continue
+          if (filter && !filter(seg.cls)) continue
+          const abx = seg.b.x - seg.a.x
+          const aby = seg.b.y - seg.a.y
+          const len2 = abx * abx + aby * aby || 1
+          const t = clamp(0, 1, ((p.x - seg.a.x) * abx + (p.y - seg.a.y) * aby) / len2)
+          const qx = seg.a.x + t * abx
+          const qy = seg.a.y + t * aby
+          const d = Math.hypot(p.x - qx, p.y - qy)
+          if (d <= radius && d < bestD) {
+            const at = seg.arc + t * Math.sqrt(len2)
+            bestD = d
+            best = { id: seg.id, at: { x: qx, y: qy }, dist: d, segAngle: Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x), edge: Math.min(at, seg.total - at) }
+          }
+        }
+      }
+    }
     return best
   }
 
