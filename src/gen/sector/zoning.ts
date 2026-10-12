@@ -56,12 +56,13 @@ function isShore(poly: Pt[], terrain: Terrain): boolean {
   return false
 }
 
-export function zoneWeights(params: SectorParams, shore: boolean): Record<ZoneType, number> {
+/** irr: the district's effective irregularity; planned (< 0.4) favours corp, organic (> 0.6) favours slum */
+export function zoneWeights(params: SectorParams, shore: boolean, irr: number): Record<ZoneType, number> {
   const c = params.corpDominance
   return {
-    corp: 0.5 + 3 * c,
+    corp: (0.5 + 3 * c) * (irr < 0.4 ? 2 : 1),
     residential: 3 - 1.5 * c,
-    slum: 2.5 - 2 * c,
+    slum: (2.5 - 2 * c) * (irr > 0.6 ? 2 : 1),
     industrial: 1.5,
     entertainment: 1,
     docks: shore ? 1.5 : 0,
@@ -77,7 +78,8 @@ export function assignZones(districtPolys: Pt[][], params: SectorParams, terrain
   const sorted = withBounds.sort((a, b) => a.bounds.y - b.bounds.y || a.bounds.x - b.bounds.x)
   return sorted.map(({ poly, bounds }, i) => {
     const shore = isShore(poly, terrain)
-    const weights = Object.entries(zoneWeights(params, shore)) as Array<[ZoneType, number]>
+    const eff = effective(ringCentroid(poly))
+    const weights = Object.entries(zoneWeights(params, shore, eff)) as Array<[ZoneType, number]>
     const drawn = rng.weighted(weights) // always drawn so unforced districts keep their sequence
     const hits = forced.filter((f) => pointInRings(f.at, [poly]))
     const zone = hits.length ? hits[hits.length - 1].zone : drawn
@@ -86,7 +88,7 @@ export function assignZones(districtPolys: Pt[][], params: SectorParams, terrain
     // ties — floor > 0 so no district is a perfect grid (spec §4.3)
     const irregularity = clamp(
       0.05, 0.95,
-      effective(ringCentroid(poly)) * 0.7 + ZONE_IRREGULARITY[zone] * 0.3 + (rng.next() - 0.5) * 0.1,
+      eff * 0.7 + ZONE_IRREGULARITY[zone] * 0.3 + (rng.next() - 0.5) * 0.1,
     )
     return {
       id: `D${String(i + 1).padStart(2, '0')}`,

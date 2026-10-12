@@ -13,6 +13,9 @@ const BOUNDARY_REACH = 250
 const NOISE_SCALE = 350
 const NOISE_MAX = (35 * Math.PI) / 180
 const GRID_STEP = 20
+export const PLAN_CELL = 1500
+const PLAN_COPY = 0.7
+const PLANNED_BELOW = 0.4
 
 export interface Patch { center: Pt; angle: number; size: number; shore: boolean }
 export interface FieldSample { major: Pt; minor: Pt } // unit vectors, minor ⟂ major
@@ -162,6 +165,22 @@ export function buildPatches(params: SectorParams, terrain: Terrain, sizeM: numb
   const lo = -PATCH_MARGIN
   const hi = sizeM + PATCH_MARGIN
   const patches: Patch[] = []
+  const planned = new Set<Patch>()
+  const planAngles = new Map<number, number>()
+  // planned areas share one grid angle per plan cell; a cell copies its west (else north) neighbour with PLAN_COPY
+  const planAngle = (center: Pt) => {
+    const ix = Math.floor(center.x / PLAN_CELL)
+    const iy = Math.floor(center.y / PLAN_CELL)
+    const key = cellKey(ix, iy)
+    let angle = planAngles.get(key)
+    if (angle === undefined) {
+      const copy = rng.chance(PLAN_COPY)
+      const neighbour = planAngles.get(cellKey(ix - 1, iy)) ?? planAngles.get(cellKey(ix, iy - 1))
+      angle = copy && neighbour !== undefined ? neighbour : rng.next() * Math.PI
+      planAngles.set(key, angle)
+    }
+    return angle
+  }
 
   for (let y = lo; y <= hi; ) {
     const spacing = clamp(400, 900, 900 - 500 * ((irr({ x: lo, y }) - 0.05) / 0.9))
@@ -172,14 +191,17 @@ export function buildPatches(params: SectorParams, terrain: Terrain, sizeM: numb
       }
       const tangent = shoreTangent(terrain, center, SHORE_DIST)
       const shore = tangent !== null && tangent.dist < SHORE_DIST
-      patches.push({ center, angle: shore ? tangent!.angle : 0, size: spacing, shore })
+      const isPlanned = !shore && irr(center) < PLANNED_BELOW
+      const patch: Patch = { center, angle: shore ? tangent!.angle : isPlanned ? planAngle(center) : 0, size: spacing, shore }
+      if (isPlanned) planned.add(patch)
+      patches.push(patch)
     }
     y += spacing
   }
 
   const shorePatches = patches.filter((patch) => patch.shore)
   for (const patch of patches) {
-    if (patch.shore) continue
+    if (patch.shore || planned.has(patch)) continue
     if (rng.chance(0.6)) {
       const nearestShore = nearestOf(patch.center, shorePatches)
       patch.angle = nearestShore ? nearestShore.angle : rng.next() * Math.PI
