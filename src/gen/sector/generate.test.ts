@@ -902,7 +902,8 @@ describe('lakes bound blocks', () => {
 
 describe('frontage', () => {
   // clipper2 re-roll (v8): seed 42 no longer has a sunken stretch, seed 24 does
-  const cases = [{ ...base, seed: 24, landform: 'coastal', river: true }, { ...base, seed: 20, size: 2, landform: 'coastal', river: true }] as const
+  // seed 1 replaces 24 (no sunken segment left after the 7b stabilisation re-roll): the sunken check needs one
+  const cases = [{ ...base, seed: 1, landform: 'coastal', river: true }, { ...base, seed: 20, size: 2, landform: 'coastal', river: true }] as const
   for (const c of cases) {
     describe(`seed ${c.seed} ${c.size} km`, () => {
       let m: ReturnType<typeof generateSector>
@@ -943,7 +944,7 @@ describe('frontage', () => {
       })
 
       it('no frontage along sunken segments', () => {
-        if (c.seed === 24) expect(sunken.length).toBeGreaterThan(0) // seed 20 has none; seed 24 must exercise the check
+        if (c.seed === 1) expect(sunken.length).toBeGreaterThan(0) // seed 20 has none; seed 1 must exercise the check
         const total = polylineLength(hwPts)
         const bad: string[] = []
         for (const r of fr) {
@@ -984,8 +985,8 @@ describe('frontage', () => {
 describe('compound names', () => {
   it('are drawn after the landmark names, which stay as before', { timeout: 300000 }, () => {
     const m = generateSector({ ...base, corpDominance: 0.85, arcology: true, megablock: true })
-    expect(m.arcologies.map((a) => a.name)).toEqual(['The Vertex-Dynamics Gemini']) // arterials re-roll (v9); was 'Kessler Twin Towers': arterials cross the highway (and one-point roads are gone): layout shifts the name draw; same as the original golden
-    expect(m.megablocks.map((a) => a.name)).toEqual(['The Iron Hive']) // arterials re-roll (v9); was 'Docks Block', before that 'Gardens Block': arterials cross the highway, layout shifts the name draw
+    expect(m.arcologies.map((a) => a.name)).toEqual(['The Apex-Robotics Gemini']) // 7b stabilisation re-roll; v9: 'The Vertex-Dynamics Gemini'; was 'Kessler Twin Towers': arterials cross the highway (and one-point roads are gone): layout shifts the name draw; same as the original golden
+    expect(m.megablocks.map((a) => a.name)).toEqual(['The Black Hive']) // 7b stabilisation re-roll; v9: 'The Iron Hive'; was 'Docks Block', before that 'Gardens Block': arterials cross the highway, layout shifts the name draw
     expect(m.compounds.length).toBeGreaterThan(0)
     for (const c of m.compounds) expect(c.name.length).toBeGreaterThan(0)
     expect(m.pois.filter((p) => p.type === 'corp_campus').map((p) => p.name)).toEqual(m.compounds.map((c) => c.name))
