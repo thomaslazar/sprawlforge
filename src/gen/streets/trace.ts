@@ -1,4 +1,4 @@
-import { bboxOf, pointAtT, pointInRings, polylineLength, type Pt } from '../geometry'
+import { bboxOf, pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import { RING_ID_PREFIX } from '../landmarks/place'
 import { inWater } from '../sector/bridges'
@@ -249,11 +249,17 @@ function traceHalf(
       // arterials bridge a narrow river along their current heading (at most 2 per half)
       const river = terrain.riverSlice
       if (!opts.bridgeRivers || crossWater || bridges >= 2 || !river) break
-      if (distToPolyline(next, river.course) > river.width * 1.5) break
       let d = opts.step
       while (d <= CROSSING_MAX_REACH && inWater(terrain, { x: p.x + dir.x * d, y: p.y + dir.y * d })) d += CROSSING_SAMPLE_STEP
       const land = { x: p.x + dir.x * d, y: p.y + dir.y * d }
       if (d > CROSSING_MAX_REACH || land.x < 0 || land.x > sizeM || land.y < 0 || land.y > sizeM) break
+      // the deck must cross the river course (not a sea inlet / lake) and clear every road of its own rank or higher
+      if (!segmentCrossesPolyline(p, land, river.course)) break
+      let blocked = false
+      for (let s = 0; s < d && !blocked; s += CROSSING_SAMPLE_STEP) {
+        blocked = !!index.nearest({ x: p.x + dir.x * s, y: p.y + dir.y * s }, 0.3 * sep, sameOrHigher)
+      }
+      if (blocked) break
       pts.push(land)
       p = land
       bridges++
