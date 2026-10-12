@@ -157,12 +157,14 @@ function traceFromEdge(
   }
 }
 
+export const HIGHWAY_OPTS: TraceOpts = { ...MAJOR, maxSteps: 2000, maxTurn: MAJOR.step / 300, bridgeRivers: false, stopAtSingularity: false }
+
 export function traceHighway(
   params: SectorParams, terrain: Terrain, sizeM: number,
 ): { road: Road; field: RoadField } {
   const rng = mulberry32(hashSeed(params.seed, 'highway'))
   const irregularityAt = effectiveIrregularity(params)
-  const opts: TraceOpts = { ...MAJOR, maxSteps: 2000, maxTurn: MAJOR.step / 300, bridgeRivers: false }
+  const opts = HIGHWAY_OPTS
 
   let best: Pt[] | null = null
   let bestField: RoadField | null = null

@@ -633,9 +633,12 @@ describe('arterial smoothing and singularity stop', () => {
 
   it('traceLayer smooths each streamline before indexing it', () => {
     const seam = field((p) => (p.x < 1000 ? 0 : Math.PI / 8))
+    const raw = run(seam, { ...MAJOR, smoothRadius: undefined })[0].points
     const roads = run(seam, MAJOR)
     expect(roads.length).toBe(1)
     const pts = roads[0].points
+    expect(pts.length).toBeLessThan(raw.length)
+    expect(Math.max(...pts.slice(1).map((p, i) => Math.hypot(p.x - pts[i].x, p.y - pts[i].y)))).toBeGreaterThan(30)
     expect(maxBendDeg(pts)).toBeLessThanOrEqual(15 + 1e-6)
     expect(pts.some((p) => p.x > 1000)).toBe(true)
     expect(Math.abs(pts[pts.length - 1].y - 2000)).toBeGreaterThan(50)
