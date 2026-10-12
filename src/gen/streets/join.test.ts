@@ -72,7 +72,8 @@ describe('joinFreeEnds', () => {
     expect(maxBendDeg(a)).toBeLessThan(15 + 1e-6)
   })
   it('never joins its own road, and never across water', () => {
-    const own = road('A', [...line(100, 500, 500, 500), ...line(500, 500, 500, 400)])
+    // a spiral: the free end (450,450) heads west at its own first leg, 150 m ahead and >30 m from both road ends (the seg.id exclusion and the hairpin check each stop it; the test fails only without both)
+    const own = road('A', [...line(300, 300, 300, 700), ...line(300, 700, 700, 700).slice(1), ...line(700, 700, 700, 450).slice(1), ...line(700, 450, 450, 450).slice(1)])
     expect(run([own]).joined).toBe(0)
     const r = run([road('A', line(100, 500, 500, 500)), road('B', line(800, 300, 800, 900))], lake)
     expect(r.joined).toBe(0)
