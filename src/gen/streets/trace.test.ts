@@ -652,4 +652,25 @@ describe('arterial smoothing and singularity stop', () => {
     for (let i = 0; i < pts.length; i++)
       for (let j = i + 4; j < pts.length; j++) expect(Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y)).toBeGreaterThan(5)
   })
+
+  describe('arterial join', () => {
+    const joinRun = (xEnd: number) => {
+      const index = new RoadIndex(200)
+      index.add('X', [{ x: 0, y: 150 }, { x: xEnd, y: 150 }], 'arterial')
+      const f: RoadField = { sizeM: 4000, patches: [], sample: () => ({ major: { x: 1, y: 0 }, minor: { x: 0, y: 1 } }) }
+      return traceLayer(f, 'major', [{ at: { x: 100, y: 0 }, dir: { x: 1, y: 0 } }], dryTerrain, 4000, index, MAJOR, mulberry32(1), () => 0.2, 'A', 'arterial')
+    }
+    it('an arterial stopped by a near-parallel arterial joins it with a curve', () => {
+      const roads = joinRun(2000)
+      expect(roads.length).toBe(1)
+      const pts = roads[0].points
+      expect(Math.abs(pts[pts.length - 1].y - 150)).toBeLessThan(1)
+      expect(maxBendDeg(pts)).toBeLessThan(15 + 1e-6)
+    })
+    it('a join target beyond the target road end is clamped to that end', () => {
+      const pts = joinRun(120)[0].points
+      const e = pts[pts.length - 1]
+      expect(Math.hypot(e.x - 120, e.y - 150)).toBeLessThan(1)
+    })
+  })
 })

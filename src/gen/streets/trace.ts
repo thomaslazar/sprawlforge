@@ -5,6 +5,7 @@ import { inWater, nearWater } from '../sector/bridges'
 import { distToPolyline } from '../terrain/rivers'
 import type { Road, RoadClass, Terrain } from '../types'
 import type { RoadField } from './field'
+import { joinCurve, JOIN_AHEAD } from './join'
 import { smoothBends } from './smooth'
 
 export const FRONTAGE_ID_PREFIX = 'F'
@@ -70,7 +71,7 @@ interface Seg { id: string; cls: RoadClass; a: Pt; b: Pt; arc: number; total: nu
 const BBOX_SLACK = 1e-6
 
 /** a nearestMatching hit; `edge` = arc distance (m) from the hit point to the nearer end of its road */
-export interface MatchHit { id: string; at: Pt; dist: number; segAngle: number; cls: RoadClass; edge: number }
+export interface MatchHit { id: string; at: Pt; dist: number; segAngle: number; cls: RoadClass; edge: number; arcAtFoot: number }
 
 /** uniform grid hash of road segments; nearest() scans only the cells within radius */
 export class RoadIndex {
@@ -78,6 +79,7 @@ export class RoadIndex {
   private cells = new Map<number, Seg[]>()
   /** road id -> keys of the buckets holding its segments, so remove() touches only those */
   private keysById = new Map<string, Set<number>>()
+  private pointsById = new Map<string, Pt[]>()
 
   constructor(cellSize: number) {
     this.cellSize = cellSize
@@ -85,6 +87,7 @@ export class RoadIndex {
 
   add(id: string, points: Pt[], cls: RoadClass): void {
     const total = polylineLength(points)
+    this.pointsById.set(id, points)
     let keys = this.keysById.get(id)
     if (!keys) { keys = new Set(); this.keysById.set(id, keys) }
     let arc = 0
@@ -116,6 +119,7 @@ export class RoadIndex {
     if (!keys) return
     for (const k of keys) this.cells.set(k, this.cells.get(k)!.filter((seg) => seg.id !== id))
     this.keysById.delete(id)
+    this.pointsById.delete(id)
   }
 
   has(id: string): boolean {
@@ -129,7 +133,7 @@ export class RoadIndex {
     for (let k = 0; k <= n; k++) this.forEachInRadius({ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n }, reach + 2, visit)
   }
 
-  private forEachInRadius(p: Pt, radius: number, visit: (seg: Seg, pt: Pt, d: number, edge: number) => void): void {
+  private forEachInRadius(p: Pt, radius: number, visit: (seg: Seg, pt: Pt, d: number, edge: number, arcAtFoot: number) => void): void {
     const cx0 = Math.floor((p.x - radius) / this.cellSize)
     const cx1 = Math.floor((p.x + radius) / this.cellSize)
     const cy0 = Math.floor((p.y - radius) / this.cellSize)
@@ -152,7 +156,7 @@ export class RoadIndex {
           const d = Math.hypot(p.x - qx, p.y - qy)
           if (d <= radius) {
             const at = seg.arc + t * Math.sqrt(len2)
-            visit(seg, { x: qx, y: qy }, d, Math.min(at, seg.total - at))
+            visit(seg, { x: qx, y: qy }, d, Math.min(at, seg.total - at), at)
           }
         }
       }
@@ -208,13 +212,19 @@ export class RoadIndex {
     p: Pt, radius: number, test: (hit: MatchHit) => boolean,
   ): MatchHit | null {
     let best: MatchHit | null = null
-    this.forEachInRadius(p, radius, (seg, pt, d, edge) => {
+    this.forEachInRadius(p, radius, (seg, pt, d, edge, arcAtFoot) => {
       const segAngle = Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x)
-      const hit = { id: seg.id, at: pt, dist: d, segAngle, cls: seg.cls, edge }
+      const hit = { id: seg.id, at: pt, dist: d, segAngle, cls: seg.cls, edge, arcAtFoot }
       if (!test(hit)) return
       if (!best || d < best.dist) best = hit
     })
     return best
+  }
+
+  /** the point `arc` m along the hit road from the foot (+ toward the segment's b end), clamped to the road's ends */
+  pointAlong(hit: MatchHit, arc: number): Pt {
+    const pts = this.pointsById.get(hit.id)!
+    return pointAtT(pts, clamp(0, 1, (hit.arcAtFoot + arc) / polylineLength(pts)))
   }
 }
 
@@ -371,6 +381,14 @@ function traceHalf(
       const foot = hitPar.at
       const join = angleGapLines(Math.atan2(foot.y - p.y, foot.x - p.x), hitPar.segAngle)
       if (!opts.bridgeRivers && hitPar.cls !== 'highway' && hitPar.edge >= 6 && join > JOIN_MIN_ANGLE && pts.length * opts.step >= 0.5 * sep && (foot.x - p.x) * dir.x + (foot.y - p.y) * dir.y > 0 && !inObstacle(foot)) pts.push(foot)
+      if (opts.bridgeRivers && hitPar.cls !== 'highway' && !isSourceAt(hitPar.id, next)) {
+        const sign = Math.cos(hitPar.segAngle) * dir.x + Math.sin(hitPar.segAngle) * dir.y > 0 ? 1 : -1
+        const target = index.pointAlong(hitPar, sign * JOIN_AHEAD * sep)
+        const curve = joinCurve(p, dir, target, (q) =>
+          inWater(terrain, q) || inObstacle(q) || q.x < 0 || q.x > sizeM || q.y < 0 || q.y > sizeM
+          || !!index.nearestMatching(q, 0.3 * sep, (h) => h.id !== hitPar.id && h.cls !== 'highway' && sameOrHigher(h.cls)))
+        if (curve) pts.push(...curve)
+      }
       break
     }
 
