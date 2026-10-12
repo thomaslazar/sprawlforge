@@ -381,7 +381,10 @@ function traceHalf(
       const foot = hitPar.at
       const join = angleGapLines(Math.atan2(foot.y - p.y, foot.x - p.x), hitPar.segAngle)
       if (!opts.bridgeRivers && hitPar.cls !== 'highway' && hitPar.edge >= 6 && join > JOIN_MIN_ANGLE && pts.length * opts.step >= 0.5 * sep && (foot.x - p.x) * dir.x + (foot.y - p.y) * dir.y > 0 && !inObstacle(foot)) pts.push(foot)
-      if (opts.bridgeRivers && hitPar.cls !== 'highway' && !isSourceAt(hitPar.id, next)) {
+      // join only a road we are converging on (foot ahead, not receding since last step): curving back into a road we are leaving makes a long side-by-side run
+      const before = index.nearestMatching(p, 0.7 * sep, (h) => h.id === hitPar.id)
+      if (opts.bridgeRivers && hitPar.cls !== 'highway' && !isSourceAt(hitPar.id, next)
+        && (foot.x - p.x) * dir.x + (foot.y - p.y) * dir.y >= 0 && (!before || hitPar.dist <= before.dist + 0.1)) {
         const sign = Math.cos(hitPar.segAngle) * dir.x + Math.sin(hitPar.segAngle) * dir.y > 0 ? 1 : -1
         const target = index.pointAlong(hitPar, sign * JOIN_AHEAD * sep)
         const curve = joinCurve(p, dir, target, (q) =>
