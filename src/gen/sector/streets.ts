@@ -81,7 +81,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     return [...ends, ...seedsAlong(ring.points, RING_SEED_M, false)].map((x) => {
       const dx = x.at.x - a.center.x, dy = x.at.y - a.center.y, len = Math.hypot(dx, dy) || 1
       // major axis: the radial basis is the field's major there; sampled ON the ring (d ~ R) its weight is 0 and `crossing` would pick the grid's axis
-      return { ...x, dir: { x: dx / len, y: dy / len }, axis: 'major' as const }
+      return { ...x, dir: { x: dx / len, y: dy / len }, axis: 'major' as const, oneWay: true }
     })
   })
   // ponytail: a square ring's inner corners lie outside its octagonal plaza, so the whole ring (shrunk 5 %, so spokes can start on it) is the obstacle there

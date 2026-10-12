@@ -18,6 +18,8 @@ export interface Seed {
   axis?: 'major' | 'minor'
   /** overrides riverSlice.width for this seed's crossWater band (see riverCrossingSeeds) */
   corridorWidth?: number
+  /** trace along dir only (a spoke leaves its ring outward; inward is the plaza) */
+  oneWay?: boolean
 }
 
 export interface TraceOpts {
@@ -442,7 +444,7 @@ export function traceStreamline(
     field, useAxis, seed.at, initDir, terrain, sizeM, index, opts, sep, rng, irregularityAt,
     crossWater, sourceId, seed.at, seed.corridorWidth, decayEnds,
   )
-  const backward = traceHalf(
+  const backward = seed.oneWay ? [] : traceHalf(
     field, useAxis, seed.at, { x: -initDir.x, y: -initDir.y }, terrain, sizeM, index, opts, sep, rng, irregularityAt,
     crossWater, sourceId, seed.at, seed.corridorWidth, decayEnds,
   )
