@@ -70,15 +70,16 @@ export function joinFreeEnds(
       const hl = Math.hypot(end.x - back.x, end.y - back.y)
       if (hl === 0) continue
       const dir = { x: (end.x - back.x) / hl, y: (end.y - back.y) / hl }
-      const cands: Array<{ id: string; at: Pt; dist: number; ang: number }> = []
+      const byRoad = new Map<string, { id: string; at: Pt; dist: number; ang: number }>()
       index.forEachInRadius(end, JOIN_REACH * MAJOR.separation, (seg, at, dist, edge) => {
         if (seg.cls !== 'arterial' || seg.id === road.id || edge < 30) return
         const vx = at.x - end.x, vy = at.y - end.y
         const vl = Math.hypot(vx, vy)
         if (vl > 0 && Math.acos(Math.max(-1, Math.min(1, (vx * dir.x + vy * dir.y) / vl))) > JOIN_CONE) return
-        cands.push({ id: seg.id, at, dist, ang: Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x) })
+        // nearest segment per road, so one road cannot eat the whole END_TRY budget
+        if (!((byRoad.get(seg.id)?.dist ?? Infinity) <= dist)) byRoad.set(seg.id, { id: seg.id, at, dist, ang: Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x) })
       })
-      cands.sort((a, b) => a.dist - b.dist)
+      const cands = [...byRoad.values()].sort((a, b) => a.dist - b.dist)
       for (const c of cands.slice(0, END_TRY)) {
         // a road with both ends on one road is a hairpin
         if (index.nearestMatching(other, 6, (h) => h.id === c.id)) continue
