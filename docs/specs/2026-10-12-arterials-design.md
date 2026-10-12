@@ -160,17 +160,19 @@ arc tangent to both adjacent segments with radius `minRadius` (arterials
 60 m, streets 25 m), sampled every 10 m; where the adjacent segments are
 too short for the tangent length, the radius shrinks to the largest that
 fits (tangent length at most half of the shorter adjacent segment). Both
-endpoints are never moved; a vertex for which `pinned(v)` is true is kept
-as is. Ramps, frontage and the highway are untouched (the highway has its
+endpoints are never moved; a vertex for which `pinned(v, t, arc)` is true
+(t the tangent length, arc the sampled fillet that would replace v) is
+kept as is. Ramps, frontage and the highway are untouched (the highway has its
 own clamp, ramps are Béziers, frontage is an offset).
 
 Invariant: **a road is smoothed before anything ends on it, and never
 after.** `traceLayer` smooths every streamline right before `index.add`
 (`TraceOpts.smoothRadius`: `MAJOR` 60, `MINOR` 25, highway undefined).
 `joinRiverStubs` and `joinFreeEnds` re-smooth only the roads they
-changed, with `pinned = (v) => index.nearestMatching(v, 6, (h) => h.edge <
-1) !== null` (a road end sits there), so a T onto the road keeps its
-anchor. Junctions stay sharp by construction: a T adds no vertex to the
+changed, pinning a vertex only when another road's end within t + 6 m
+of it would end up more than 2 m (`PIN_SLACK`) off the fillet; an end
+the fillet barely moves stays anchored (ends are accepted within 6 m)
+and the corner is still rounded. Junctions stay sharp by construction: a T adds no vertex to the
 road it meets, and a road's own ends are never moved.
 
 ## 5. Shores (phase 2)
