@@ -90,4 +90,13 @@ describe('joinFreeEnds', () => {
     expect(near(r.roads[0].points.at(-1)!, B.points)).toBeLessThan(1)
     expect(distToPolyline(C.points[0], r.roads[0].points)).toBeLessThan(1)
   })
+  it('a corner whose fillet moves an end by under 2 m is still smoothed', () => {
+    const A = road('A', [{ x: 100, y: 800 }, { x: 500, y: 800 }, { x: 500, y: 600 }])
+    const C = road('C', line(450, 800, 450, 1900)) // 50 m before the corner: the 60 m fillet shifts it by ~0.8 m
+    const r = run([A, C, road('B', line(300, 300, 700, 300))])
+    expect(r.joined).toBeGreaterThanOrEqual(1)
+    expect(r.roads[0].points.some((q) => q.x === 500 && q.y === 800)).toBe(false)
+    expect(maxBendDeg(r.roads[0].points)).toBeLessThan(15 + 1e-6)
+    expect(distToPolyline(C.points[0], r.roads[0].points)).toBeLessThan(6)
+  })
 })

@@ -2,7 +2,8 @@ import { angleGapLines, inWindow, onWindowEdge, PARALLEL_ANGLE, pointAtT, pointI
 import { RING_ID_PREFIX } from '../landmarks/place'
 import { inWater, nearWater } from '../sector/bridges'
 import type { Road, Terrain } from '../types'
-import { smoothBends } from './smooth'
+import { distToPolyline } from '../terrain/rivers'
+import { PIN_SLACK, smoothBends } from './smooth'
 import type { RoadIndex } from './trace'
 
 /** how far along the target road (fraction of separation) a join aims past the foot */
@@ -106,7 +107,11 @@ export function joinFreeEnds(
             || !!index.nearestMatching(q, 0.15 * separation, (h) => h.id !== road.id && h.id !== c.id && h.cls === 'arterial' && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE)
           const curve = joinCurve(end, dir, c.at, { x: Math.cos(c.ang), y: Math.sin(c.ang) }, reject)
           if (!curve) continue
-          const pinned = (v: Pt, t: number) => !!index.nearestMatching(v, t + 6, (h) => h.id !== road.id && h.edge < 1)
+          const pinned = (v: Pt, t: number, arc: Pt[]) => {
+            let moved = false
+            index.forEachInRadius(v, t + 6, (h, at, _d, edge) => { if (h.id !== road.id && edge < 1 && distToPolyline(at, arc) > PIN_SLACK) moved = true })
+            return moved
+          }
           const grown = smoothBends([...fwd, ...curve], 60, pinned)
           pts = atStart ? grown.reverse() : grown
           index.remove(road.id)

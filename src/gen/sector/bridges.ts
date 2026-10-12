@@ -1,7 +1,7 @@
 import { bboxOf, onWindowEdge, pointAtT, pointInRings, polylineLength, ringsContainsFn, segmentCrossesPolyline, slicePolyline, type Pt } from '../geometry'
 import { RING_ID_PREFIX } from '../landmarks/place'
 import type { RoadIndex } from '../streets/trace'
-import { smoothBends } from '../streets/smooth'
+import { PIN_SLACK, smoothBends } from '../streets/smooth'
 import { distToPolyline, nearestOnPolyline } from '../terrain/rivers'
 import type { Road, Terrain } from '../types'
 
@@ -430,7 +430,11 @@ export function joinRiverStubs(roads: Road[], terrain: Terrain, sizeM: number, i
   return root.size === 0 ? roads : roads.filter((r) => !root.has(r.id)).map((r) => {
     if (points.get(r.id) === r.points) return r
     const mine = members.get(r.id)!
-    const pinned = (v: Pt, t: number) => !!index.nearestMatching(v, t + 6, (h) => !mine.has(h.id) && h.edge < 1)
+    const pinned = (v: Pt, t: number, arc: Pt[]) => {
+      let moved = false
+      index.forEachInRadius(v, t + 6, (h, at, _d, edge) => { if (!mine.has(h.id) && edge < 1 && distToPolyline(at, arc) > PIN_SLACK) moved = true })
+      return moved
+    }
     return { ...r, points: smoothBends(points.get(r.id)!, 60, pinned) }
   })
 }
