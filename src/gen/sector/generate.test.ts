@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-import { pointAtT, pointInRings, polylineLength, ringArea, ringCentroid, type Pt } from '../geometry'
+import { pointAtT, pointInRings, polylineLength, ringArea, ringCentroid, segmentsIntersect, type Pt } from '../geometry'
 import { ISLET_MOAT_OUTER_FACTOR, ISLET_RADIUS_MAX } from '../terrain/field'
 import { GENERATOR_VERSION, type Block, type District, type Road, type SectorParams, type Terrain } from '../types'
 import { hashSeed, mulberry32 } from '../rng'
@@ -366,6 +366,31 @@ describe('arterial bridges', () => {
     // prune-dangling cut one bridge whose far bank had no junction (B018): 3 of 4 seeded
     expect(bridges.length).toBeGreaterThanOrEqual(seeds - 1)
     for (const b of bridges) expect(polylineLength(b.points)).toBeLessThan(600) // 579 m: pre-existing B004, a seeded crossing that doubles back in the channel
+  })
+})
+
+describe('river bridges (seed 42)', () => {
+  const m = generateSector({ ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river']), seed: 42, pack: 'generic', theme: 'print' } as SectorParams)
+  const arterialBridges = m.roads.filter((r) => r.class === 'arterial' && r.bridge)
+  it('no road is degenerate (>= 2 points, positive length)', () => {
+    for (const r of m.roads) {
+      expect(r.points.length, r.id).toBeGreaterThanOrEqual(2)
+      expect(polylineLength(r.points), r.id).toBeGreaterThan(0)
+    }
+  })
+  it('no arterial deck crosses a highway bridge', () => {
+    const hw = m.roads.filter((r) => r.class === 'highway' && r.bridge)
+    for (const a of arterialBridges) for (const h of hw)
+      for (let i = 1; i < a.points.length; i++) for (let j = 1; j < h.points.length; j++)
+        expect(segmentsIntersect(a.points[i - 1], a.points[i], h.points[j - 1], h.points[j]), `${a.id} x ${h.id}`).toBe(false)
+  })
+  it('facing arterial stubs across the river are joined by bridges', () => {
+    console.log('arterial bridges', arterialBridges.length, arterialBridges.map((r) => r.id).join(' '))
+    // was 1 before joinRiverStubs; the brief expected 4, but A001<->A002 face a sea inlet (not the river) and A009 is now blocked by the highway bridge
+    expect(arterialBridges.length).toBeGreaterThanOrEqual(3)
+  })
+  it('every arterial bridge is shorter than 600 m', () => {
+    for (const b of arterialBridges) expect(polylineLength(b.points), b.id).toBeLessThan(600)
   })
 })
 

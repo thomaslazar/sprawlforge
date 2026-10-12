@@ -1,4 +1,6 @@
-import { bboxOf, pointAtT, pointInRings, polylineLength, ringsContainsFn, slicePolyline, type Pt } from '../geometry'
+import { bboxOf, pointAtT, pointInRings, polylineLength, ringsContainsFn, segmentCrossesPolyline, slicePolyline, type Pt } from '../geometry'
+import { RING_ID_PREFIX } from '../landmarks/place'
+import type { RoadIndex } from '../streets/trace'
 import { distToPolyline, nearestOnPolyline } from '../terrain/rivers'
 import type { Road, Terrain } from '../types'
 
@@ -31,6 +33,13 @@ export const inWater = (terrain: Terrain, p: Pt): boolean => {
     waterIndexCache.set(terrain, fns)
   }
   return fns.some((f) => f(p))
+}
+
+/** water at p or within r m of it (16-direction probe) */
+export const nearWater = (terrain: Terrain, p: Pt, r: number): boolean => {
+  if (inWater(terrain, p)) return true
+  for (let a = 0; a < 16; a++) if (inWater(terrain, { x: p.x + r * Math.cos((a * Math.PI) / 8), y: p.y + r * Math.sin((a * Math.PI) / 8) })) return true
+  return false
 }
 
 // water polygons as closed polylines, flagged `open` when one touches the window edge (sea, or the river where it leaves the window)
@@ -347,4 +356,75 @@ export function markWetSpans(roads: Road[], terrain: Terrain): Road[] {
     dryPiece(cursor, 1)
   }
   return out
+}
+
+const JOIN_MAX_SPAN = 550
+const JOIN_MAX_TURN_COS = Math.cos(Math.PI / 4)
+const JOIN_CLEARANCE = 0.3 * 400 // 0.3 * MAJOR.separation
+
+interface StubEnd { road: Road; atStart: boolean; pt: Pt; dir: Pt }
+
+/**
+ * Join arterial stubs that face each other across the river into one road, so
+ * markWetSpans later bridges the gap. An end qualifies when it is dry, off the
+ * window edge and at the water; a pair when the span is <= JOIN_MAX_SPAN, a->b
+ * crosses the river course, both heads point within 45 deg of it and no wet
+ * sample of a->b lies near a highway or a third arterial. Greedy, shortest
+ * span first; the result keeps A's id and fields, B is dropped (chains through
+ * a road's far end are allowed).
+ */
+export function joinRiverStubs(roads: Road[], terrain: Terrain, sizeM: number, index: RoadIndex): Road[] {
+  const river = terrain.riverSlice
+  if (!river || terrain.water.length === 0) return roads
+  const onEdge = (p: Pt) => p.x < 1 || p.y < 1 || p.x > sizeM - 1 || p.y > sizeM - 1
+  const ends: StubEnd[] = []
+  for (const road of roads) {
+    const n = road.points.length
+    if (road.class !== 'arterial' || road.id.startsWith(RING_ID_PREFIX) || n < 2) continue
+    for (const atStart of [true, false]) {
+      const pt = road.points[atStart ? 0 : n - 1], q = road.points[atStart ? 1 : n - 2]
+      const len = Math.hypot(pt.x - q.x, pt.y - q.y)
+      if (len === 0 || onEdge(pt) || inWater(terrain, pt)) continue
+      const dir = { x: (pt.x - q.x) / len, y: (pt.y - q.y) / len }
+      if (nearWater(terrain, pt, 15) || inWater(terrain, { x: pt.x + dir.x * 15, y: pt.y + dir.y * 15 })) ends.push({ road, atStart, pt, dir })
+    }
+  }
+  const pairs: Array<{ a: StubEnd; b: StubEnd; span: number }> = []
+  for (let i = 0; i < ends.length; i++) for (let j = i + 1; j < ends.length; j++) {
+    const a = ends[i], b = ends[j]
+    if (a.road === b.road) continue
+    const dx = b.pt.x - a.pt.x, dy = b.pt.y - a.pt.y, span = Math.hypot(dx, dy)
+    if (span === 0 || span > JOIN_MAX_SPAN) continue
+    if ((a.dir.x * dx + a.dir.y * dy) / span < JOIN_MAX_TURN_COS || -(b.dir.x * dx + b.dir.y * dy) / span < JOIN_MAX_TURN_COS) continue
+    if (!segmentCrossesPolyline(a.pt, b.pt, river.course)) continue
+    pairs.push({ a, b, span })
+  }
+  pairs.sort((u, v) => u.span - v.span)
+
+  const points = new Map(roads.map((r) => [r.id, r.points]))
+  const root = new Map<string, string>() // consumed road id -> the road that absorbed it
+  const members = new Map(roads.map((r) => [r.id, new Set([r.id])]))
+  const find = (id: string): string => { while (root.has(id)) id = root.get(id)!; return id }
+  const used = new Set<StubEnd>()
+  for (const { a, b } of pairs) {
+    if (used.has(a) || used.has(b)) continue
+    const ra = find(a.road.id), rb = find(b.road.id)
+    if (ra === rb) continue
+    const ids = new Set([...members.get(ra)!, ...members.get(rb)!])
+    let clear = true
+    const n = Math.ceil(Math.hypot(b.pt.x - a.pt.x, b.pt.y - a.pt.y) / SAMPLE)
+    for (let k = 1; k < n && clear; k++) {
+      const q = { x: a.pt.x + ((b.pt.x - a.pt.x) * k) / n, y: a.pt.y + ((b.pt.y - a.pt.y) * k) / n }
+      clear = !inWater(terrain, q) || !index.nearestMatching(q, JOIN_CLEARANCE, (h) => (h.cls === 'highway' || h.cls === 'arterial') && !ids.has(h.id))
+    }
+    if (!clear) continue
+    used.add(a); used.add(b)
+    const pa = points.get(ra)!, pb = points.get(rb)!
+    const same = (p: Pt, q: Pt) => p.x === q.x && p.y === q.y
+    points.set(ra, [...(same(pa.at(-1)!, a.pt) ? pa : pa.slice().reverse()), ...(same(pb[0], b.pt) ? pb : pb.slice().reverse())])
+    points.delete(rb)
+    root.set(rb, ra)
+    for (const id of members.get(rb)!) members.get(ra)!.add(id)
+  }
+  return root.size === 0 ? roads : roads.filter((r) => !root.has(r.id)).map((r) => (points.get(r.id) === r.points ? r : { ...r, points: points.get(r.id)! }))
 }

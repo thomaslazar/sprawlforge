@@ -1,7 +1,7 @@
 import { bboxOf, pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import { RING_ID_PREFIX } from '../landmarks/place'
-import { inWater } from '../sector/bridges'
+import { inWater, nearWater } from '../sector/bridges'
 import { distToPolyline } from '../terrain/rivers'
 import type { Road, RoadClass, Terrain } from '../types'
 import type { RoadField } from './field'
@@ -533,12 +533,6 @@ export function traceLayer(
 }
 
 export const endKey = (p: Pt): string => `${p.x},${p.y}`
-
-const nearWater = (terrain: Terrain, p: Pt, r: number): boolean => {
-  if (inWater(terrain, p)) return true
-  for (let a = 0; a < 16; a++) if (inWater(terrain, { x: p.x + r * Math.cos((a * Math.PI) / 8), y: p.y + r * Math.sin((a * Math.PI) / 8) })) return true
-  return false
-}
 
 export interface PruneOpts {
   /** classes a road end may legitimately meet */
