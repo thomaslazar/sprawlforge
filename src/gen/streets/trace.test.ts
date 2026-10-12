@@ -195,6 +195,17 @@ describe('streets/trace', () => {
     }
   })
 
+  it('drops crescents: no short arterial has both ends on the same road', () => {
+    const { roads } = traceArterials()
+    for (const r of roads) {
+      if (polylineLength(r.points) >= 3 * MAJOR.separation) continue
+      const idx = othersIndex(roads, r.id)
+      const a = idx.nearestMatching(r.points[0], 6, () => true)?.id
+      const b = idx.nearestMatching(r.points[r.points.length - 1], 6, () => true)?.id
+      expect(a && a === b ? `${r.id} hairpins on ${a}` : '').toBe('')
+    }
+  })
+
   it('snaps endpoints', () => {
     const { roads, terrain, sizeM } = traceArterials()
     expect(roads.length).toBeGreaterThan(0)

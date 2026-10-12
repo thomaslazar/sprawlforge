@@ -280,6 +280,8 @@ const PARALLEL_ANGLE = (25 * Math.PI) / 180
 const SINGULARITY_TURN = (60 * Math.PI) / 180
 /** a street may end on a near-parallel road only broadside and after a real run (a stub right beside its parent is a wedge) */
 const JOIN_MIN_ANGLE = (60 * Math.PI) / 180
+/** an arterial with both ends on the same road is a crescent when shorter than this many separations: dropped */
+const CRESCENT_MAX = 3
 
 function traceHalf(
   field: RoadField, axis: 'major' | 'minor', start: Pt, initDir: Pt,
@@ -437,6 +439,12 @@ export function traceStreamline(
 
   const points = [...backward.slice().reverse(), seed.at, ...forward]
   if (polylineLength(points) < opts.minLength) return null
+  // a crescent: the join rule let a U-turning arterial end on the very road its other end sits on; a short one is a hairpin, not a road
+  if (opts.bridgeRivers && polylineLength(points) < CRESCENT_MAX * opts.separation) {
+    const a = index.nearestMatching(points[0], 6, () => true)?.id
+    const b = index.nearestMatching(points[points.length - 1], 6, () => true)?.id
+    if (a && a === b) return null
+  }
   return points
 }
 

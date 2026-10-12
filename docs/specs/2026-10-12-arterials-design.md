@@ -94,7 +94,12 @@ the walker joins: `target` is the point on the hit road `0.5 × sep` of arc
 ahead of the foot in the walker's travel direction (clamped to the road's
 end), the curve from §3.1 is appended, and the half ends on the target. If
 the curve is rejected the walker stops as today (the end pass handles it).
-Streets (`!opts.bridgeRivers`) keep the existing foot-snap rule.
+The walker joins only a road it is converging on (foot ahead, distance
+not growing since the last step), never one it is leaving. An arterial
+whose two ends land on the same road and that is shorter than 3 ×
+separation is a crescent (a U-turn that joined back): dropped in
+`traceStreamline`. Streets (`!opts.bridgeRivers`) keep the existing
+foot-snap rule.
 
 ### 3.3 Turn clamp for arterials
 
