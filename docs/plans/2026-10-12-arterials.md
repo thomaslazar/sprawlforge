@@ -268,7 +268,7 @@ Run `PORT=4174 tools/uicheck/run.sh`; open both PNGs and describe in the summary
 - Modify: `src/gen/streets/trace.ts` (`traceHalf`), `src/gen/streets/trace.test.ts`
 
 **Interfaces:**
-- Constants `SHORE_LOOKAHEAD = 60`, `DOCK_CHANCE = 0.15`.
+- Constants `SHORE_LOOKAHEAD = 60`, `DOCK_CHANCE = 0.15`; `TraceOpts.shoreLookahead?` (highway 200, via `HIGHWAY_OPTS`), the dock roll only when `opts.bridgeRivers` (never the highway). Spec §5.3 last paragraph: the highway steers along the coast too; add a highway.test.ts case on seed 1584279735 (coastal, small, sparse, corp-run, normal, mixed, river) asserting the highway reaches a second edge.
 - In `traceHalf`, arterials only (`opts.bridgeRivers`), before the `inWater(next)` block: `ahead = p + dir × SHORE_LOOKAHEAD`; if `inWater(terrain, ahead)` and not `inRiverBand(...)` (so the bridge rule keeps priority) and `!dock`: if `!dockDecided` → `dockDecided = true; dock = rng.chance(DOCK_CHANCE)`; if `!dock` → `rawDir = shore tangent at p (shoreTangent(terrain, p, SHORE_LOOKAHEAD + opts.step)) sign-resolved toward dir`, then the clamp applies as usual. A walker whose `next` is in water still breaks (bank stop: dock end or a tip it could not turn around).
 
 - [ ] **Step 1: Tests** (trace.test.ts, a terrain fixture with a straight coast at y = 1000, land below):

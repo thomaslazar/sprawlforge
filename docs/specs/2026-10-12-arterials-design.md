@@ -236,6 +236,15 @@ river bridge rule runs first and is unchanged. The dock roll draws from
 the arterial rng stream passed to `traceHalf` (one draw per water
 approach, so seeds stay reproducible).
 
+The highway gets the same steer, never a dock: with `HIGHWAY_OPTS` the
+lookahead is 200 m and the turn follows the highway's own clamp, so a
+coastal highway that would run into the sea bends along the coast and
+exits on an adjacent land edge (R11 adjacent-edge rule) instead of
+stopping dry at the beach (today 29 of 200 swept coastal 2 km cases; user
+seed 1584279735 coastal/small/sparse/corp-run/normal/mixed/river ends at
+696,1740 pointing at the sea). `traceHighway` keeps its entry-edge
+search; an attempt that reaches any edge beats one that stops.
+
 ### 5.4 Expected look
 
 Coasts and lakes carry an arterial 30–150 m inland for most of their
