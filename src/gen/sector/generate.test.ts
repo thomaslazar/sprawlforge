@@ -712,7 +712,12 @@ describe('landmarks in road tracing', () => {
     let len = 0
     for (const r of m.roads) if (r.class === 'street') for (let i = 1; i < r.points.length; i++) {
       const a = r.points[i - 1], b = r.points[i]
-      if (pointInRings({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, [d.poly])) len += Math.hypot(b.x - a.x, b.y - a.y)
+      // sampled every 10 m along the segment: a straight street is one 900 m segment whose midpoint may lie outside
+      const l = Math.hypot(b.x - a.x, b.y - a.y), n = Math.max(1, Math.ceil(l / 10))
+      for (let k = 0; k < n; k++) {
+        const t = (k + 0.5) / n
+        if (pointInRings({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, [d.poly])) len += l / n
+      }
     }
     return len / 1000 / (Math.abs(ringArea(d.poly)) / 1e6)
   }
