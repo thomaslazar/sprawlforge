@@ -28,13 +28,17 @@ are not consulted, so a through street whose ends sit on two other streets is dr
 anchored on it is left hanging.
 
 Rule: an end counts as anchored when it is within 6 m of **any** road (arterial, street, infill
-piece, ring, frontage) other than itself. Streets stay in the test set.
+piece, ring, frontage) other than itself, on the window edge, or within 15 m of water. Frontage roads
+are exempt (their ends rest on the window, water or an obstacle by construction). The check runs to a
+fixpoint: a street resting only on a dropped street goes too. Surviving interior streets are fed into
+the sub-face graph so a through street divides the sub-blocks.
 
 ### 2.2 One final street prune (item 5)
 
 After infill, streets and infill pieces are pruned once more against the complete road set
-(highway, arterials, ramps, streets, infill): `pruneDangling` with `interiorOnly`, `minLength 60`,
-the decay cul-de-sacs kept. `traceRoads` returns its decay ends (`decayEnds: Pt[]`) so the keep set
+(highway, arterials, ramps, streets, infill): `pruneDangling` with `minLength 60`, the decay
+cul-de-sacs kept. An end resting on another street's end counts as anchored here (not `interiorOnly`):
+blocks were already cut along such chains, and trimming one leaves a block side with no road. `traceRoads` returns its decay ends (`decayEnds: Pt[]`) so the keep set
 is the real one; the ponytail note in `withTrimmedFrontage` goes with it.
 
 Order in `generateSector`: infill → converge-and-weld (2.4) → final prune → blocks → `markWetSpans`.
