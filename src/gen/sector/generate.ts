@@ -1,4 +1,4 @@
-import { bboxOf, bspSplit, pointInRings, polylineLength, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
+import { bboxOf, bspSplit, onWindowEdge, pointInRings, polylineLength, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
 import { RING_ID_PREFIX } from '../landmarks/place'
 import { generateName } from '../names/names'
 import { getPack } from '../names/packs'
@@ -18,7 +18,7 @@ import { GENERATOR_VERSION, type Block, type District, type HighwaySegment, type
 import { placePiers } from './piers'
 import { placePois } from './pois'
 import { selectCompounds } from '../landmarks/compounds'
-import { dryRuns, inWater, landM2 as landM2Of, markWetSpans } from './bridges'
+import { dryRuns, inWater, landM2 as landM2Of, markWetSpans, nearWater } from './bridges'
 import { streetWaterAnchor, traceRoads } from './streets'
 import { assignZones } from './zoning'
 
@@ -280,7 +280,8 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
         for (const r of inside) {
           // frontage ends on the window, water or an obstacle by construction (pruneDangling exempts it too)
           if (gone.has(r.id) || r.id.startsWith(FRONTAGE_ID_PREFIX)) continue
-          const loose = [r.points[0], r.points[r.points.length - 1]].some((e) => distToPolyline(e, closed) > 6
+          // an end on the window edge or at the water is anchored by it (the inset face ring lies ~17 m off there)
+          const loose = [r.points[0], r.points[r.points.length - 1]].some((e) => distToPolyline(e, closed) > 6 && !onWindowEdge(e, sizeM, 1) && !nearWater(terrain, e, 15)
             && ![...others, ...roads.filter((o) => !dropped.has(o.id) && !gone.has(o.id)), ...infill, ...pieces].some((o) => o.id !== r.id && distToPolyline(e, o.points) <= 6))
           if (loose) { gone.add(r.id); again = true }
         }
