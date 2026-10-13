@@ -402,13 +402,13 @@ if ((await page.locator('svg [data-bridge]').count()) < 1) fail('arterials-coast
 // streets cleanup (spec 2026-10-13): highway landing east of the river bridge, zoomed (map metres x 1850-2450, y 1900-2350)
 await page.goto(`${BASE}/?seed=42&tags=coastal,medium,dense,fringe,lively,mixed,river,arcology&pack=generic&theme=print`)
 await page.waitForSelector('svg')
-const zoomed = await page.evaluate(({ x, y, w, h }) => {
-  const el = [...document.querySelectorAll('svg')].find((s) => /^0 0 4000 4000$/.test(s.getAttribute('viewBox') ?? ''))
-  if (!el) return false
-  el.setAttribute('viewBox', `${x} ${y} ${w} ${h}`)
-  return true
-}, { x: 1850, y: 1900, w: 600, h: 450 })
-if (!zoomed) fail('streets-highway: no 4 km map svg to zoom')
+await page.getByLabel('Show POIs').uncheck()
+// wheel-zoom (semantic zoom: labels re-render smaller) at the map point x 2150, y 2125 until ~600 m of the 4000 m map are visible
+const svgBox = await page.locator('.map-viewport svg').first().boundingBox()
+await page.mouse.move(svgBox.x + (2150 / 4000) * svgBox.width, svgBox.y + (2125 / 4000) * svgBox.height)
+const z0 = (await readTransform()).zoom
+for (let i = 0; i < 40 && (await readTransform()).zoom / z0 < 4000 / 600; i++) { await page.mouse.wheel(0, -240); await page.waitForTimeout(30) }
+await page.waitForTimeout(600) // gesture settles, labels re-render
 await page.screenshot({ path: `${OUT}/streets-highway.png` })
 
 // bare URL (no tags) still auto-resolves a landform via resolveTerrain, but
