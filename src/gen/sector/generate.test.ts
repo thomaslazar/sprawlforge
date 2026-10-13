@@ -13,7 +13,7 @@ import { inWater, isLakeShore } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
 import { bboxesFar, endMeetings, maxCloseRun } from '../streets/testutil'
 import { materializeTags, resolveTags } from '../../app/tags'
-import { deriveDistricts, footprintTouchPoints, generateSector, toBlocks } from './generate'
+import { deriveDistricts, footprintTouchPoints, frontageOf, generateSector, toBlocks } from './generate'
 
 // full pipeline is ~3-10 s per 4 km generation (tracing + land clipping dominate)
 vi.setConfig({ testTimeout: 90000 })
@@ -1172,3 +1172,62 @@ describe('street free ends', () => {
     })
   })
 })
+
+describe('frontageOf', () => {
+  const inOrOn = (p: Pt, ring: Pt[]) => pointInRings(p, [ring]) || distToPolyline(p, [...ring, ring[0]]) < 0.5
+  const HW: Road = { id: 'H1', class: 'highway', points: [], width: 20, name: null }
+  // the highway runs along y = 0 and curves: the face lies south of it (y > 0)
+  it('one polyline per face side along a curved highway', () => {
+    const hw: Pt[] = []
+    let a = 0, x = 0, y = 0
+    for (let i = 0; i <= 3; i++) { hw.push({ x, y }); x += 80 * Math.cos(a); y += 80 * Math.sin(a); a += (20 * Math.PI) / 180 }
+    // face ring: the highway chain along the top, then closed far to the south
+    const ring: Pt[] = [...hw, { x: hw[3].x, y: hw[3].y + 400 }, { x: hw[0].x, y: hw[0].y + 400 }]
+    const out = frontageOf({ footprint: ring }, { ...HW, points: hw })
+    expect(out.length).toBe(1)
+    const line = out[0]
+    for (const p of line) {
+      expect(inOrOn(p, ring)).toBe(true)
+      expect(distToPolyline(p, hw)).toBeGreaterThanOrEqual(20)
+    }
+    // strictly advancing along the highway: no overlapping chords
+    for (let i = 1; i < line.length; i++) expect(line[i].x - line[i - 1].x).toBeGreaterThan(0)
+  })
+  it('a 60 degree corner between two highway-side edges stays inside the ring', () => {
+    const hw: Pt[] = [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 300, y: 173 }]
+    const ring: Pt[] = [...hw, { x: 150, y: 400 }, { x: -50, y: 300 }]
+    const out = frontageOf({ footprint: ring }, { ...HW, points: hw })
+    expect(out.length).toBeGreaterThan(0)
+    for (const line of out) for (const p of line) expect(inOrOn(p, ring)).toBe(true)
+  })
+})
+
+describe('no doubled streets', () => {
+  const refs: [string, SectorParams][] = [
+    ['seed 42', { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams],
+    ['seed 426750495', { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams],
+    ['seed 2268324149', { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams],
+  ]
+  for (const [label, params] of refs) it(label, () => {
+    const streets = generateSector(params).roads.filter((r) => r.class === 'street')
+    const bad: string[] = []
+    for (let i = 0; i < streets.length; i++) for (let j = i + 1; j < streets.length; j++) {
+      const a = streets[i], b = streets[j]
+      if (bboxesFar(a.points, b.points, 6)) continue
+      const run = Math.max(maxRun5(a.points, b.points), maxRun5(b.points, a.points))
+      if (run > 20) bad.push(`${a.id}~${b.id} ${Math.round(run)}m`)
+    }
+    console.log(`doubled pairs ${label}: ${bad.length}`, bad.join(' '))
+    expect(bad).toEqual([])
+  })
+})
+
+/** longest run (m, sampled every 5 m along a) within 6 m of b */
+function maxRun5(a: Pt[], b: Pt[]): number {
+  const len = polylineLength(a)
+  let run = 0, best = 0
+  for (let d = 0; d <= len; d += 5) {
+    if (distToPolyline(pointAtT(a, d / len), b) <= 6) { run += 5; best = Math.max(best, run) } else run = 0
+  }
+  return best
+}
