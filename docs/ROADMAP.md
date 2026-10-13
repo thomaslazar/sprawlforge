@@ -192,6 +192,25 @@ the reader sees the end of the city.
   edge.
 - Needs a brainstorm run together with the metroplex generator design.
 
+## Parks and greenery (user, 2026-10-13)
+
+A map today gives no way to tell whether a district has any green at all:
+zoning has no park or green zone, and the only open space is the `plaza`
+block style, which reads as paving. A reader should see at a glance where
+the parks, green strips, cemeteries, allotments and derelict green lots are,
+and where there are none (a packed corp core with no green is itself a
+statement).
+
+- **Generation**: a park zone or a per-block `park`/`green` style, drawn by
+  density and zone (residential more, industrial less, corp as manicured
+  campus green), plus linear green along rivers and shores (ties into the
+  arterials phase 2 waterfront work) and leftover slivers as pocket green.
+- **Rendering**: a distinct fill in every theme (print included), tree or
+  hatch texture, and labels for the larger ones (ties into the POI and
+  label rework: a park is a POI type).
+- **Tags**: a `green` axis (barren / some / leafy) so the user can ask for it,
+  the way density and corp dominance are asked for today.
+
 ## Street generator follow-ups (from tensor-streets, §14)
 
 - **Perf budget unverified** — target 4 km ≤ 1.5 s, 6 km ≤ 4 s on a laptop
