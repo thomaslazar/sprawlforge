@@ -20,6 +20,19 @@ const JOIN_SNAP = 40
 
 /** angle at which a join curve meets the target road */
 const JOIN_ARRIVE = (60 * Math.PI) / 180
+/** end pass: widest total turn of a connector (end heading to arrival direction) */
+const JOIN_MAX_TURN = Math.PI / 2
+
+/** unit direction in which a join from p (heading dir) arrives at target on a road with direction `tangent` */
+function arrival(p: Pt, dir: Pt, target: Pt, tangent: Pt): Pt {
+  const f = tangent.x * dir.x + tangent.y * dir.y < 0 ? -1 : 1
+  const t = { x: f * tangent.x, y: f * tangent.y }
+  let n = { x: -t.y, y: t.x }
+  if (n.x * (p.x - target.x) + n.y * (p.y - target.y) < 0) n = { x: -n.x, y: -n.y }
+  // a walker already heading into the road more steeply than JOIN_ARRIVE keeps its own heading (a grid T stays straight)
+  return -(n.x * dir.x + n.y * dir.y) > Math.sin(JOIN_ARRIVE) ? dir
+    : { x: t.x * Math.cos(JOIN_ARRIVE) - n.x * Math.sin(JOIN_ARRIVE), y: t.y * Math.cos(JOIN_ARRIVE) - n.y * Math.sin(JOIN_ARRIVE) }
+}
 
 /**
  * Cubic Bezier from p, leaving along dir, ending exactly on target at JOIN_ARRIVE to the target road
@@ -37,13 +50,7 @@ export function joinCurve(p: Pt, dir: Pt, target: Pt, tangent: Pt, reject: (q: P
     }
     return [{ x: target.x, y: target.y }]
   }
-  const f = tangent.x * dir.x + tangent.y * dir.y < 0 ? -1 : 1
-  const t = { x: f * tangent.x, y: f * tangent.y }
-  let n = { x: -t.y, y: t.x }
-  if (n.x * (p.x - target.x) + n.y * (p.y - target.y) < 0) n = { x: -n.x, y: -n.y }
-  // a walker already heading into the road more steeply than JOIN_ARRIVE keeps its own heading (a grid T stays straight)
-  const a = -(n.x * dir.x + n.y * dir.y) > Math.sin(JOIN_ARRIVE) ? dir
-    : { x: t.x * Math.cos(JOIN_ARRIVE) - n.x * Math.sin(JOIN_ARRIVE), y: t.y * Math.cos(JOIN_ARRIVE) - n.y * Math.sin(JOIN_ARRIVE) }
+  const a = arrival(p, dir, target, tangent)
   const c1 = { x: p.x + dir.x * (len / 3), y: p.y + dir.y * (len / 3) }
   const c2 = { x: target.x - a.x * (len / 3), y: target.y - a.y * (len / 3) }
   const m = Math.max(4, Math.ceil(len / 10))
@@ -104,10 +111,13 @@ export function joinFreeEnds(
         for (const c of cands.slice(0, END_TRY)) {
           // a road with both ends on one road is a hairpin
           if (index.nearestMatching(other, 6, (h) => h.id === c.id)) continue
+          const tangent = { x: Math.cos(c.ang), y: Math.sin(c.ang) }
+          const a = arrival(end, dir, c.at, tangent)
+          if (Math.acos(Math.max(-1, Math.min(1, a.x * dir.x + a.y * dir.y))) > JOIN_MAX_TURN) continue
           const reject = (q: Pt, dirAt: Pt) => inWater(terrain, q) || !inWindow(q, sizeM)
             || obstacles.some((r) => pointInRings(q, [r]))
             || !!index.nearestMatching(q, 0.15 * separation, (h) => h.id !== road.id && h.id !== c.id && h.cls === 'arterial' && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE)
-          const curve = joinCurve(end, dir, c.at, { x: Math.cos(c.ang), y: Math.sin(c.ang) }, reject)
+          const curve = joinCurve(end, dir, c.at, tangent, reject)
           if (!curve) continue
           const pinned = (v: Pt, t: number, arc: Pt[]) => {
             let moved = false

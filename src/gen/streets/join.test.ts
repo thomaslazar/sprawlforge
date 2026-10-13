@@ -67,6 +67,16 @@ describe('joinFreeEnds', () => {
     const r = run([road('A', line(100, 500, 500, 500)), road('B', line(800, 300, 800, 900))], lake)
     expect(r.joined).toBe(0)
   })
+  it('refuses a connector that would turn more than 90°', () => {
+    // B along y = 800 from x = 800; A's end (700,600) heads 60° away from B: arriving at 60° the connector turns 120°
+    const B = road('B', line(800, 800, 1600, 800))
+    // (B's own free west end may join A: only A's end is asserted)
+    const away = line(600, 773.2, 700, 600)
+    expect(run([road('A', away), B]).roads[0].points).toEqual(away)
+    // heading along B: the connector turns 60°
+    const r = run([road('A', line(500, 600, 700, 600)), B])
+    expect(near(r.roads[0].points.at(-1)!, B.points)).toBeLessThan(1)
+  })
   it('ignores targets outside the heading cone', () => {
     const r = run([road('A', line(800, 500, 1200, 500)), road('B', line(800, 300, 800, 900))])
     expect(r.joined).toBe(0)

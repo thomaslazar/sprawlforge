@@ -140,7 +140,10 @@ the road itself and points within 30 m of the target road's ends; try the
 direction preserved). Candidates are one per target road (its nearest
 segment), tried nearest first, at most 8 (`END_TRY`); a target the
 road's other end already sits on is skipped (that join would be a
-hairpin). An end that cannot be joined stays free and `pruneDangling`
+hairpin), and so is a candidate whose connector would turn more than 90°
+in total (`JOIN_MAX_TURN`: the angle between the end's heading and the
+§3.1 arrival direction at the target, computed before the curve is
+built). An end that cannot be joined stays free and `pruneDangling`
 cuts it as today (last resort; see §7 for the ratchet). The index is
 updated after each join so later ends can join appended curves, and the
 pass repeats up to three times until a pass joins nothing.
