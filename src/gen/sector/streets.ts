@@ -137,7 +137,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   const decayEnds: Pt[] = []
   // FIFO seed queue: arterial seeds first, then every kept street seeds its own
   // children (crossing it), so the fabric grows outward until nothing is left
-  const queue = arterials.flatMap((a) => crossing(field, seedsAlong(a.points, 100, true, undefined, { size: sizeM, m: 250 })))
+  const queue = arterials.flatMap((a) => crossing(field, seedsAlong(a.points, 100, true, undefined, { size: sizeM, m: 400 })))
   const raw = traceLayer(
     field, 'minor', queue, terrain, sizeM, index, { ...MINOR, obstacles: [...plazas, ...cores] }, mulberry32(hashSeed(params.seed, 'streets')), irregularityAt, 'S', 'street', decayEnds,
     (r) => crossing(field, seedsAlong(r.points, 100, true)),
