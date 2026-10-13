@@ -169,6 +169,29 @@ and both name pools repeating quickly.
 Order: brainstorm the POI system first (what a POI is, how many, which
 tags), then labels/rendering, then the name tables.
 
+## Outskirts — the city has to end somewhere (user, 2026-10-13)
+
+Today every sector is wall-to-wall city: streets and blocks run to the
+window edge on all four sides, so no map ever says "this is where the
+sprawl stops". A sector on the edge of the metro needs an outskirts form:
+the fabric thins out, arterials become country roads, blocks give way to
+fields, wasteland, scrap, industrial fringe or whatever the pack says, and
+the reader sees the end of the city.
+
+- **Ties into the metroplex level** (build order step 3): the metroplex
+  decides which sectors are core, ring, edge or beyond, and a sector's
+  position in the metro sets which of its sides are outskirts. Until the
+  metroplex exists, a sector tag (`outskirts` with a side, or a density
+  gradient) can stand in.
+- **Sector-level mechanics to work out**: a density falloff across the
+  window instead of one density per map (the field/seeding already takes a
+  per-point irregularity, so a per-point density is the natural hook);
+  what fills the thinned-out land (zoning gets a non-urban zone); how the
+  highway and arterials behave there (fewer, straighter, leaving the
+  window); the `fringe` density tag today is a uniform low density, not an
+  edge.
+- Needs a brainstorm run together with the metroplex generator design.
+
 ## Street generator follow-ups (from tensor-streets, §14)
 
 - **Perf budget unverified** — target 4 km ≤ 1.5 s, 6 km ≤ 4 s on a laptop
