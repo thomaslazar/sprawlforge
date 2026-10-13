@@ -685,10 +685,10 @@ describe('arterial smoothing and singularity stop', () => {
   })
 
   describe('arterial join', () => {
-    // the walker converges on X at `deg` (0 = exactly parallel)
-    const joinRun = (xEnd: number, deg = 10) => {
+    // the walker converges on X (at height y) at `deg` (0 = exactly parallel)
+    const joinRun = (xEnd: number, deg = 10, y = 150) => {
       const index = new RoadIndex(200)
-      index.add('X', [{ x: 0, y: 150 }, { x: xEnd, y: 150 }], 'arterial')
+      index.add('X', [{ x: 0, y }, { x: xEnd, y }], 'arterial')
       const a = (deg * Math.PI) / 180, d = { x: Math.cos(a), y: Math.sin(a) }
       const f: RoadField = { sizeM: 4000, patches: [], sample: () => ({ major: d, minor: { x: -d.y, y: d.x } }) }
       return traceLayer(f, 'major', [{ at: { x: 100, y: 0 }, dir: d }], dryTerrain, 4000, index, MAJOR, mulberry32(1), () => 0.2, 'A', 'arterial')
@@ -705,17 +705,23 @@ describe('arterial smoothing and singularity stop', () => {
       // the walker stops at once (foot behind it); what must not happen is a curve hooking back onto X
       for (const r of roads) expect(r.points[r.points.length - 1].y).toBeGreaterThan(50)
     })
-    it('an arterial stopped by a near-parallel arterial joins it with a curve', () => {
-      const roads = joinRun(2000)
+    it('an arterial stopped by a near-parallel arterial joins it with a curve after a walk of 0.5 sep', () => {
+      // X 400 m out: the hit (within 0.7 sep) comes after ~400 m of walk
+      const roads = joinRun(2000, 10, 400)
       expect(roads.length).toBe(1)
       const pts = roads[0].points
-      expect(Math.abs(pts[pts.length - 1].y - 150)).toBeLessThan(1)
+      expect(Math.abs(pts[pts.length - 1].y - 400)).toBeLessThan(1)
       expect(maxBendDeg(pts)).toBeLessThan(15 + 1e-6)
     })
+    it('a near-parallel hit before a walk of 0.5 sep stops the walker, no hook', () => {
+      // X 150 m out: already within 0.7 sep at the seed
+      for (const r of joinRun(2000, 10, 150)) for (const q of r.points) expect(Math.abs(q.y - 150)).toBeGreaterThan(50)
+    })
     it('a join target beyond the target road end is clamped to that end', () => {
-      const pts = joinRun(120)[0].points
+      // the hit comes at x ≈ 780 (y ≈ 120), the target 200 m further would lie past x = 900
+      const pts = joinRun(900, 10, 400)[0].points
       const e = pts[pts.length - 1]
-      expect(Math.hypot(e.x - 120, e.y - 150)).toBeLessThan(1)
+      expect(Math.hypot(e.x - 900, e.y - 400)).toBeLessThan(1)
     })
   })
 })

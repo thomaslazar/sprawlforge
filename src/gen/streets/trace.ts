@@ -5,7 +5,7 @@ import { inWater, nearWater } from '../sector/bridges'
 import { distToPolyline } from '../terrain/rivers'
 import type { Road, RoadClass, Terrain } from '../types'
 import type { RoadField } from './field'
-import { joinCurve, JOIN_AHEAD } from './join'
+import { HOOK_MIN_WALK, joinCurve, JOIN_AHEAD } from './join'
 import { smoothBends } from './smooth'
 
 export const FRONTAGE_ID_PREFIX = 'F'
@@ -393,7 +393,7 @@ function traceHalf(
       // join only a road we are converging on (foot ahead, not receding since last step): curving back into a road we are leaving makes a long side-by-side run
       const before = opts.bridgeRivers ? index.nearestMatching(p, 0.7 * sep, (h) => h.id === hitPar.id) : null
       // only onto an arterial: a frontage road (class street) is indexed before the arterials and must stop, not catch, a walker
-      if (opts.bridgeRivers && hitPar.cls === 'arterial' && !isSourceAt(hitPar.id, next)
+      if (opts.bridgeRivers && hitPar.cls === 'arterial' && !isSourceAt(hitPar.id, next) && polylineLength([start, ...pts]) >= HOOK_MIN_WALK * opts.separation
         && (foot.x - p.x) * dir.x + (foot.y - p.y) * dir.y >= 0 && approach(hitPar, p, dir) >= Math.sin(JOIN_CONVERGE) && (!before || hitPar.dist <= before.dist + 0.1)) {
         const sign = Math.cos(hitPar.segAngle) * dir.x + Math.sin(hitPar.segAngle) * dir.y > 0 ? 1 : -1
         // arrive at JOIN_ARRIVE to the road where the curve meets it (a curving road turns between foot and target)

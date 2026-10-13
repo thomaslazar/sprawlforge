@@ -107,7 +107,11 @@ the curve is rejected the walker stops as today (the end pass handles it).
 The walker joins only a road it is converging on (foot ahead, distance
 not growing since the last step, heading into the road's line at 5° or
 more), never one it is leaving and never an exactly parallel neighbour (a
-planned grid: the walker stops as before). An arterial
+planned grid: the walker stops as before). A hook needs a walk: the join
+is allowed only after the walker has run at least `0.5 × sep`
+(`HOOK_MIN_WALK`, 200 m for arterials) in this half; a near-parallel hit
+before that stops the walker as before (a hook at the seed is a curve,
+not a road). An arterial
 whose two ends land on the same road and that is shorter than 3 ×
 separation is a crescent (a U-turn that joined back): dropped in
 `traceStreamline`. Streets (`!opts.bridgeRivers`) keep the existing

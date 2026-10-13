@@ -8,6 +8,8 @@ import type { RoadIndex } from './trace'
 
 /** how far along the target road (fraction of separation) a join aims past the foot */
 export const JOIN_AHEAD = 0.5
+/** an in-trace join needs at least this walk (fraction of separation) in its half: a hook at the seed is a curve, not a road */
+export const HOOK_MIN_WALK = 0.5
 /** end pass: how far (fraction of separation) a dangling end may reach for a road to join */
 const JOIN_REACH = 1.5
 /** end pass: widest angle from the end's heading to a join target */
