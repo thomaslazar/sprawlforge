@@ -919,9 +919,12 @@ describe('no hairpin spokes', () => {
   }
 })
 
-describe('ring streets run outward', () => {
-  // seed 42 coastal/medium/dense/fringe/lively/mixed/river/arcology 4 km (the `street free ends` seed)
-  const params = { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams
+describe.each([
+  // inland seed 500 had 3 same-ring hairpin ends before c23a41d (seed 42 had none: regression guard only)
+  ['inland seed 500', 'inland,medium,dense,balanced,lively,mixed,arcology', 500],
+  ['seed 42 (street free ends seed)', 'coastal,medium,dense,fringe,lively,mixed,river,arcology', 42],
+] as const)('ring streets run outward: %s', (_label, tags, seed) => {
+  const params = { ...resolveTags(tags.split(',')), seed, size: 4, pack: 'generic', theme: 'print' } as SectorParams
   let m: SectorModel
   beforeAll(() => { m = generateSector(params) }, 120000)
   const rings = () => m.roads.filter((r) => r.id.startsWith(RING_ID_PREFIX) && r.points.length > 1)
@@ -929,7 +932,9 @@ describe('ring streets run outward', () => {
   it('no street has both ends on the same K road', () => {
     const bad: string[] = []
     for (const r of m.roads.filter((x) => x.class === 'street')) for (const k of rings()) {
-      if (distToPolyline(r.points[0], k.points) <= 6 && distToPolyline(r.points[r.points.length - 1], k.points) <= 6) bad.push(`${r.id} ${k.id}`)
+      const a = r.points[0], z = r.points[r.points.length - 1]
+      // the rule's own filter: short hooks only (a long crescent on one ring is legitimate)
+      if (distToPolyline(a, k.points) <= 6 && distToPolyline(z, k.points) <= 6 && Math.hypot(a.x - z.x, a.y - z.y) < 40 && polylineLength(r.points) < 80) bad.push(`${r.id} ${k.id}`)
     }
     expect(bad).toEqual([])
   })
@@ -960,7 +965,6 @@ describe('ring streets run outward', () => {
       const n = m.roads.filter((r) => r.id !== k.id && r.points.length > 1 && [r.points[0], r.points[r.points.length - 1]].some((e) => distToPolyline(e, k.points) <= 6)).length
       return `${k.id}:${n}`
     })
-    console.log('roads ending on each K road', counts.join(' '))
     for (const c of counts) expect(Number(c.split(':')[1]), c).toBeGreaterThanOrEqual(4)
   })
 })
