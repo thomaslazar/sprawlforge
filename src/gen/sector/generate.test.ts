@@ -381,6 +381,16 @@ describe('arterial bridges', () => {
   })
 })
 
+describe('river decks land on the far-bank road (seed 42 arcology)', () => {
+  it('the three north-west arterials ending on the river are bridged', () => {
+    const m = generateSector({ ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, pack: 'generic', theme: 'print' } as SectorParams)
+    const decks = m.roads.filter((r) => r.class === 'arterial' && r.bridge)
+    // the NW-bank ends (investigation item 6): their decks were blocked by the arcology spoke along the far bank, 50–70 m past it
+    for (const e of [{ x: 1086, y: 2727 }, { x: 791, y: 2954 }, { x: 527, y: 3193 }])
+      expect(decks.filter((d) => distToPolyline(e, d.points) < 30).length, `${e.x},${e.y}`).toBeGreaterThanOrEqual(1)
+  }, 300000)
+})
+
 describe('river bridges (seed 42)', () => {
   let m: ReturnType<typeof generateSector>
   let arterialBridges: Road[]

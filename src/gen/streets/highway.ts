@@ -1,4 +1,4 @@
-import { inWindow, onWindowEdge, pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, simplifyPolyline, slicePolyline, type Pt } from '../geometry'
+import { inWindow, onWindowEdge, pointAtT, pointInRings, polylineLength, segHit, segmentCrossesPolyline, simplifyPolyline, slicePolyline, type Pt } from '../geometry'
 import { hashSeed, mulberry32, type Rng } from '../rng'
 import { effectiveIrregularity } from '../sector/zoning'
 import { inWater } from '../sector/bridges'
@@ -323,17 +323,6 @@ function nearestT(p: Pt, line: Pt[]): { dist: number; t: number } {
     acc += l
   }
   return { dist: best, t: bestT }
-}
-
-/** intersection of segments ab and cd: fraction along ab, or null */
-function segHit(a: Pt, b: Pt, c: Pt, d: Pt): number | null {
-  const r = { x: b.x - a.x, y: b.y - a.y }
-  const q = { x: d.x - c.x, y: d.y - c.y }
-  const den = r.x * q.y - r.y * q.x
-  if (Math.abs(den) < 1e-12) return null
-  const t = ((c.x - a.x) * q.y - (c.y - a.y) * q.x) / den
-  const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / den
-  return t >= 0 && t < 1 && u >= 0 && u < 1 ? t : null
 }
 
 export function highwayCrossings(highway: Road, roads: Road[], segments: HighwaySegment[], rng: Rng): HighwayCrossing[] {

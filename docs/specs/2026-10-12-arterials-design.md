@@ -163,6 +163,12 @@ simplification — a road is smoothed before it is indexed, never after)
 (same) → `pruneDangling` (last resort) → streets (smoothed before
 indexing, 25 m).
 
+An arterial's in-trace river deck keeps its 0.3 × sep clearance from
+every road of its rank or higher except the arterial it lands on: the
+first arterial its straight dry extension meets within 120 m past the far
+bank (`DECK_LANDING`) at 45° or more; the deck then ends on that road (a
+T, anchored), not on the bank.
+
 ## 4. Smooth corners (phase 1)
 
 `smoothBends(points, minRadius, pinned?)` in `src/gen/streets/smooth.ts`:

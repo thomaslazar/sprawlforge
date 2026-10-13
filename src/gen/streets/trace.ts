@@ -1,4 +1,4 @@
-import { angleGapLines, bboxOf, inWindow, onWindowEdge, PARALLEL_ANGLE, pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, segmentsIntersect, simplifyPolyline, type Pt } from '../geometry'
+import { angleGapLines, bboxOf, inWindow, onWindowEdge, PARALLEL_ANGLE, pointAtT, pointInRings, polylineLength, segHit, segmentCrossesPolyline, segmentsIntersect, simplifyPolyline, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import { RING_ID_PREFIX } from '../landmarks/place'
 import { inWater, nearWater } from '../sector/bridges'
@@ -233,6 +233,19 @@ export class RoadIndex {
     return hit
   }
 
+  /** the first indexed segment passing `test` that segment a-b crosses (nearest to a): road id, crossing point, segment angle */
+  firstCrossing(a: Pt, b: Pt, test: (id: string, cls: RoadClass) => boolean): { id: string; at: Pt; segAngle: number } | null {
+    let best: { id: string; at: Pt; segAngle: number } | null = null, bestT = Infinity
+    this.forEachInRadius({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, Math.hypot(b.x - a.x, b.y - a.y) / 2, (seg) => {
+      if (!test(seg.id, seg.cls)) return
+      const t = segHit(a, b, seg.a, seg.b)
+      if (t === null || t >= bestT) return
+      bestT = t
+      best = { id: seg.id, at: { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, segAngle: Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x) }
+    })
+    return best
+  }
+
   /** the point `arc` m along the hit road from the foot (+ toward the segment's b end), clamped to the road's ends, and the road's unit direction there */
   pointAlong(hit: MatchHit, arc: number): { at: Pt; tangent: Pt } {
     const pts = this.pointsById.get(hit.id)!
@@ -283,6 +296,9 @@ function clampToWindow(p: Pt, sizeM: number): Pt {
 }
 
 const CROSSING_MAX_REACH = 450
+/** a river deck may land on an arterial this far (m) past the far bank, crossing it at DECK_LANDING_ANGLE or more */
+const DECK_LANDING = 120
+const DECK_LANDING_ANGLE = Math.PI / 4
 const CROSSING_SAMPLE_STEP = 10
 /** a raw direction flip beyond this between two steps is a field singularity: stop, never clamp (a clamped hairpin is a U-loop) */
 const SINGULARITY_TURN = (60 * Math.PI) / 180
@@ -343,12 +359,22 @@ function traceHalf(
       if (d > CROSSING_MAX_REACH || !inWindow(land, sizeM)) break
       // the deck must cross the river course (not a sea inlet / lake) and clear every road of its own rank or higher
       if (!segmentCrossesPolyline(p, land, river.course)) break
+      // except the arterial it lands on: met by the deck's straight dry extension within DECK_LANDING, at 45° or more
+      const reach = { x: land.x + dir.x * DECK_LANDING, y: land.y + dir.y * DECK_LANDING }
+      let onto = index.firstCrossing(land, reach, (_id, cls) => cls === 'arterial')
+      if (onto && angleGapLines(Math.atan2(dir.y, dir.x), onto.segAngle) < DECK_LANDING_ANGLE) onto = null
+      for (let s = CROSSING_SAMPLE_STEP; onto && s < Math.hypot(onto.at.x - land.x, onto.at.y - land.y); s += CROSSING_SAMPLE_STEP) {
+        const q = { x: land.x + dir.x * s, y: land.y + dir.y * s }
+        if (inWater(terrain, q) || inObstacle(q)) onto = null
+      }
       let blocked = false
       for (let s = 0; s < d && !blocked; s += CROSSING_SAMPLE_STEP) {
-        blocked = !!index.nearest({ x: p.x + dir.x * s, y: p.y + dir.y * s }, 0.3 * sep, sameOrHigher)
+        blocked = !!index.nearestMatching({ x: p.x + dir.x * s, y: p.y + dir.y * s }, 0.3 * sep, (h) => sameOrHigher(h.cls) && h.id !== onto?.id)
       }
       if (blocked) break
       pts.push(land)
+      // the deck ends on its landing road: a T, anchored
+      if (onto) { pts.push(onto.at); break }
       p = land
       bridges++
       continue

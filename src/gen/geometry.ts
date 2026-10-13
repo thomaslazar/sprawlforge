@@ -157,6 +157,17 @@ export function segmentsIntersect(a: Pt, b: Pt, c: Pt, d: Pt): boolean {
   return (o1 === 0 && onSeg(a, b, c)) || (o2 === 0 && onSeg(a, b, d)) || (o3 === 0 && onSeg(c, d, a)) || (o4 === 0 && onSeg(c, d, b))
 }
 
+/** intersection of segments ab and cd: fraction along ab, or null */
+export function segHit(a: Pt, b: Pt, c: Pt, d: Pt): number | null {
+  const r = { x: b.x - a.x, y: b.y - a.y }
+  const q = { x: d.x - c.x, y: d.y - c.y }
+  const den = r.x * q.y - r.y * q.x
+  if (Math.abs(den) < 1e-12) return null
+  const t = ((c.x - a.x) * q.y - (c.y - a.y) * q.x) / den
+  const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / den
+  return t >= 0 && t < 1 && u >= 0 && u < 1 ? t : null
+}
+
 export function segmentCrossesPolyline(a: Pt, b: Pt, line: Pt[]): boolean {
   for (let i = 1; i < line.length; i++) if (segmentsIntersect(a, b, line[i - 1], line[i])) return true
   return false
