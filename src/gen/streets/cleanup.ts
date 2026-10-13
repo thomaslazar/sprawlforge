@@ -52,46 +52,58 @@ export function closeRuns(pts: Pt[], index: RoadIndex, near: number, selfId: str
   return { s, runs }
 }
 
-/** cut `pts` once at its first long run beside another road; null when no run is long enough */
-function cutOnce(r: Road, index: RoadIndex, near: number, run: number): Pt[] | null {
-  const pts = r.points
-  const { s, runs } = closeRuns(pts, index, near, r.id)
+/**
+ * cut `pts` once at its first long run beside another road; null when no run is long enough. A run at the start
+ * keeps the part after it, a run at the end the part before it, a run in the middle both (each welded onto the road).
+ */
+function cutOnce(pts: Pt[], index: RoadIndex, near: number, run: number, selfId: string): { parts: Pt[][]; split: boolean } | null {
+  const { s, runs } = closeRuns(pts, index, near, selfId)
   // the run that starts earliest and is long enough
   let best: CloseRun | null = null
   for (const c of runs) if (c.arc > run && !c.crosses && (!best || c.a < best.a)) best = c
-  if (best) {
-    const { id, a, b } = best
-    // a run from the street's own start: the part after it is kept
-    if (a === 0) return [s[b].hits.get(id)!.at, ...pts.slice(s[b].tail)]
-    return [...pts.slice(0, s[a].head), s[a].hits.get(id)!.at]
-  }
-  return null
+  if (!best) return null
+  const { id, a, b } = best
+  const before = [...pts.slice(0, s[a].head), s[a].hits.get(id)!.at]
+  const after = [s[b].hits.get(id)!.at, ...pts.slice(s[b].tail)]
+  if (a === 0) return { parts: [after], split: false }
+  // a run reaching the street's last sample leaves no tail
+  if (b === s.length - 1) return { parts: [before], split: false }
+  return { parts: [before, after], split: true }
 }
 
 /**
  * A street that runs beside another road (within `near` m of the same road over more than `run` m) is cut at the
- * run's first sample, welded onto that road; a run from the street's own start keeps the part after it instead.
- * Highways and ramps are never a target (a street does not end on a ramp). Frontage and ring roads are never cut. A remainder under `minLength` is dropped. `index` holds every road and
- * follows the cuts. ponytail: a run in the middle keeps only the part before it; the final street prune handles the rest.
+ * run's first sample, welded onto that road; a run from the street's own start keeps the part after it instead, a run
+ * in the middle keeps both parts (ids `${id}-1`, `${id}-2`: they bounded blocks, so neither is dropped for its length).
+ * Highways and ramps are never a target (a street does not end on a ramp). Frontage and ring roads are never cut.
+ * A remainder of a start or end cut under `minLength` is dropped. `index` holds every road and follows the cuts.
  */
 export function weldConverging(streets: Road[], index: RoadIndex, opts: { near?: number; run?: number; minLength?: number } = {}): Road[] {
   const { near = 8, run = 20, minLength = 60 } = opts
   const out: Road[] = []
   for (const r of streets) {
     if (r.id.startsWith(FRONTAGE_ID_PREFIX) || r.id.startsWith(RING_ID_PREFIX)) { out.push(r); continue }
-    let cur = r
+    // the street's own pieces; `kept` marks a part born of a middle split (never dropped for its length)
+    let todo = [{ road: r, kept: false }]
     let changed = false
+    const done: typeof todo = []
     for (let pass = 0; pass < 4; pass++) {
-      const pts = cur.points.length >= 2 ? cutOnce(cur, index, near, run) : null
-      if (!pts) break
-      cur = { ...cur, points: pts }
-      changed = true
+      const next: typeof todo = []
+      for (const t of todo) {
+        const cut = t.road.points.length >= 2 ? cutOnce(t.road.points, index, near, run, r.id) : null
+        if (!cut) { done.push(t); continue }
+        changed = true
+        cut.parts.forEach((points, i) => next.push({ road: { ...t.road, id: cut.split ? `${t.road.id}-${i + 1}` : t.road.id, points }, kept: cut.split }))
+      }
+      todo = next
     }
     if (!changed) { out.push(r); continue }
     index.remove(r.id)
-    if (polylineLength(cur.points) < minLength) continue
-    index.add(cur.id, cur.points, cur.class)
-    out.push(cur)
+    for (const t of [...done, ...todo]) {
+      if (!t.kept && polylineLength(t.road.points) < minLength) continue
+      index.add(t.road.id, t.road.points, t.road.class)
+      out.push(t.road)
+    }
   }
   return out
 }

@@ -23,7 +23,7 @@ describe('weldConverging', () => {
     expect(distToPolyline(end, A.points)).toBeLessThanOrEqual(1)
     expect(end.x).toBeLessThan(160)
     expect(out.points.length).toBeGreaterThan(1)
-    expect(out.id).toBe('S001')
+    expect(out.id).toBe('S001-1') // the run is in the middle: the part before it is the first of two
   })
   it('a street starting on a road and running along it keeps the tail, welded on the road', () => {
     const B = road('S002', line([50, 0], [80, 3], [200, 3], [230, 120], [230, 300]))
@@ -87,8 +87,9 @@ describe('weldConverging: crossings and boundaries', () => {
     const index = new RoadIndex(200)
     for (const r of [A, B, C]) index.add(r.id, r.points, r.class)
     const out = weldConverging([B, C], index)
+    expect(out.map((r) => r.id)).toEqual(['S030-1', 'S030-2', 'S031'])
     expect(out[0].points.length).toBeLessThan(B.points.length)
-    expect(out[1]).toEqual(C)
+    expect(out[2]).toEqual(C)
   })
   it('a K road is never cut', () => {
     const K = road('K1L', line([0, 150], [100, 40], [120, 4], [330, 4], [330, 300]))
@@ -121,5 +122,18 @@ describe('dropStreetHairpins', () => {
   })
   it('keeps a 300 m crescent on one road', () => {
     expect(run(A, road('S1', line([100, 0], [100, 100], [300, 100], [300, 0])))).toEqual(['S1'])
+  })
+})
+
+describe('weldConverging: a run in the middle', () => {
+  it('keeps both parts, each welded on the road, nothing dropped (S152 shape)', () => {
+    // runs beside A from x=150 to 200 (50 m), the tail carries on and is short (45 m)
+    const B = road('S152', line([150, 300], [150, 4], [200, 4], [200, 49]))
+    const out = weldConverging([B], setup(A, B))
+    expect(out.map((r) => r.id)).toEqual(['S152-1', 'S152-2'])
+    expect(distToPolyline(out[0].points.at(-1)!, A.points)).toBeLessThanOrEqual(1)
+    expect(distToPolyline(out[1].points[0], A.points)).toBeLessThanOrEqual(1)
+    expect(out[1].points.at(-1)).toEqual({ x: 200, y: 49 })
+    expect(out[1].points[0].x).toBeGreaterThan(out[0].points.at(-1)!.x)
   })
 })
