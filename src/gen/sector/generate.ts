@@ -371,11 +371,14 @@ function withTrimmedFrontage(
  * Infill and the stranded-street rule can leave street ends resting on nothing: prune once against the complete
  * road set (the highway never anchors; an end resting on another street's end anchors: that chain is a block edge). Decay cul-de-sacs, being intended, stay.
  */
-function finalStreetPrune(streets: Road[], others: Road[], terrain: Terrain, sizeM: number, decayEnds: Pt[]): Road[] {
+function finalStreetPrune(streets: Road[], others: Road[], terrain: Terrain, sizeM: number, decayEnds: Pt[], infillIds: Set<string>): Road[] {
   const index = new RoadIndex(200)
   for (const r of [...others, ...streets]) index.add(r.id, r.points, r.class)
+  // infill pieces are block edges (blocks were cut along them, infillFaces anchored their ends): never trimmed
+  const keep = new Set(decayEnds.map(endKey))
+  for (const r of streets) if (infillIds.has(r.id.split('-')[0])) for (const p of [r.points[0], r.points[r.points.length - 1]]) keep.add(endKey(p))
   return pruneDangling(streets, index, terrain, sizeM, {
-    accept: (c) => c !== 'highway', minLength: 60, keep: new Set(decayEnds.map(endKey)), waterAnchor: streetWaterAnchor(terrain, sizeM),
+    accept: (c) => c !== 'highway', minLength: 60, keep, waterAnchor: streetWaterAnchor(terrain, sizeM),
   })
 }
 
@@ -414,9 +417,9 @@ export function generateSector(params: SectorParams): SectorModel {
   const { faces, infill, dropped } = infillFaces(facesFor([...hw, ...arterials, ...minorAll], boundaries, terrain), minorAll, arterials, highway, terrain, sizeM, [...arcologies.filter((a) => a.access === 'ring'), ...megablocks].map((l) => l.center), [...megablocks.map((k) => k.core), ...arcologies.filter((a) => a.access !== 'ring').map((a) => a.plaza)])
   const infillIds = new Set(infill.map((r) => r.id))
   const welded = weldAll([...minorAll.filter((r) => !dropped.has(r.id)), ...infill], [...hw, ...arterials, ...ramps])
-  const prunedStreets = finalStreetPrune(welded, [...hw, ...arterials, ...ramps], terrain, sizeM, decayEnds)
-  const minor = prunedStreets.filter((r) => !infillIds.has(r.id))
-  const infillKept = prunedStreets.filter((r) => infillIds.has(r.id))
+  const prunedStreets = finalStreetPrune(welded, [...hw, ...arterials, ...ramps], terrain, sizeM, decayEnds, infillIds)
+  const minor = prunedStreets.filter((r) => !infillIds.has(r.id.split('-')[0]))
+  const infillKept = prunedStreets.filter((r) => infillIds.has(r.id.split('-')[0]))
   const rawBlocks = toBlocks(faces, districts)
 
   const roads = markWetSpans([...hw, ...arterials, ...minor, ...infillKept, ...ramps], terrain)
