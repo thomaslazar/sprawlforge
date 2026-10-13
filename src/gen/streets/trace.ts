@@ -516,7 +516,7 @@ function tangentAt(points: Pt[], t: number): Pt {
 }
 
 /** seeds every `every` m along a polyline, dir = segment normal, flipping side when alternate */
-export function seedsAlong(points: Pt[], every: number, alternate: boolean, reject?: (p: Pt) => boolean): Seed[] {
+export function seedsAlong(points: Pt[], every: number, alternate: boolean, reject?: (p: Pt) => boolean, bothWithin?: { size: number; m: number }): Seed[] {
   const len = polylineLength(points)
   const seeds: Seed[] = []
   let flip = false
@@ -525,7 +525,12 @@ export function seedsAlong(points: Pt[], every: number, alternate: boolean, reje
     const tangent = tangentAt(points, t)
     const normal = { x: -tangent.y, y: tangent.x }
     const at = pointAtT(points, t)
-    if (!reject?.(at)) seeds.push({ at, dir: flip && alternate ? { x: -normal.x, y: -normal.y } : normal })
+    if (!reject?.(at)) {
+      // near the window edge a strip between road and edge would get one seed per 200 m: seed both sides
+      const edge = bothWithin && Math.min(at.x, at.y, bothWithin.size - at.x, bothWithin.size - at.y) < bothWithin.m
+      if (edge) seeds.push({ at, dir: normal }, { at, dir: { x: -normal.x, y: -normal.y } })
+      else seeds.push({ at, dir: flip && alternate ? { x: -normal.x, y: -normal.y } : normal })
+    }
     flip = !flip
   }
   return seeds
