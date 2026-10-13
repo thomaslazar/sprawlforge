@@ -67,8 +67,9 @@ When the run starts at the street's own start, the part **after** the run is kep
 the run's last sample). A remainder under 60 m is dropped. `ponytail:` a run in the middle of a
 street keeps only the part before it; the final prune (2.2) handles what that leaves.
 
-Infill twins: a BSP cut that runs parallel (within 15°) to and within 15 m of another piece or a
-road inside the face over more than 20 m is not added (seed 42 S415/S416).
+Infill twins: a BSP cut that runs parallel (within 15°) to and within 15 m of another piece, a
+road inside the face, or the face ring itself (the block's bounding road) over more than 20 m is not
+added (seed 42 S415/S416; cuts hugging a bounding traced street).
 
 ### 2.5 Rings seed outward; streets have a hairpin rule (item 4)
 
