@@ -92,9 +92,13 @@ end). A join of 40 m or less (`JOIN_SNAP`) is a straight connector
 instead of a curve (a cubic that short dips into whatever lies beside
 it). The curve is rejected (returns null) when any sample is in water,
 inside an obstacle, outside the window, or within 0.15 × separation of
-a near-parallel arterial other than the target (a road crossing the
-connector is a junction, not a conflict; the highway is not a blocker
-here — arterials cross it anyway and `highwayCrossings` decks them).
+a near-parallel arterial other than the target, or when any piece of it
+crosses or touches an arterial or ring (`crossingGuard`, a segment query
+on the index): the target road counts too, except on the last piece (the
+last 10 m land on it), and the road the curve leaves is exempt on the
+first piece only. A join curve never makes a lens or a knot with another
+arterial. The highway is not a blocker here — arterials cross it anyway
+and `highwayCrossings` decks them.
 
 ### 3.2 In-trace join on a near-parallel road
 

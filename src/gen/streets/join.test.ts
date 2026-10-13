@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Pt } from '../geometry'
 import { distToPolyline } from '../terrain/rivers'
-import { joinCurve, joinFreeEnds } from './join'
+import { crossingGuard, joinCurve, joinFreeEnds } from './join'
 import { maxBendDeg } from './testutil'
 import { MAJOR, RoadIndex } from './trace'
 import type { Road, Terrain } from '../types'
@@ -50,6 +50,22 @@ const line = (x0: number, y0: number, x1: number, y1: number): Pt[] => {
   return Array.from({ length: n + 1 }, (_, i) => ({ x: x0 + ((x1 - x0) * i) / n, y: y0 + ((y1 - y0) * i) / n }))
 }
 const near = (p: Pt, pts: Pt[]) => Math.min(...pts.map((q) => Math.hypot(p.x - q.x, p.y - q.y)))
+
+describe('crossingGuard', () => {
+  // a join from (0,0) heading east to (300,100) on road T; the cubic passes (200,25)
+  const guarded = (T: Pt[]) => {
+    const index = new RoadIndex(200)
+    index.add('T', T, 'arterial')
+    const crosses = crossingGuard(index, { x: 0, y: 0 }, { x: 300, y: 100 }, null, 'T')
+    return joinCurve({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 300, y: 100 }, { x: 1, y: 0 }, (q) => crosses(q))
+  }
+  it('refuses a curve that crosses its target road before landing on it (the target bends across its path)', () => {
+    expect(guarded([{ x: 0, y: 100 }, { x: 150, y: 100 }, { x: 200, y: 20 }, { x: 260, y: 100 }, { x: 600, y: 100 }])).toBeNull()
+  })
+  it('a straight target still joins', () => {
+    expect(guarded([{ x: 0, y: 100 }, { x: 600, y: 100 }])?.at(-1)).toEqual({ x: 300, y: 100 })
+  })
+})
 
 describe('joinFreeEnds', () => {
   it('a free end curves into the nearest arterial ahead', () => {

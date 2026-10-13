@@ -70,6 +70,21 @@ export function joinCurve(p: Pt, dir: Pt, target: Pt, tangent: Pt, reject: (q: P
   return out
 }
 
+/**
+ * Reject part for a join curve sampled from `from` to `target` (call it for every sample, in order): true when the
+ * piece ending at q crosses or touches an arterial or ring; `ownId` (the road the curve leaves) is exempt on the first
+ * piece only, the target road on the last piece only (it lands there).
+ */
+export function crossingGuard(index: RoadIndex, from: Pt, target: Pt, ownId: string | null, targetId: string): (q: Pt) => boolean {
+  let prev = from
+  return (q) => {
+    const first = prev === from, last = q.x === target.x && q.y === target.y
+    const hit = index.segmentCrosses(prev, q, (id, cls) => cls === 'arterial' && !(first && id === ownId) && !(last && id === targetId))
+    prev = q
+    return hit
+  }
+}
+
 const END_TRY = 8
 
 /**
@@ -114,9 +129,11 @@ export function joinFreeEnds(
           const tangent = { x: Math.cos(c.ang), y: Math.sin(c.ang) }
           const a = arrival(end, dir, c.at, tangent)
           if (Math.acos(Math.max(-1, Math.min(1, a.x * dir.x + a.y * dir.y))) > JOIN_MAX_TURN) continue
+          const crosses = crossingGuard(index, end, c.at, road.id, c.id)
           const reject = (q: Pt, dirAt: Pt) => inWater(terrain, q) || !inWindow(q, sizeM)
             || obstacles.some((r) => pointInRings(q, [r]))
             || !!index.nearestMatching(q, 0.15 * separation, (h) => h.id !== road.id && h.id !== c.id && h.cls === 'arterial' && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE)
+            || crosses(q)
           const curve = joinCurve(end, dir, c.at, tangent, reject)
           if (!curve) continue
           const pinned = (v: Pt, t: number, arc: Pt[]) => {

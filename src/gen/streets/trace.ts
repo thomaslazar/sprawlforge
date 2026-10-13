@@ -1,11 +1,11 @@
-import { angleGapLines, bboxOf, inWindow, onWindowEdge, PARALLEL_ANGLE, pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, simplifyPolyline, type Pt } from '../geometry'
+import { angleGapLines, bboxOf, inWindow, onWindowEdge, PARALLEL_ANGLE, pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, segmentsIntersect, simplifyPolyline, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import { RING_ID_PREFIX } from '../landmarks/place'
 import { inWater, nearWater } from '../sector/bridges'
 import { distToPolyline } from '../terrain/rivers'
 import type { Road, RoadClass, Terrain } from '../types'
 import type { RoadField } from './field'
-import { HOOK_MIN_WALK, joinCurve, JOIN_AHEAD } from './join'
+import { crossingGuard, HOOK_MIN_WALK, joinCurve, JOIN_AHEAD } from './join'
 import { smoothBends } from './smooth'
 
 export const FRONTAGE_ID_PREFIX = 'F'
@@ -223,6 +223,16 @@ export class RoadIndex {
     return best
   }
 
+  /** true when segment a-b crosses or touches an indexed segment passing `test` */
+  segmentCrosses(a: Pt, b: Pt, test: (id: string, cls: RoadClass) => boolean): boolean {
+    let hit = false
+    // a segment meeting a-b has a point within half its length of the midpoint
+    this.forEachInRadius({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, Math.hypot(b.x - a.x, b.y - a.y) / 2, (seg) => {
+      if (!hit && test(seg.id, seg.cls) && segmentsIntersect(a, b, seg.a, seg.b)) hit = true
+    })
+    return hit
+  }
+
   /** the point `arc` m along the hit road from the foot (+ toward the segment's b end), clamped to the road's ends, and the road's unit direction there */
   pointAlong(hit: MatchHit, arc: number): { at: Pt; tangent: Pt } {
     const pts = this.pointsById.get(hit.id)!
@@ -398,9 +408,11 @@ function traceHalf(
         const sign = Math.cos(hitPar.segAngle) * dir.x + Math.sin(hitPar.segAngle) * dir.y > 0 ? 1 : -1
         // arrive at JOIN_ARRIVE to the road where the curve meets it (a curving road turns between foot and target)
         const { at: target, tangent } = index.pointAlong(hitPar, sign * JOIN_AHEAD * sep)
+        const crosses = crossingGuard(index, p, target, null, hitPar.id)
         const curve = joinCurve(p, dir, target, tangent, (q, dirAt) =>
           inWater(terrain, q) || inObstacle(q) || !inWindow(q, sizeM)
-          || !!index.nearestMatching(q, 0.15 * sep, (h) => h.id !== hitPar.id && h.cls !== 'highway' && sameOrHigher(h.cls) && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE))
+          || !!index.nearestMatching(q, 0.15 * sep, (h) => h.id !== hitPar.id && h.cls !== 'highway' && sameOrHigher(h.cls) && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE)
+          || crosses(q))
         if (curve) pts.push(...curve)
       }
       break
