@@ -75,8 +75,9 @@ test uses the same run finder (`closeRuns`), so rule and test cannot drift. Fron
 ring roads are weld targets but are never cut themselves.
 A run longer than 20 m cuts the street at the run's first sample, welded onto the other road there.
 When the run starts at the street's own start, the part **after** the run is kept instead (welded at
-the run's last sample). A remainder under 60 m is dropped. `ponytail:` a run in the middle of a
-street keeps only the part before it; the final prune (2.2) handles what that leaves.
+the run's last sample). A remainder under 60 m is dropped. A run in the middle of a street splits it: the part before,
+welded at the run's first sample, and the part after, welded at its last sample (ids `-1`/`-2`), both
+kept whatever their length, because the blocks were already cut along them.
 
 Infill twins: a BSP cut that runs parallel (within 15°) to and within 15 m of another piece, a
 road inside the face, or the face ring itself (the block's bounding road) over more than 20 m is not
