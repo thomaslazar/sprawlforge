@@ -5,7 +5,7 @@ import { FRONTAGE_ID_PREFIX, type RoadIndex } from './trace'
 
 const STEP = 5
 
-interface Sample { q: Pt; arc: number; head: number; tail: number; hits: Map<string, { at: Pt; d: number }> }
+interface Sample { q: Pt; arc: number; head: number; tail: number; hits: Map<string, { at: Pt; d: number; side: number }> }
 
 /** cut `pts` once at its first long run beside another road; null when no run is long enough */
 function cutOnce(r: Road, index: RoadIndex, near: number, run: number): Pt[] | null {
@@ -29,7 +29,7 @@ function cutOnce(r: Road, index: RoadIndex, near: number, run: number): Pt[] | n
     index.forEachInRadius(m.q, near, (seg, at, d) => {
       if (seg.id === r.id || seg.cls === 'highway' || seg.cls === 'ramp') return
       const prev = m.hits.get(seg.id)
-      if (!prev || d < prev.d) m.hits.set(seg.id, { at, d })
+      if (!prev || d < prev.d) m.hits.set(seg.id, { at, d, side: (seg.b.x - seg.a.x) * (m.q.y - at.y) - (seg.b.y - seg.a.y) * (m.q.x - at.x) })
       ids.add(seg.id)
     })
   }
@@ -40,7 +40,10 @@ function cutOnce(r: Road, index: RoadIndex, near: number, run: number): Pt[] | n
       if (!s[a].hits.has(id)) { a++; continue }
       let b = a
       while (b + 1 < s.length && s[b + 1].hits.has(id)) b++
-      if ((b - a + 1) * STEP > run && (!best || a < best.a)) best = { id, a, b }
+      // a run with the street on both sides of the road crosses it: a junction, not a double (a touch at the start is not a crossing)
+      const sides = s.slice(a, b + 1).map((m) => m.hits.get(id)!).filter((h) => h.d > 0.5).map((h) => Math.sign(h.side))
+      const crosses = sides.includes(1) && sides.includes(-1)
+      if (s[b].arc - s[a].arc > run && !crosses && (!best || a < best.a)) best = { id, a, b }
       a = b + 1
     }
   }

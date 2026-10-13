@@ -1278,3 +1278,32 @@ function maxRun5(a: Pt[], b: Pt[]): number {
   }
   return best
 }
+
+describe('block sides have a road', () => {
+  // BOUND measured after the crossing exemption: 66 / 31 / 14 (201 / 90 / 103 at BASE 0f45e0a, before it). Ratchet down, never up.
+  // [label, params, BOUND]: edges of block footprints with no road within 10 m, no water within 15 m, not on the window edge, not in a megablock/arcology
+  const refs: [string, SectorParams, number][] = [
+    ['seed 42', { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 66],
+    ['seed 426750495', { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 31],
+    ['seed 2268324149', { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 14],
+  ]
+  for (const [label, params, bound] of refs) it(label, () => {
+    const m = generateSector(params)
+    const idx = new RoadIndex(200)
+    for (const r of m.roads) idx.add(r.id, r.points, r.class)
+    const sizeM = m.meta.sizeM
+    const wet = (p: Pt) => inWater(m.terrain, p) || [0, 1, 2, 3, 4, 5, 6, 7].some((k) => inWater(m.terrain, { x: p.x + 15 * Math.cos((k * Math.PI) / 4), y: p.y + 15 * Math.sin((k * Math.PI) / 4) }))
+    const bad: string[] = []
+    for (const b of m.blocks) {
+      const c = ringCentroid(b.footprint)
+      if (m.megablocks.some((k) => pointInRings(c, [k.footprint])) || m.arcologies.some((a) => pointInRings(c, [a.footprint]) || Math.hypot(c.x - a.center.x, c.y - a.center.y) <= a.radius)) continue
+      for (let i = 0; i < b.footprint.length; i++) {
+        const p = b.footprint[i], q = b.footprint[(i + 1) % b.footprint.length], mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }
+        if (onWindowEdge(mid, sizeM, 1) || wet(mid) || idx.nearestMatching(mid, 10, () => true)) continue
+        bad.push(`${b.id}#${i}@${Math.round(mid.x)},${Math.round(mid.y)}`)
+      }
+    }
+    console.log(`block sides without a road ${label}: ${bad.length}`, bad.join(' '))
+    expect(bad.length, label).toBeLessThanOrEqual(bound)
+  })
+})
