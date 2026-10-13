@@ -166,6 +166,10 @@ export function traceHighway(
 
   let best: Pt[] | null = null
   let bestField: RoadField | null = null
+  // R11: longest attempt that ends on an adjacent edge, used when no opposite-edge pair spans
+  let adjacent: Pt[] | null = null
+  let adjacentField: RoadField | null = null
+  let spanned = false
 
   edgeLoop: for (const edge of EDGES) {
     const axis = edge.axisBase + (rng.next() * 2 - 1) * AXIS_JITTER
@@ -181,13 +185,21 @@ export function traceHighway(
       if (!best || polylineLength(candidate) > polylineLength(best)) { best = candidate; bestField = field }
 
       const last = candidate[candidate.length - 1]
+      const p = last[edge.perpCoord]
+      if ((p <= SPAN_TOL || p >= sizeM - SPAN_TOL) && (!adjacent || polylineLength(candidate) > polylineLength(adjacent))) {
+        adjacent = candidate
+        adjacentField = field
+      }
       if (Math.abs(last[edge.travelCoord] - edge.oppositeValue(sizeM)) <= SPAN_TOL) {
         best = candidate
         bestField = field
+        spanned = true
         break edgeLoop // R11: the first edge with a spanning trace wins
       }
     }
   }
+
+  if (!spanned && adjacent) { best = adjacent; bestField = adjacentField }
 
   const road: Road = { id: 'H1', class: 'highway', width: HIGHWAY_WIDTH, name: null, points: best ?? [] }
   return { road, field: bestField ?? buildRoadField(params, terrain, sizeM, [spineBasis(Math.PI / 2)]) }

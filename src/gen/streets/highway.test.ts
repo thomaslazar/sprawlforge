@@ -46,6 +46,17 @@ describe('streets/highway', () => {
     expect(r2.road.points).toEqual(r1.road.points)
   })
 
+  it('R11: with no opposite edge pair spanning it exits on an adjacent edge, dry (coastal seed 24, 2 km)', () => {
+    const p = params({ seed: 24, size: 2, landform: 'coastal', river: true })
+    const sizeM = p.size * 1000
+    const terrain = sampleTerrain(p, sizeM)
+    const pts = traceHighway(p, terrain, sizeM).road.points
+    expect(edgeOf(pts[0], sizeM)).not.toBeNull()
+    expect(edgeOf(pts[pts.length - 1], sizeM)).not.toBeNull()
+    expect(edgeOf(pts[pts.length - 1], sizeM)).not.toBe(edgeOf(pts[0], sizeM))
+    expect(inWater(terrain, pts[pts.length - 1])).toBe(false)
+  })
+
   it('spans the window', () => {
     const p = params()
     const sizeM = p.size * 1000
