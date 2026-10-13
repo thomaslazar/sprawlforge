@@ -9,6 +9,7 @@ import {
 import {
   buildPlanarGraph, clipFacesToLand, facesOf, dropSlivers, pruneDanglers, windowRing,
 } from '../streets/graph'
+import { weldConverging } from '../streets/cleanup'
 import { FRONTAGE_ID_PREFIX, RoadIndex, endKey, pruneDangling } from '../streets/trace'
 import { distToPolyline } from '../terrain/rivers'
 import { SIDEWALK, clipSegmentToRing, corridorRects, fillLots, insetRing, isStripBlock, longestEdgeAngle } from '../streets/lots'
@@ -378,6 +379,13 @@ function finalStreetPrune(streets: Road[], others: Road[], terrain: Terrain, siz
   })
 }
 
+/** converge-and-weld on the final street set against every road (the index is rebuilt by the prune after) */
+function weldAll(streets: Road[], others: Road[]): Road[] {
+  const index = new RoadIndex(200)
+  for (const r of [...others, ...streets]) index.add(r.id, r.points, r.class)
+  return weldConverging(streets, index)
+}
+
 export function generateSector(params: SectorParams): SectorModel {
   const sizeM = params.size * 1000
   const pack = getPack(params.pack)
@@ -405,7 +413,8 @@ export function generateSector(params: SectorParams): SectorModel {
 
   const { faces, infill, dropped } = infillFaces(facesFor([...hw, ...arterials, ...minorAll], boundaries, terrain), minorAll, arterials, highway, terrain, sizeM, [...arcologies.filter((a) => a.access === 'ring'), ...megablocks].map((l) => l.center), [...megablocks.map((k) => k.core), ...arcologies.filter((a) => a.access !== 'ring').map((a) => a.plaza)])
   const infillIds = new Set(infill.map((r) => r.id))
-  const prunedStreets = finalStreetPrune([...minorAll.filter((r) => !dropped.has(r.id)), ...infill], [...hw, ...arterials, ...ramps], terrain, sizeM, decayEnds)
+  const welded = weldAll([...minorAll.filter((r) => !dropped.has(r.id)), ...infill], [...hw, ...arterials, ...ramps])
+  const prunedStreets = finalStreetPrune(welded, [...hw, ...arterials, ...ramps], terrain, sizeM, decayEnds)
   const minor = prunedStreets.filter((r) => !infillIds.has(r.id))
   const infillKept = prunedStreets.filter((r) => infillIds.has(r.id))
   const rawBlocks = toBlocks(faces, districts)

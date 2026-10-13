@@ -1,0 +1,82 @@
+import { polylineLength, type Pt } from '../geometry'
+import { RING_ID_PREFIX } from '../landmarks/place'
+import type { Road } from '../types'
+import { FRONTAGE_ID_PREFIX, type RoadIndex } from './trace'
+
+const STEP = 5
+
+interface Sample { q: Pt; arc: number; head: number; tail: number; hits: Map<string, { at: Pt; d: number }> }
+
+/** cut `pts` once at its first long run beside another road; null when no run is long enough */
+function cutOnce(r: Road, index: RoadIndex, near: number, run: number): Pt[] | null {
+  const pts = r.points
+  const s: Sample[] = []
+  let done = 0
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i]
+    const seg = Math.hypot(b.x - a.x, b.y - a.y)
+    const n = Math.max(1, Math.ceil(seg / STEP))
+    for (let k = i === 1 ? 0 : 1; k <= n; k++) {
+      const q = { x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n }
+      // head = points kept before the sample, tail = first point kept after it
+      s.push({ q, arc: done + (seg * k) / n, head: i, tail: k === n ? i + 1 : i, hits: new Map() })
+    }
+    done += seg
+  }
+  // every road within `near` of a sample counts, not just the nearest: a chain end resting on a third road must not break a run
+  const ids = new Set<string>()
+  for (const m of s) {
+    index.forEachInRadius(m.q, near, (seg, at, d) => {
+      if (seg.id === r.id || seg.cls === 'highway' || seg.cls === 'ramp') return
+      const prev = m.hits.get(seg.id)
+      if (!prev || d < prev.d) m.hits.set(seg.id, { at, d })
+      ids.add(seg.id)
+    })
+  }
+  // the run that starts earliest and is long enough
+  let best: { id: string; a: number; b: number } | null = null
+  for (const id of ids) {
+    for (let a = 0; a < s.length;) {
+      if (!s[a].hits.has(id)) { a++; continue }
+      let b = a
+      while (b + 1 < s.length && s[b + 1].hits.has(id)) b++
+      if ((b - a + 1) * STEP > run && (!best || a < best.a)) best = { id, a, b }
+      a = b + 1
+    }
+  }
+  if (best) {
+    const { id, a, b } = best
+    // a run from the street's own start: the part after it is kept
+    if (a === 0) return [s[b].hits.get(id)!.at, ...pts.slice(s[b].tail)]
+    return [...pts.slice(0, s[a].head), s[a].hits.get(id)!.at]
+  }
+  return null
+}
+
+/**
+ * A street that runs beside another road (within `near` m of the same road over more than `run` m) is cut at the
+ * run's first sample, welded onto that road; a run from the street's own start keeps the part after it instead.
+ * Highways and ramps are never a target (a street does not end on a ramp). Frontage and ring roads are never cut. A remainder under `minLength` is dropped. `index` holds every road and
+ * follows the cuts. ponytail: a run in the middle keeps only the part before it; the final street prune handles the rest.
+ */
+export function weldConverging(streets: Road[], index: RoadIndex, opts: { near?: number; run?: number; minLength?: number } = {}): Road[] {
+  const { near = 8, run = 20, minLength = 60 } = opts
+  const out: Road[] = []
+  for (const r of streets) {
+    if (r.id.startsWith(FRONTAGE_ID_PREFIX) || r.id.startsWith(RING_ID_PREFIX)) { out.push(r); continue }
+    let cur = r
+    let changed = false
+    for (let pass = 0; pass < 4; pass++) {
+      const pts = cur.points.length >= 2 ? cutOnce(cur, index, near, run) : null
+      if (!pts) break
+      cur = { ...cur, points: pts }
+      changed = true
+    }
+    if (!changed) { out.push(r); continue }
+    index.remove(r.id)
+    if (polylineLength(cur.points) < minLength) continue
+    index.add(cur.id, cur.points, cur.class)
+    out.push(cur)
+  }
+  return out
+}
