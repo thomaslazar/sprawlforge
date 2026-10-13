@@ -141,6 +141,34 @@ core (clipping, insetting, filling non-rectangular shapes).
   ignores footprint size, so e.g. bars can land in enormous buildings.
   Size/shape-aware building semantics is the follow-up spec's core question.
 
+## POI and label rework (needs a brainstorm run — user, 2026-10-13)
+
+A dedicated system, not a fix inside the current layers. Observed on
+print-theme maps: far too many POIs per map, POIs clustered so close that
+their labels write over each other, district labels "all over the place",
+and both name pools repeating quickly.
+
+- **Fewer, more distinct POIs** — a map should carry a handful of POIs that
+  matter, each recognisably different, instead of a sprinkle of similar ones.
+  Candidate: tags that say which POI types a map should hold (nightlife,
+  corp, medical, underworld, …) so the mix is a user choice, not a draw.
+  Ties in with "POI category filters" (display) above but is a generation
+  change.
+- **POI rendering with text** — zoom-dependent visibility: hide POI labels
+  (or whole POIs) when zoomed out, reveal them as the viewer zooms in;
+  de-cluster labels so none overlap; the semantic-zoom label logic in the
+  map view is the hook (`labelsZoomed` in uicheck shows the mechanism).
+- **District label placement** — labels land anywhere inside the district
+  bounds; needs a real placement rule (largest inscribed area, away from
+  arterials and other labels, consistent size per zoom level). Supersedes
+  "Better label placement" above for districts.
+- **More names, less repetition** — POI and district name pools are too small
+  and the patterns repeat; see "Massively extend flavor-pack name tables"
+  and "Name uniqueness check" above, which this rework should absorb.
+
+Order: brainstorm the POI system first (what a POI is, how many, which
+tags), then labels/rendering, then the name tables.
+
 ## Street generator follow-ups (from tensor-streets, §14)
 
 - **Perf budget unverified** — target 4 km ≤ 1.5 s, 6 km ≤ 4 s on a laptop
