@@ -328,8 +328,8 @@ describe('landmark blocks', () => {
 })
 
 describe('strip blocks', () => {
-  // clipper2 re-roll (v8): seed 42 no longer has a sunken stretch, seed 15 does
-  const m = generateSector({ ...base, seed: 15, size: 4, landform: 'coastal', river: true })
+  // the test needs a sunken stretch: seed 15 lost it at v9, seed 12 in the 7b stabilisation, seed 3 at rule C1 (no sunken segment left); seed 13 has one (seed 1 has one, but a 2-lot strip block)
+  const m = generateSector({ ...base, seed: 13, size: 4, landform: 'coastal', river: true })
   it('strip blocks are packed with narrow lots facing the highway', { timeout: 120000 }, () => {
     const hws = m.roads.filter((r) => r.class === 'highway')
     const dHw = (p: Pt) => Math.min(...hws.map((r) => distToPolyline(p, r.points)))

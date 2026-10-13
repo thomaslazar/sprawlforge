@@ -6,7 +6,7 @@ import { sampleTerrain } from '../terrain'
 import { distToPolyline } from '../terrain/rivers'
 import type { District, HighwaySegment, Road, SectorParams, Terrain, ZoneType } from '../types'
 import {
-  FRONTAGE_ID_PREFIX, HIGHWAY_WIDTH, FRONTAGE_OFF, assignHighwayLevels, buildInterchanges, cutStreetsAtGround, highwayCrossings, levelAt, noBuildStrips, traceHighway, frontageRoads, trimFrontage,
+  FRONTAGE_ID_PREFIX, HIGHWAY_OPTS, HIGHWAY_WIDTH, FRONTAGE_OFF, assignHighwayLevels, buildInterchanges, cutStreetsAtGround, highwayCrossings, levelAt, noBuildStrips, traceHighway, frontageRoads, trimFrontage,
 } from './highway'
 import { MAJOR } from './trace'
 
@@ -44,6 +44,17 @@ describe('streets/highway', () => {
     const r1 = traceHighway(p, terrain, sizeM)
     const r2 = traceHighway(p, terrain, sizeM)
     expect(r2.road.points).toEqual(r1.road.points)
+  })
+
+  it('R11: with no opposite edge pair spanning it exits on an adjacent edge, dry (coastal seed 24, 2 km)', () => {
+    const p = params({ seed: 24, size: 2, landform: 'coastal', river: true })
+    const sizeM = p.size * 1000
+    const terrain = sampleTerrain(p, sizeM)
+    const pts = traceHighway(p, terrain, sizeM).road.points
+    expect(edgeOf(pts[0], sizeM)).not.toBeNull()
+    expect(edgeOf(pts[pts.length - 1], sizeM)).not.toBeNull()
+    expect(edgeOf(pts[pts.length - 1], sizeM)).not.toBe(edgeOf(pts[0], sizeM))
+    expect(inWater(terrain, pts[pts.length - 1])).toBe(false)
   })
 
   it('spans the window', () => {
@@ -378,4 +389,8 @@ describe('frontage roads', () => {
     for (const r of out) for (const p of r.points) expect(p.y <= 1600.5 || p.y >= 2399.5).toBe(true)
     expect(trimFrontage(fr, hw, [seg(0, 1, 'ground')])).toEqual(fr)
   })
+})
+
+it('highway trace options keep the singularity stop off', () => {
+  expect(HIGHWAY_OPTS.stopAtSingularity).toBe(false)
 })

@@ -33,6 +33,16 @@ const eastWater: Terrain = {
 }
 
 describe('assignZones', () => {
+  it('zone weights follow the style', () => {
+    const base = zoneWeights(params, false, 0.5)
+    expect(zoneWeights(params, false, 0.2).corp).toBeCloseTo(2 * base.corp)
+    expect(zoneWeights(params, false, 0.2).industrial).toBeCloseTo(1.5 * base.industrial)
+    for (const i of [0.6, 0.7]) {
+      expect(zoneWeights(params, false, i).slum).toBeCloseTo(2 * base.slum)
+      expect(zoneWeights(params, false, i).residential).toBeCloseTo(1.5 * base.residential)
+    }
+  })
+
   it('is deterministic and assigns valid zones', () => {
     const a = assignZones(polys, params, dryTerrain)
     expect(a).toEqual(assignZones(polys, params, dryTerrain))
@@ -52,10 +62,10 @@ describe('assignZones', () => {
     }
   })
   it('corp dominance shifts weights', () => {
-    expect(zoneWeights({ ...params, corpDominance: 1 }, false).corp)
-      .toBeGreaterThan(zoneWeights({ ...params, corpDominance: 0 }, false).corp)
-    expect(zoneWeights({ ...params, corpDominance: 1 }, false).slum)
-      .toBeLessThan(zoneWeights({ ...params, corpDominance: 0 }, false).slum)
+    expect(zoneWeights({ ...params, corpDominance: 1 }, false, 0.5).corp)
+      .toBeGreaterThan(zoneWeights({ ...params, corpDominance: 0 }, false, 0.5).corp)
+    expect(zoneWeights({ ...params, corpDominance: 1 }, false, 0.5).slum)
+      .toBeLessThan(zoneWeights({ ...params, corpDominance: 0 }, false, 0.5).slum)
   })
   it('no docks anywhere on dry terrain', () => {
     for (const d of assignZones(polys, params, dryTerrain)) expect(d.zone).not.toBe('docks')

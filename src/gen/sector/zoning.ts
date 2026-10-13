@@ -27,6 +27,18 @@ export function effectiveIrregularity(params: SectorParams): (p: Pt) => number {
   return (p: Pt) => clamp(0.05, 0.95, field(p) + bias)
 }
 
+// water rings as points, converted once per terrain (isShore runs per district vertex and edge midpoint)
+const waterCache = new WeakMap<Terrain, { polys: Pt[][][]; closed: Pt[][] }>()
+function waterRings(terrain: Terrain) {
+  let w = waterCache.get(terrain)
+  if (!w) {
+    const polys = terrain.water.map((waterPoly) => waterPoly.map((ring) => ring.map(([x, y]) => ({ x, y }))))
+    w = { polys, closed: polys.flat().map((ring) => [...ring, ring[0]]) }
+    waterCache.set(terrain, w)
+  }
+  return w
+}
+
 function isShore(poly: Pt[], terrain: Terrain): boolean {
   // sample the polygon's own vertices plus each edge midpoint
   const points: Pt[] = [...poly]
@@ -35,34 +47,22 @@ function isShore(poly: Pt[], terrain: Terrain): boolean {
     const b = poly[(i + 1) % poly.length]
     points.push({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
   }
-
+  const { polys, closed } = waterRings(terrain)
   for (const p of points) {
-    // Check if point is in water
-    for (const waterPoly of terrain.water) {
-      const rings = waterPoly.map((ring) => ring.map(([x, y]) => ({ x, y })))
-      if (pointInRings(p, rings)) return true
-    }
-    // Check if point is within SHORE_DIST of any water ring
-    for (const waterPoly of terrain.water) {
-      for (const ring of waterPoly) {
-        // Close the ring by appending the first point
-        const closedRing = [...ring, ring[0]]
-        const pts = closedRing.map(([x, y]) => ({ x, y }))
-        const dist = distToPolyline(p, pts)
-        if (dist < SHORE_DIST) return true
-      }
-    }
+    if (polys.some((rings) => pointInRings(p, rings))) return true
+    if (closed.some((ring) => distToPolyline(p, ring) < SHORE_DIST)) return true
   }
   return false
 }
 
-export function zoneWeights(params: SectorParams, shore: boolean): Record<ZoneType, number> {
+/** irr: the district's effective irregularity; planned (< 0.4) favours corp, organic (>= 0.6) favours slum and residential; planned also industrial */
+export function zoneWeights(params: SectorParams, shore: boolean, irr: number): Record<ZoneType, number> {
   const c = params.corpDominance
   return {
-    corp: 0.5 + 3 * c,
-    residential: 3 - 1.5 * c,
-    slum: 2.5 - 2 * c,
-    industrial: 1.5,
+    corp: (0.5 + 3 * c) * (irr < 0.4 ? 2 : 1),
+    residential: (3 - 1.5 * c) * (irr >= 0.6 ? 1.5 : 1),
+    slum: (2.5 - 2 * c) * (irr >= 0.6 ? 2 : 1),
+    industrial: 1.5 * (irr < 0.4 ? 1.5 : 1),
     entertainment: 1,
     docks: shore ? 1.5 : 0,
   }
@@ -77,7 +77,8 @@ export function assignZones(districtPolys: Pt[][], params: SectorParams, terrain
   const sorted = withBounds.sort((a, b) => a.bounds.y - b.bounds.y || a.bounds.x - b.bounds.x)
   return sorted.map(({ poly, bounds }, i) => {
     const shore = isShore(poly, terrain)
-    const weights = Object.entries(zoneWeights(params, shore)) as Array<[ZoneType, number]>
+    const eff = effective(ringCentroid(poly))
+    const weights = Object.entries(zoneWeights(params, shore, eff)) as Array<[ZoneType, number]>
     const drawn = rng.weighted(weights) // always drawn so unforced districts keep their sequence
     const hits = forced.filter((f) => pointInRings(f.at, [poly]))
     const zone = hits.length ? hits[hits.length - 1].zone : drawn
@@ -86,7 +87,7 @@ export function assignZones(districtPolys: Pt[][], params: SectorParams, terrain
     // ties — floor > 0 so no district is a perfect grid (spec §4.3)
     const irregularity = clamp(
       0.05, 0.95,
-      effective(ringCentroid(poly)) * 0.7 + ZONE_IRREGULARITY[zone] * 0.3 + (rng.next() - 0.5) * 0.1,
+      eff * 0.7 + ZONE_IRREGULARITY[zone] * 0.3 + (rng.next() - 0.5) * 0.1,
     )
     return {
       id: `D${String(i + 1).padStart(2, '0')}`,

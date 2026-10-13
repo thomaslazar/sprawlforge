@@ -48,3 +48,16 @@ export function endMeetings(roads: Road[], extra: Road[] = []): Array<{ id: stri
   }
   return out
 }
+
+/** largest direction change (degrees) at any interior vertex */
+export function maxBendDeg(pts: Pt[]): number {
+  let m = 0
+  for (let i = 1; i < pts.length - 1; i++) {
+    const a = Math.atan2(pts[i].y - pts[i - 1].y, pts[i].x - pts[i - 1].x)
+    const b = Math.atan2(pts[i + 1].y - pts[i].y, pts[i + 1].x - pts[i].x)
+    let d = Math.abs(b - a)
+    if (d > Math.PI) d = 2 * Math.PI - d
+    m = Math.max(m, (d * 180) / Math.PI)
+  }
+  return m
+}

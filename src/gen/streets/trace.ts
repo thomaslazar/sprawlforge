@@ -1,10 +1,12 @@
-import { bboxOf, pointAtT, pointInRings, polylineLength, segmentCrossesPolyline, type Pt } from '../geometry'
+import { angleGapLines, bboxOf, inWindow, onWindowEdge, PARALLEL_ANGLE, pointAtT, pointInRings, polylineLength, segHit, segmentCrossesPolyline, segmentsIntersect, simplifyPolyline, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import { RING_ID_PREFIX } from '../landmarks/place'
 import { inWater, nearWater } from '../sector/bridges'
 import { distToPolyline } from '../terrain/rivers'
 import type { Road, RoadClass, Terrain } from '../types'
 import type { RoadField } from './field'
+import { crossingGuard, HOOK_MIN_WALK, joinCurve, JOIN_AHEAD } from './join'
+import { smoothBends } from './smooth'
 
 export const FRONTAGE_ID_PREFIX = 'F'
 
@@ -16,6 +18,8 @@ export interface Seed {
   axis?: 'major' | 'minor'
   /** overrides riverSlice.width for this seed's crossWater band (see riverCrossingSeeds) */
   corridorWidth?: number
+  /** trace along dir only (a spoke leaves its ring outward; inward is the plaza) */
+  oneWay?: boolean
 }
 
 export interface TraceOpts {
@@ -32,10 +36,14 @@ export interface TraceOpts {
   bridgeRivers?: boolean
   /** simple polygons (arcology plazas, megablock cores) no streamline may enter */
   obstacles?: Pt[][]
+  /** stop where the field direction flips (default: only when maxTurn is unset) */
+  stopAtSingularity?: boolean
+  /** fillet radius (m) for polyline bends sharper than 15° */
+  smoothRadius?: number
 }
 
-export const MAJOR: TraceOpts = { separation: 400, step: 10, maxSteps: 600, minLength: 60, jitter: 0, decay: 0, bridgeRivers: true }
-export const MINOR: TraceOpts = { separation: 100, step: 10, maxSteps: 200, minLength: 60, jitter: 0.4, decay: 0.2 }
+export const MAJOR: TraceOpts = { separation: 400, step: 10, maxSteps: 600, minLength: 60, jitter: 0, decay: 0, bridgeRivers: true, maxTurn: (15 * Math.PI) / 180, stopAtSingularity: true, smoothRadius: 60 }
+export const MINOR: TraceOpts = { separation: 100, step: 10, maxSteps: 200, minLength: 60, jitter: 0.4, decay: 0.2, smoothRadius: 25 }
 
 // highway > arterial > street > ramp
 const CLASS_RANK: Record<RoadClass, number> = { highway: 3, arterial: 2, street: 1, ramp: 0 }
@@ -65,7 +73,7 @@ interface Seg { id: string; cls: RoadClass; a: Pt; b: Pt; arc: number; total: nu
 const BBOX_SLACK = 1e-6
 
 /** a nearestMatching hit; `edge` = arc distance (m) from the hit point to the nearer end of its road */
-export interface MatchHit { id: string; at: Pt; dist: number; segAngle: number; cls: RoadClass; edge: number }
+export interface MatchHit { id: string; at: Pt; dist: number; segAngle: number; cls: RoadClass; edge: number; arcAtFoot: number }
 
 /** uniform grid hash of road segments; nearest() scans only the cells within radius */
 export class RoadIndex {
@@ -73,6 +81,7 @@ export class RoadIndex {
   private cells = new Map<number, Seg[]>()
   /** road id -> keys of the buckets holding its segments, so remove() touches only those */
   private keysById = new Map<string, Set<number>>()
+  private pointsById = new Map<string, Pt[]>()
 
   constructor(cellSize: number) {
     this.cellSize = cellSize
@@ -80,6 +89,7 @@ export class RoadIndex {
 
   add(id: string, points: Pt[], cls: RoadClass): void {
     const total = polylineLength(points)
+    this.pointsById.set(id, points)
     let keys = this.keysById.get(id)
     if (!keys) { keys = new Set(); this.keysById.set(id, keys) }
     let arc = 0
@@ -111,6 +121,7 @@ export class RoadIndex {
     if (!keys) return
     for (const k of keys) this.cells.set(k, this.cells.get(k)!.filter((seg) => seg.id !== id))
     this.keysById.delete(id)
+    this.pointsById.delete(id)
   }
 
   has(id: string): boolean {
@@ -124,7 +135,7 @@ export class RoadIndex {
     for (let k = 0; k <= n; k++) this.forEachInRadius({ x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n }, reach + 2, visit)
   }
 
-  private forEachInRadius(p: Pt, radius: number, visit: (seg: Seg, pt: Pt, d: number, edge: number) => void): void {
+  forEachInRadius(p: Pt, radius: number, visit: (seg: Seg, pt: Pt, d: number, edge: number, arcAtFoot: number) => void): void {
     const cx0 = Math.floor((p.x - radius) / this.cellSize)
     const cx1 = Math.floor((p.x + radius) / this.cellSize)
     const cy0 = Math.floor((p.y - radius) / this.cellSize)
@@ -147,7 +158,7 @@ export class RoadIndex {
           const d = Math.hypot(p.x - qx, p.y - qy)
           if (d <= radius) {
             const at = seg.arc + t * Math.sqrt(len2)
-            visit(seg, { x: qx, y: qy }, d, Math.min(at, seg.total - at))
+            visit(seg, { x: qx, y: qy }, d, Math.min(at, seg.total - at), at)
           }
         }
       }
@@ -203,13 +214,45 @@ export class RoadIndex {
     p: Pt, radius: number, test: (hit: MatchHit) => boolean,
   ): MatchHit | null {
     let best: MatchHit | null = null
-    this.forEachInRadius(p, radius, (seg, pt, d, edge) => {
+    this.forEachInRadius(p, radius, (seg, pt, d, edge, arcAtFoot) => {
       const segAngle = Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x)
-      const hit = { id: seg.id, at: pt, dist: d, segAngle, cls: seg.cls, edge }
+      const hit = { id: seg.id, at: pt, dist: d, segAngle, cls: seg.cls, edge, arcAtFoot }
       if (!test(hit)) return
       if (!best || d < best.dist) best = hit
     })
     return best
+  }
+
+  /** true when segment a-b crosses or touches an indexed segment passing `test` */
+  segmentCrosses(a: Pt, b: Pt, test: (id: string, cls: RoadClass) => boolean): boolean {
+    let hit = false
+    // a segment meeting a-b has a point within half its length of the midpoint
+    this.forEachInRadius({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, Math.hypot(b.x - a.x, b.y - a.y) / 2, (seg) => {
+      if (!hit && test(seg.id, seg.cls) && segmentsIntersect(a, b, seg.a, seg.b)) hit = true
+    })
+    return hit
+  }
+
+  /** the first indexed segment passing `test` that segment a-b crosses (nearest to a): road id, crossing point, segment angle */
+  firstCrossing(a: Pt, b: Pt, test: (id: string, cls: RoadClass) => boolean): { id: string; at: Pt; segAngle: number } | null {
+    let best: { id: string; at: Pt; segAngle: number } | null = null, bestT = Infinity
+    this.forEachInRadius({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, Math.hypot(b.x - a.x, b.y - a.y) / 2, (seg) => {
+      if (!test(seg.id, seg.cls)) return
+      const t = segHit(a, b, seg.a, seg.b)
+      if (t === null || t >= bestT) return
+      bestT = t
+      best = { id: seg.id, at: { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, segAngle: Math.atan2(seg.b.y - seg.a.y, seg.b.x - seg.a.x) }
+    })
+    return best
+  }
+
+  /** the point `arc` m along the hit road from the foot (+ toward the segment's b end), clamped to the road's ends, and the road's unit direction there */
+  pointAlong(hit: MatchHit, arc: number): { at: Pt; tangent: Pt } {
+    const pts = this.pointsById.get(hit.id)!
+    const len = polylineLength(pts)
+    const t = clamp(0, 1, (hit.arcAtFoot + arc) / len)
+    const a = pointAtT(pts, Math.max(0, t - 1 / len)), b = pointAtT(pts, Math.min(1, t + 1 / len))
+    return { at: pointAtT(pts, t), tangent: normalize({ x: b.x - a.x, y: b.y - a.y }) }
   }
 }
 
@@ -236,12 +279,6 @@ function clampTurn(prevDir: Pt, rawDir: Pt, maxTurn: number): Pt {
   return { x: Math.cos(a), y: Math.sin(a) }
 }
 
-function angleGapLines(a: number, b: number): number {
-  let d = Math.abs(a - b) % Math.PI
-  if (d > Math.PI / 2) d = Math.PI - d
-  return d
-}
-
 /**
  * a crossWater seed may wet-cross the river corridor only; sea/lake still
  * stop it. `corridorWidth` (from a Seed measured by riverCrossingSeeds)
@@ -259,12 +296,25 @@ function clampToWindow(p: Pt, sizeM: number): Pt {
 }
 
 const CROSSING_MAX_REACH = 450
+/** a river deck may land on an arterial this far (m) past the far bank, crossing it at DECK_LANDING_ANGLE or more */
+const DECK_LANDING = 120
+const DECK_LANDING_ANGLE = Math.PI / 4
 const CROSSING_SAMPLE_STEP = 10
-const PARALLEL_ANGLE = (25 * Math.PI) / 180
 /** a raw direction flip beyond this between two steps is a field singularity: stop, never clamp (a clamped hairpin is a U-loop) */
 const SINGULARITY_TURN = (60 * Math.PI) / 180
 /** a street may end on a near-parallel road only broadside and after a real run (a stub right beside its parent is a wedge) */
 const JOIN_MIN_ANGLE = (60 * Math.PI) / 180
+/** an arterial joins a near-parallel road only when heading into it at least this steeply: a parallel neighbour (planned grid) is not converging */
+const JOIN_CONVERGE = (5 * Math.PI) / 180
+/** an arterial with both ends on the same road is a crescent when shorter than this many separations: dropped */
+const CRESCENT_MAX = 3
+
+/** how steeply (sine of the angle) a walker at p heading dir closes on the hit road's line: <= 0 parallel or leaving */
+function approach(hit: MatchHit, p: Pt, dir: Pt): number {
+  let nx = -Math.sin(hit.segAngle), ny = Math.cos(hit.segAngle)
+  if (nx * (p.x - hit.at.x) + ny * (p.y - hit.at.y) < 0) { nx = -nx; ny = -ny }
+  return -(nx * dir.x + ny * dir.y)
+}
 
 function traceHalf(
   field: RoadField, axis: 'major' | 'minor', start: Pt, initDir: Pt,
@@ -290,11 +340,11 @@ function traceHalf(
   for (let i = 0; i < opts.maxSteps; i++) {
     const rawDir = rk4Dir(field, axis, p, dir, opts.step)
     // the highway (maxTurn set) is smoothed by its clamp instead
-    if (i > 0 && opts.maxTurn === undefined && Math.acos(clamp(-1, 1, dir.x * rawDir.x + dir.y * rawDir.y)) > SINGULARITY_TURN) break
+    if (i > 0 && (opts.stopAtSingularity ?? opts.maxTurn === undefined) && Math.acos(clamp(-1, 1, dir.x * rawDir.x + dir.y * rawDir.y)) > SINGULARITY_TURN) break
     const newDir = clampTurn(dir, rawDir, maxTurn)
     const next = { x: p.x + newDir.x * opts.step, y: p.y + newDir.y * opts.step }
 
-    if (next.x < 0 || next.x > sizeM || next.y < 0 || next.y > sizeM) {
+    if (!inWindow(next, sizeM)) {
       pts.push(clampToWindow(next, sizeM))
       break
     }
@@ -306,15 +356,25 @@ function traceHalf(
       let d = opts.step
       while (d <= CROSSING_MAX_REACH && inWater(terrain, { x: p.x + dir.x * d, y: p.y + dir.y * d })) d += CROSSING_SAMPLE_STEP
       const land = { x: p.x + dir.x * d, y: p.y + dir.y * d }
-      if (d > CROSSING_MAX_REACH || land.x < 0 || land.x > sizeM || land.y < 0 || land.y > sizeM) break
+      if (d > CROSSING_MAX_REACH || !inWindow(land, sizeM)) break
       // the deck must cross the river course (not a sea inlet / lake) and clear every road of its own rank or higher
       if (!segmentCrossesPolyline(p, land, river.course)) break
+      // except the arterial it lands on: met by the deck's straight dry extension within DECK_LANDING, at 45° or more
+      const reach = { x: land.x + dir.x * DECK_LANDING, y: land.y + dir.y * DECK_LANDING }
+      let onto = index.firstCrossing(land, reach, (_id, cls) => cls === 'arterial')
+      if (onto && angleGapLines(Math.atan2(dir.y, dir.x), onto.segAngle) < DECK_LANDING_ANGLE) onto = null
+      for (let s = CROSSING_SAMPLE_STEP; onto && s < Math.hypot(onto.at.x - land.x, onto.at.y - land.y); s += CROSSING_SAMPLE_STEP) {
+        const q = { x: land.x + dir.x * s, y: land.y + dir.y * s }
+        if (inWater(terrain, q) || inObstacle(q)) onto = null
+      }
       let blocked = false
       for (let s = 0; s < d && !blocked; s += CROSSING_SAMPLE_STEP) {
-        blocked = !!index.nearest({ x: p.x + dir.x * s, y: p.y + dir.y * s }, 0.3 * sep, sameOrHigher)
+        blocked = !!index.nearestMatching({ x: p.x + dir.x * s, y: p.y + dir.y * s }, 0.3 * sep, (h) => sameOrHigher(h.cls) && h.id !== onto?.id)
       }
       if (blocked) break
       pts.push(land)
+      // the deck ends on its landing road: a T, anchored
+      if (onto) { pts.push(onto.at); break }
       p = land
       bridges++
       continue
@@ -366,6 +426,22 @@ function traceHalf(
       const foot = hitPar.at
       const join = angleGapLines(Math.atan2(foot.y - p.y, foot.x - p.x), hitPar.segAngle)
       if (!opts.bridgeRivers && hitPar.cls !== 'highway' && hitPar.edge >= 6 && join > JOIN_MIN_ANGLE && pts.length * opts.step >= 0.5 * sep && (foot.x - p.x) * dir.x + (foot.y - p.y) * dir.y > 0 && !inObstacle(foot)) pts.push(foot)
+      // join only a road we are converging on (foot ahead, not receding since last step): curving back into a road we are leaving makes a long side-by-side run
+      const before = opts.bridgeRivers ? index.nearestMatching(p, 0.7 * sep, (h) => h.id === hitPar.id) : null
+      // only onto an arterial: a frontage road (class street) is indexed before the arterials and must stop, not catch, a walker
+      if (opts.bridgeRivers && hitPar.cls === 'arterial' && !isSourceAt(hitPar.id, next) && polylineLength([start, ...pts]) >= HOOK_MIN_WALK * opts.separation
+        && (foot.x - p.x) * dir.x + (foot.y - p.y) * dir.y >= 0 && approach(hitPar, p, dir) >= Math.sin(JOIN_CONVERGE) && (!before || hitPar.dist <= before.dist + 0.1)) {
+        const sign = Math.cos(hitPar.segAngle) * dir.x + Math.sin(hitPar.segAngle) * dir.y > 0 ? 1 : -1
+        // arrive at JOIN_ARRIVE to the road where the curve meets it (a curving road turns between foot and target)
+        const { at: target, tangent } = index.pointAlong(hitPar, sign * JOIN_AHEAD * sep)
+        const crosses = crossingGuard(index, p, target, null, hitPar.id)
+        // crossing a third arterial: the curve ends on it (crosses.cut)
+        const curve = joinCurve(p, dir, target, tangent, (q, dirAt) =>
+          inWater(terrain, q) || inObstacle(q) || !inWindow(q, sizeM)
+          || !!index.nearestMatching(q, 0.15 * sep, (h) => h.id !== hitPar.id && h.cls !== 'highway' && sameOrHigher(h.cls) && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE)
+          || crosses(q)) ?? crosses.cut?.pts
+        if (curve) pts.push(...curve)
+      }
       break
     }
 
@@ -386,7 +462,7 @@ export function traceStreamline(
   // window edge (Terrain's own doc comment) — a seed out there would put an
   // out-of-window point straight into the result, breaking window
   // containment. No road for a seed that isn't even on the map.
-  if (seed.at.x < 0 || seed.at.x > sizeM || seed.at.y < 0 || seed.at.y > sizeM) return null
+  if (!inWindow(seed.at, sizeM)) return null
   const useAxis = seed.axis ?? axis
   const irr = irregularityAt(seed.at)
   const jitterScale = (Math.max(0, irr - 0.4) / 0.55) * (rng.next() - 0.5) * 2
@@ -404,13 +480,19 @@ export function traceStreamline(
     field, useAxis, seed.at, initDir, terrain, sizeM, index, opts, sep, rng, irregularityAt,
     crossWater, sourceId, seed.at, seed.corridorWidth, decayEnds,
   )
-  const backward = traceHalf(
+  const backward = seed.oneWay ? [] : traceHalf(
     field, useAxis, seed.at, { x: -initDir.x, y: -initDir.y }, terrain, sizeM, index, opts, sep, rng, irregularityAt,
     crossWater, sourceId, seed.at, seed.corridorWidth, decayEnds,
   )
 
   const points = [...backward.slice().reverse(), seed.at, ...forward]
   if (polylineLength(points) < opts.minLength) return null
+  // a crescent: the join rule let a U-turning arterial end on the very road its other end sits on; a short one is a hairpin, not a road
+  if (opts.bridgeRivers && polylineLength(points) < CRESCENT_MAX * opts.separation) {
+    const a = index.nearestMatching(points[0], 6, () => true)?.id
+    const b = index.nearestMatching(points[points.length - 1], 6, () => true)?.id
+    if (a && a === b) return null
+  }
   return points
 }
 
@@ -473,7 +555,7 @@ function tangentAt(points: Pt[], t: number): Pt {
 }
 
 /** seeds every `every` m along a polyline, dir = segment normal, flipping side when alternate */
-export function seedsAlong(points: Pt[], every: number, alternate: boolean, reject?: (p: Pt) => boolean): Seed[] {
+export function seedsAlong(points: Pt[], every: number, alternate: boolean, reject?: (p: Pt) => boolean, bothWithin?: { size: number; m: number }): Seed[] {
   const len = polylineLength(points)
   const seeds: Seed[] = []
   let flip = false
@@ -482,7 +564,12 @@ export function seedsAlong(points: Pt[], every: number, alternate: boolean, reje
     const tangent = tangentAt(points, t)
     const normal = { x: -tangent.y, y: tangent.x }
     const at = pointAtT(points, t)
-    if (!reject?.(at)) seeds.push({ at, dir: flip && alternate ? { x: -normal.x, y: -normal.y } : normal })
+    if (!reject?.(at)) {
+      // near the window edge a strip between road and edge would get one seed per 200 m: seed both sides
+      const edge = bothWithin && Math.min(at.x, at.y, bothWithin.size - at.x, bothWithin.size - at.y) < bothWithin.m
+      if (edge) seeds.push({ at, dir: normal }, { at, dir: { x: -normal.x, y: -normal.y } })
+      else seeds.push({ at, dir: flip && alternate ? { x: -normal.x, y: -normal.y } : normal })
+    }
     flip = !flip
   }
   return seeds
@@ -577,8 +664,9 @@ export function traceLayer(
     const source = index.nearest(seed.at, SEED_SOURCE_RADIUS, () => true)
     const blocker = index.nearest(seed.at, 0.3 * opts.separation, sameOrHigher)
     if (blocker && blocker.id !== source?.id) continue
-    const points = traceStreamline(field, axis, seed, terrain, sizeM, index, opts, rng, irregularityAt, decayEnds)
-    if (!points) continue
+    const raw = traceStreamline(field, axis, seed, terrain, sizeM, index, opts, rng, irregularityAt, decayEnds)
+    if (!raw) continue
+    const points = opts.smoothRadius ? smoothBends(simplifyPolyline(raw, 1), opts.smoothRadius) : raw
     n += 1
     const id = idPrefix + String(n).padStart(3, '0')
     index.add(id, points, cls)
@@ -620,7 +708,6 @@ export interface PruneOpts {
 export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain, sizeM: number, opts: PruneOpts): Road[] {
   const weld = opts.weld ?? 6
   const exempt = opts.exemptPrefixes ?? [RING_ID_PREFIX, FRONTAGE_ID_PREFIX]
-  const onEdge = (p: Pt) => p.x < 1 || p.y < 1 || p.x > sizeM - 1 || p.y > sizeM - 1
   const dirty = new Set<string>()
   // old/new polylines differ only in segments whose endpoints are not both shared (cuts keep point refs)
   const markChange = (old: Pt[], neu: Pt[]) => {
@@ -646,7 +733,7 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
       for (const fromEnd of [false, true]) {
         const seq = fromEnd ? pts.slice().reverse() : pts
         const end = seq[0]
-        if (seq.length < 2 || onEdge(end) || opts.keep?.has(endKey(end)) || near(end)) continue
+        if (seq.length < 2 || onWindowEdge(end, sizeM, 1) || opts.keep?.has(endKey(end)) || near(end)) continue
         const dx = end.x - seq[1].x
         const dy = end.y - seq[1].y
         const len = Math.hypot(dx, dy) || 1

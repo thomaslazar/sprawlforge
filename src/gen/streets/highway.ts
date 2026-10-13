@@ -1,4 +1,4 @@
-import { pointAtT, pointInRings, polylineLength, simplifyPolyline, slicePolyline, type Pt } from '../geometry'
+import { inWindow, onWindowEdge, pointAtT, pointInRings, polylineLength, segHit, segmentCrossesPolyline, simplifyPolyline, slicePolyline, type Pt } from '../geometry'
 import { hashSeed, mulberry32, type Rng } from '../rng'
 import { effectiveIrregularity } from '../sector/zoning'
 import { inWater } from '../sector/bridges'
@@ -16,10 +16,6 @@ const ENTRY_ATTEMPTS = 3
 const ENTRY_LO = 0.3
 const ENTRY_SPAN = 0.4
 const SPAN_TOL = 1 // "reaching the opposite edge within 1 m" counts as spanning (R11)
-// a stop point this close to riverSlice.course counts as the river (vs.
-// sea/lake, which just ends the trace) — wider than riverSlice.width itself
-// since the actual carve varies past that single scalar average
-const RIVER_BAND_FACTOR = 1.5
 const BRIDGE_MAX_TURN_FROM_HEADING = Math.PI / 4 // R12: bridge chord ≤ 45° off the recent approach heading
 
 const clamp = (lo: number, hi: number, v: number) => Math.max(lo, Math.min(hi, v))
@@ -135,7 +131,7 @@ function traceFromEdge(
     if (!onSide || bridged) return points // exited a side edge, or already used our one bridge (R12)
 
     const river = terrain.riverSlice
-    if (!river || distToPolyline(last, river.course) > river.width * RIVER_BAND_FACTOR) return points // sea/lake — done
+    if (!river) return points // no river: the stop was the sea or a lake
 
     const prev = points.length > 1 ? points[points.length - 2] : last
     const heading = normalize({ x: last.x - prev.x, y: last.y - prev.y })
@@ -150,6 +146,8 @@ function traceFromEdge(
     // R1: a far-bank point computed from an in-window `last` plus a bounded
     // offset can still land fractionally outside — clamp before pushing.
     const farBank = clampToWindow({ x: last.x + normal.x * width, y: last.y + normal.y * width }, sizeM)
+    // the chord must cross the river course itself (not a sea inlet or a lake beside it), as an arterial deck must
+    if (!segmentCrossesPolyline(last, farBank, river.course)) return points
     points.push(farBank)
     at = farBank
     dir = normal
@@ -157,15 +155,21 @@ function traceFromEdge(
   }
 }
 
+export const HIGHWAY_OPTS: TraceOpts = { ...MAJOR, maxSteps: 2000, maxTurn: MAJOR.step / 300, bridgeRivers: false, stopAtSingularity: false }
+
 export function traceHighway(
   params: SectorParams, terrain: Terrain, sizeM: number,
 ): { road: Road; field: RoadField } {
   const rng = mulberry32(hashSeed(params.seed, 'highway'))
   const irregularityAt = effectiveIrregularity(params)
-  const opts: TraceOpts = { ...MAJOR, maxSteps: 2000, maxTurn: MAJOR.step / 300, bridgeRivers: false }
+  const opts = HIGHWAY_OPTS
 
   let best: Pt[] | null = null
   let bestField: RoadField | null = null
+  // R11: longest attempt that ends on an adjacent edge, used when no opposite-edge pair spans
+  let adjacent: Pt[] | null = null
+  let adjacentField: RoadField | null = null
+  let spanned = false
 
   edgeLoop: for (const edge of EDGES) {
     const axis = edge.axisBase + (rng.next() * 2 - 1) * AXIS_JITTER
@@ -181,13 +185,21 @@ export function traceHighway(
       if (!best || polylineLength(candidate) > polylineLength(best)) { best = candidate; bestField = field }
 
       const last = candidate[candidate.length - 1]
+      const p = last[edge.perpCoord]
+      if ((p <= SPAN_TOL || p >= sizeM - SPAN_TOL) && (!adjacent || polylineLength(candidate) > polylineLength(adjacent))) {
+        adjacent = candidate
+        adjacentField = field
+      }
       if (Math.abs(last[edge.travelCoord] - edge.oppositeValue(sizeM)) <= SPAN_TOL) {
         best = candidate
         bestField = field
+        spanned = true
         break edgeLoop // R11: the first edge with a spanning trace wins
       }
     }
   }
+
+  if (!spanned && adjacent) { best = adjacent; bestField = adjacentField }
 
   const road: Road = { id: 'H1', class: 'highway', width: HIGHWAY_WIDTH, name: null, points: best ?? [] }
   return { road, field: bestField ?? buildRoadField(params, terrain, sizeM, [spineBasis(Math.PI / 2)]) }
@@ -313,17 +325,6 @@ function nearestT(p: Pt, line: Pt[]): { dist: number; t: number } {
   return { dist: best, t: bestT }
 }
 
-/** intersection of segments ab and cd: fraction along ab, or null */
-function segHit(a: Pt, b: Pt, c: Pt, d: Pt): number | null {
-  const r = { x: b.x - a.x, y: b.y - a.y }
-  const q = { x: d.x - c.x, y: d.y - c.y }
-  const den = r.x * q.y - r.y * q.x
-  if (Math.abs(den) < 1e-12) return null
-  const t = ((c.x - a.x) * q.y - (c.y - a.y) * q.x) / den
-  const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / den
-  return t >= 0 && t < 1 && u >= 0 && u < 1 ? t : null
-}
-
 export function highwayCrossings(highway: Road, roads: Road[], segments: HighwaySegment[], rng: Rng): HighwayCrossing[] {
   const hp = highway.points
   const total = polylineLength(hp) || 1
@@ -335,10 +336,10 @@ export function highwayCrossings(highway: Road, roads: Road[], segments: Highway
       for (let j = 0; j < hp.length - 1; j++) {
         const l = Math.hypot(hp[j + 1].x - hp[j].x, hp[j + 1].y - hp[j].y)
         const f = segHit(hp[j], hp[j + 1], road.points[i], road.points[i + 1])
-        // a road that merely ends on the highway (T-junction) does not cross it
+        // a road that merely ends on the highway (T-junction, or an end inside the highway strip) does not cross it
         const rp = road.points
         const hitPt = f === null ? null : { x: hp[j].x + f * (hp[j + 1].x - hp[j].x), y: hp[j].y + f * (hp[j + 1].y - hp[j].y) }
-        const atEnd = hitPt && [rp[0], rp[rp.length - 1]].some((e) => Math.hypot(e.x - hitPt.x, e.y - hitPt.y) < 6)
+        const atEnd = hitPt && [rp[0], rp[rp.length - 1]].some((e) => Math.hypot(e.x - hitPt.x, e.y - hitPt.y) < HIGHWAY_WIDTH / 2 + 6)
         if (f !== null && !atEnd) {
           const at = (acc + f * l) / total
           const level = levelAt(segments, at)
@@ -472,7 +473,6 @@ export function buildInterchanges(
   const arterials = new Map(roads.filter((r) => r.class === 'arterial').map((r) => [r.id, r]))
   const starts = segments.filter((s) => s.transition).map((s) => s.from * len)
   let target = 0
-  const inWindow = (p: Pt) => p.x >= 0 && p.x <= sizeM && p.y >= 0 && p.y <= sizeM
   /** the four ramps' [arterial end, control, highway end], or null unless all four fit */
   const rampTriples = (c: HighwayCrossing): Array<[Pt, Pt, Pt]> | null => {
     const art = arterials.get(c.roadId)!
@@ -490,7 +490,9 @@ export function buildInterchanges(
         const th = c.at + (dir * RAMP_HWY_M) / len
         if (th < 0 || th > 1) return null
         const h = pointAtT(hp, th)
-        if (![a, ctrl, h].every(inWindow)) return null
+        if (![a, ctrl, h].every((q) => inWindow(q, sizeM))) return null
+        // a ramp never runs over water (an interchange beside a highway bridge)
+        if (ramp('', a, ctrl, h).points.some((q) => inWater(terrain, q))) return null
         res.push([a, ctrl, h])
       }
     }
@@ -607,14 +609,16 @@ export function frontageRoads(highway: Road, terrain: Terrain, sizeM: number, ob
   const n0 = Math.max(1, Math.ceil(polylineLength(hp) / SAMPLE_M))
   const core = Array.from({ length: n0 + 1 }, (_, i) => pointAtT(hp, i / n0))
   // run the end tangents on past the window so the offset lines reach the edge instead of stopping short of it
+  // (only at an end on the window edge: past a highway that stops at the shore there is nothing to line)
   const ext = (a: Pt, b: Pt) => {
+    if (!onWindowEdge(b, sizeM, SPAN_TOL)) return []
     const u = normalize({ x: b.x - a.x, y: b.y - a.y })
     return Array.from({ length: EXTEND_N }, (_, k) => ({ x: b.x + u.x * SAMPLE_M * (k + 1), y: b.y + u.y * SAMPLE_M * (k + 1) }))
   }
   const samples = [...ext(core[1], core[0]).reverse(), ...core, ...ext(core[n0 - 1] ?? core[0], core[n0])]
   const n = samples.length - 1
   // distToPolyline: an offset point folded in on the inside of a sharp highway bend sits closer than FRONTAGE_OFF
-  const ok = (p: Pt) => p.x >= 0 && p.x <= sizeM && p.y >= 0 && p.y <= sizeM && !inWater(terrain, p) && !pointInRings(p, obstacles)
+  const ok = (p: Pt) => inWindow(p, sizeM) && !inWater(terrain, p) && !pointInRings(p, obstacles)
     && distToPolyline(p, hp) >= FRONTAGE_OFF - 2
   return ([['L', 1], ['R', -1]] as const).flatMap(([tag, sign]) => {
     const off = samples.map((p, i) => {

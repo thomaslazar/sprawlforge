@@ -401,6 +401,8 @@ const megablockOf = (block: Block, landmarks?: Landmarks) => landmarks?.megabloc
 export const isLandmarkBlock = (block: Block, landmarks?: Landmarks): boolean => !!(ringArcologyOf(block, landmarks) ?? megablockOf(block, landmarks))
 
 const COMPOUND_GATE = 12
+/** a compound building keeps at least this far (m) from the fence */
+const COMPOUND_CLEAR = 8
 /** cells (and so buildings) thinner than this mean width 2A/P are slivers the highway strip shaved */
 const COMPOUND_MIN_WIDTH = 14
 const ringPerimeter = (r: Pt[]): number => r.reduce((t, p, i) => t + Math.hypot(r[(i + 1) % r.length].x - p.x, r[(i + 1) % r.length].y - p.y), 0)
@@ -434,6 +436,11 @@ function compoundLots(footprint: Pt[], gateToward: Pt, rng: ReturnType<typeof mu
     const pts = largestRing(subtract(clip.intersection([toRing(lot)], [toRing(inner)])))
     if (pts && Math.abs(ringArea(pts)) >= 400 && (2 * Math.abs(ringArea(pts))) / ringPerimeter(pts) >= COMPOUND_MIN_WIDTH) cells.push(pts)
   }
+  // a mitered fence bulges at acute block corners, so the 10 m inset is not guaranteed: drop cells that crowd it
+  const closed = [...fence, fence[0]]
+  const roomy = cells.filter((c) => c.every((p) => distToPolyline(p, closed) >= COMPOUND_CLEAR))
+  cells.length = 0
+  cells.push(...roomy)
   cells.sort((a, b) => Math.abs(ringArea(b)) - Math.abs(ringArea(a)))
   return cells.length < 2 ? null : { fence, gate, cells: cells.slice(0, 4) }
 }

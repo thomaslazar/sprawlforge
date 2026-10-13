@@ -8,6 +8,7 @@ import {
 } from '../streets/trace'
 import type { Arcology, Megablock, Road, SectorParams, Terrain } from '../types'
 import { dryStreetPieces, inWater, isLakeShore, joinRiverStubs, truncateUnlandableRoads } from './bridges'
+import { joinFreeEnds } from '../streets/join'
 import { distToPolyline } from '../terrain/rivers'
 import { effectiveIrregularity } from './zoning'
 
@@ -23,13 +24,17 @@ export interface TracedRoads {
   streets: Road[]
   /** highway frontage roads (F prefix, class street, whole highway); also present in `streets` */
   frontage: Road[]
+  /** arterials the last-resort prune dropped or cut (0 when every end is anchored) */
+  pruned: number
 }
 
 const SIMPLIFY_M = 1
 const simplify = (r: Road): Road => ({ ...r, points: simplifyPolyline(r.points, SIMPLIFY_M) })
-// streets are skipped by truncateUnlandableRoads' own contract; only arterials can be cut
+// streets are skipped by truncateUnlandableRoads' own contract; only arterials can be cut.
+// No simplify here: traceLayer already simplified each road before smoothing it, and re-simplifying
+// drops every other fillet sample, doubling the turn at the vertices left (smoothed before indexed, never after)
 const finalize = (roads: Road[], terrain: Terrain, index: RoadIndex, maxStub = 40) =>
-  truncateUnlandableRoads(trimStubs(roads, index, maxStub).map(simplify), terrain)
+  truncateUnlandableRoads(trimStubs(roads, index, maxStub), terrain)
 /** a ~1 km ring gets only 2 seeds at the 400 m arterial spacing, and some die on neighbours: 200 m keeps >= 4 spokes */
 const RING_SEED_M = 200
 /** a spoke that leaves its ring and snaps back onto it (both ends within 6 m, shorter than half a lap) is a hairpin: drop it; zero-length ones too */
@@ -78,7 +83,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     return [...ends, ...seedsAlong(ring.points, RING_SEED_M, false)].map((x) => {
       const dx = x.at.x - a.center.x, dy = x.at.y - a.center.y, len = Math.hypot(dx, dy) || 1
       // major axis: the radial basis is the field's major there; sampled ON the ring (d ~ R) its weight is 0 and `crossing` would pick the grid's axis
-      return { ...x, dir: { x: dx / len, y: dy / len }, axis: 'major' as const }
+      return { ...x, dir: { x: dx / len, y: dy / len }, axis: 'major' as const, oneWay: true }
     })
   })
   // ponytail: a square ring's inner corners lie outside its octagonal plaza, so the whole ring (shrunk 5 %, so spokes can start on it) is the obstacle there
@@ -121,15 +126,18 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   let arterials = [...ringRoads, ...dropHairpins(finalize([...arterialsRaw, ...crossRaw], terrain, index, ARTERIAL_STUB_M), ringsOrNull, arcologies)]
   // stubs facing each other across the river become one road (bridged later by markWetSpans)
   arterials = joinRiverStubs(arterials, terrain, sizeM, indexOf(arterials))
+  ;({ roads: arterials } = joinFreeEnds(arterials, terrain, sizeM, indexOf(arterials), plazas, MAJOR.separation))
   // prune, never invent: an arterial ends on an arterial / water / the edge, or the tail is cut (never on the highway: it crosses it)
+  const beforePrune = arterials
   arterials = pruneDangling(arterials, indexOf(arterials), terrain, sizeM, {
     accept: (c) => c === 'arterial', minLength: 300,
   })
+  const pruned = beforePrune.length - arterials.length + arterials.filter((r) => { const b = beforePrune.find((x) => x.id === r.id); return b && b.points !== r.points }).length
   index = indexOf(arterials)
   const decayEnds: Pt[] = []
   // FIFO seed queue: arterial seeds first, then every kept street seeds its own
   // children (crossing it), so the fabric grows outward until nothing is left
-  const queue = arterials.flatMap((a) => crossing(field, seedsAlong(a.points, 100, true)))
+  const queue = arterials.flatMap((a) => crossing(field, seedsAlong(a.points, 100, true, undefined, { size: sizeM, m: 400 })))
   const raw = traceLayer(
     field, 'minor', queue, terrain, sizeM, index, { ...MINOR, obstacles: [...plazas, ...cores] }, mulberry32(hashSeed(params.seed, 'streets')), irregularityAt, 'S', 'street', decayEnds,
     (r) => crossing(field, seedsAlong(r.points, 100, true)),
@@ -137,7 +145,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   const streets = dryStreetPieces(finalize(raw, terrain, index), terrain)
   // streets may keep genuine decay cul-de-sacs; every other dangling end is pruned (the highway never anchors a street)
   const all = indexOf([...arterials, ...streets])
-  const pruned = pruneDangling(streets, all, terrain, sizeM, { accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, keep: new Set(decayEnds.map(endKey)),
+  const prunedStreets = pruneDangling(streets, all, terrain, sizeM, { accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, keep: new Set(decayEnds.map(endKey)),
     waterAnchor: streetWaterAnchor(terrain, sizeM),
   })
   return {
@@ -146,7 +154,8 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     ringRoads,
     arcologies,
     megablocks,
-    streets: [...pruned, ...frontage],
+    streets: [...prunedStreets, ...frontage],
     frontage,
+    pruned,
   }
 }

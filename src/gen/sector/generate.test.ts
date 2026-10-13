@@ -6,13 +6,14 @@ import { hashSeed, mulberry32 } from '../rng'
 import { distToPolyline } from '../terrain/rivers'
 import { RoadIndex, riverCrossingSeeds } from '../streets/trace'
 import { traceRoads } from './streets'
-import { ringRoad } from '../landmarks/place'
+import { sampleTerrain } from '../terrain'
+import { RING_ID_PREFIX, ringRoad } from '../landmarks/place'
 import { FRONTAGE_ID_PREFIX, HIGHWAY_WIDTH, STRIP_HALF } from '../streets/highway'
 import { inWater, isLakeShore } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
 import { bboxesFar, endMeetings, maxCloseRun } from '../streets/testutil'
 import { materializeTags, resolveTags } from '../../app/tags'
-import { deriveDistricts, generateSector } from './generate'
+import { deriveDistricts, footprintTouchPoints, generateSector, toBlocks } from './generate'
 
 // full pipeline is ~3-10 s per 4 km generation (tracing + land clipping dominate)
 vi.setConfig({ testTimeout: 90000 })
@@ -57,13 +58,13 @@ describe('generateSector', () => {
     const buildingIds = new Set(m.buildings.map((b) => b.id))
     for (const b of m.blocks) {
       expect(districtIds.has(b.districtId)).toBe(true)
-      // block's embedded district ordinal must match its actual district
-      expect(b.id.slice(1, 3)).toBe(b.districtId.slice(1))
+      // block's embedded district ordinal (any digit count) must match its actual district
+      expect(b.id.startsWith(`B${b.districtId.slice(1)}`)).toBe(true)
     }
     for (const b of m.buildings) {
       expect(blockIds.has(b.blockId)).toBe(true)
       // building's blockId ordinal must match its own districtId
-      expect(b.blockId.slice(1, 3)).toBe(b.districtId.slice(1))
+      expect(b.blockId.startsWith(`B${b.districtId.slice(1)}`)).toBe(true)
     }
     for (const p of m.pois.filter((q) => q.buildingId)) expect(buildingIds.has(p.buildingId)).toBe(true)
   })
@@ -94,7 +95,7 @@ describe('generateSector', () => {
       const d = m.districts.find((x) => x.id === b.districtId)!
       const c = ringCentroid(b.poly)
       const inside = pointInRings(c, [d.poly])
-      const touches = b.footprint.some((p) => pointInRings(p, [d.poly]))
+      const touches = footprintTouchPoints(b.footprint).some((p) => pointInRings(p, [d.poly]))
       expect(inside || touches).toBe(true)
     }
   })
@@ -236,6 +237,17 @@ describe('arcology names', () => {
   })
 })
 
+describe('toBlocks', () => {
+  const sq = (x0: number, y0: number, x1: number, y1: number): Pt[] => [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }]
+  it('a block touching a district only along an edge midpoint goes to that district', () => {
+    const d = (id: string, poly: Pt[]) => ({ id, poly }) as unknown as District
+    const districts = [d('D01', sq(200, 200, 300, 300)), d('D02', sq(40, -10, 60, 10))]
+    const ring = sq(0, 0, 100, 100) // centroid and all four corners outside every district; the top edge midpoint (50, 0) is inside D02
+    const blocks = toBlocks([{ poly: ring, footprint: ring }] as unknown as Parameters<typeof toBlocks>[0], districts)
+    expect(blocks.map((b) => b.districtId)).toEqual(['D02'])
+  })
+})
+
 describe('deriveDistricts', () => {
   it('drops a district whose blocks all drowned', () => {
     const drowned = district('D01', { x: 0, y: 0, w: 600, h: 600 })
@@ -369,6 +381,52 @@ describe('arterial bridges', () => {
   })
 })
 
+describe('river decks land on the far-bank road (seed 42 arcology)', () => {
+  let m: ReturnType<typeof generateSector>
+  let decks: Road[]
+  beforeAll(() => {
+    m = generateSector({ ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, pack: 'generic', theme: 'print' } as SectorParams)
+    decks = m.roads.filter((r) => r.class === 'arterial' && r.bridge)
+  }, 300000)
+  const family = (id: string) => id.replace(/-(b?\d+)$/, '')
+  const anchoredAt = (e: Pt, fam: string) => {
+    const S = m.meta.sizeM
+    return e.x < 1 || e.y < 1 || e.x > S - 1 || e.y > S - 1 || nearWater(m.terrain, e, 15)
+      || m.roads.some((r) => r.class === 'arterial' && family(r.id) !== fam && distToPolyline(e, r.points) <= 1)
+  }
+  /** the dry piece of the deck's own road that starts at deck end e, if any */
+  const landing = (d: Road, e: Pt) => m.roads.find((r) => r.class === 'arterial' && !r.bridge && family(r.id) === family(d.id)
+    && [r.points[0], r.points.at(-1)!].some((q) => Math.hypot(q.x - e.x, q.y - e.y) < 1))
+  it('the three north-west arterials ending on the river are bridged', () => {
+    // the NW-bank ends (investigation item 6): their decks were blocked by the arcology spoke along the far bank, 50–70 m past it
+    for (const e of [{ x: 1086, y: 2727 }, { x: 791, y: 2954 }, { x: 527, y: 3193 }])
+      expect(decks.filter((d) => distToPolyline(e, d.points) < 30).length, `${e.x},${e.y}`).toBeGreaterThanOrEqual(1)
+  })
+  it('every deck covers only the water plus its landing; the road goes on over land to an end anchored within 1 m', () => {
+    for (const d of decks) for (const e of [d.points[0], d.points.at(-1)!]) {
+      // walk into the deck from this end until the water: at most the 15 m landing + the 10 m water sampling step
+      const pts = e === d.points[0] ? d.points : d.points.slice().reverse()
+      let dry = 0
+      while (dry <= 40 && !inWater(m.terrain, pointAtT(pts, Math.min(1, dry / polylineLength(pts))))) dry += 1
+      expect(dry, `${d.id} landing`).toBeLessThanOrEqual(26)
+      const piece = landing(d, e)
+      const far = piece ? [piece.points[0], piece.points.at(-1)!].sort((a, b) => Math.hypot(b.x - e.x, b.y - e.y) - Math.hypot(a.x - e.x, a.y - e.y))[0] : e
+      expect(anchoredAt(far, family(d.id)), `${d.id} end ${far.x.toFixed(0)},${far.y.toFixed(0)}`).toBe(true)
+    }
+  })
+  it('the two southern north-west decks land on the far-bank arterial by a dry piece of road', () => {
+    for (const at of [{ x: 791, y: 2954 }, { x: 527, y: 3193 }]) {
+      const d = decks.find((x) => distToPolyline(at, x.points) < 30)!
+      const ends = [d.points[0], d.points.at(-1)!].filter((e) => Math.hypot(e.x - at.x, e.y - at.y) > 100)
+      expect(ends.length).toBe(1)
+      const piece = landing(d, ends[0])!
+      expect(piece, `${d.id} landing piece`).toBeDefined()
+      const far = [piece.points[0], piece.points.at(-1)!].find((q) => Math.hypot(q.x - ends[0].x, q.y - ends[0].y) > 1)!
+      expect(m.roads.some((r) => r.class === 'arterial' && family(r.id) !== family(d.id) && distToPolyline(far, r.points) <= 1), `${d.id} lands`).toBe(true)
+    }
+  })
+})
+
 describe('river bridges (seed 42)', () => {
   let m: ReturnType<typeof generateSector>
   let arterialBridges: Road[]
@@ -401,7 +459,7 @@ describe('river bridges (seed 42)', () => {
     for (const b of arterialBridges) for (const e of [b.points[0], b.points.at(-1)!]) {
       // an end continuing into its own dry piece is checked at that piece's far end ('no arterial dangles'); a deck that IS the road end must meet another road
       if (sib.some((d) => family(d.id) === family(b.id) && [d.points[0], d.points.at(-1)!].some((q) => Math.hypot(q.x - e.x, q.y - e.y) < 1))) continue
-      expect(idx.nearestMatching(e, 6, (h) => family(h.id) !== family(b.id) && (h.cls === 'arterial' || h.cls === 'highway')), b.id).not.toBeNull()
+      expect(idx.nearestMatching(e, 1, (h) => family(h.id) !== family(b.id) && (h.cls === 'arterial' || h.cls === 'highway')), b.id).not.toBeNull()
     }
   })
   it('no arterial ends on the highway', () => {
@@ -561,7 +619,8 @@ describe('coast-aligned streets', () => {
     // hole / pruned dead ends; buildings still never sit on them (second assertion). Ratchet down, never up. Documented exceptions: seed 3017268931 -> 2 (boulevard arcology access replaced its ring and the 'streets' rng stream shifted; PROOF the two offenders are the pre-existing decay cul-de-sac class, not ours: both are traced streets (not infill) whose free end is in decayEnds, i.e. kept on purpose by pruneDangling: B0901:S066 end (1912,1581), 538 m from the arcology, B0808:S038 end (925,666), 317 m, beyond the 187 m plaza and away from the boulevard; was 1 and 2 before landmarks; briefly 3 until the planar-graph zero-length-edge fix); seed 42 coastal+river -> 15 (was 10; rose with the landmark-changed map, every remaining offender proven > 400 m from any landmark); 15 → 17 after shore stubs < 150 m are pruned (face reshuffle moves infill chords S416, S428, S417, S308; infill-chord class, see ROADMAP).
     const cases: Array<[SectorParams, number]> = [
       [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, arcology: true, megablock: false, pack: 'generic', theme: 'print' }, 2],
-      [{ ...base, seed: 42, landform: 'coastal', river: true }, 17],
+      // user ruling 2026-10-13 after the arterials re-roll; documented class (faces with holes, dead ends, infill chords)
+      [{ ...base, seed: 42, landform: 'coastal', river: true }, 18],
     ]
     for (const [params, max] of cases) {
       const m = modelFor(params)
@@ -689,7 +748,12 @@ describe('landmarks in road tracing', () => {
     let len = 0
     for (const r of m.roads) if (r.class === 'street') for (let i = 1; i < r.points.length; i++) {
       const a = r.points[i - 1], b = r.points[i]
-      if (pointInRings({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, [d.poly])) len += Math.hypot(b.x - a.x, b.y - a.y)
+      // sampled every 10 m along the segment: a straight street is one 900 m segment whose midpoint may lie outside
+      const l = Math.hypot(b.x - a.x, b.y - a.y), n = Math.max(1, Math.ceil(l / 10))
+      for (let k = 0; k < n; k++) {
+        const t = (k + 0.5) / n
+        if (pointInRings({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }, [d.poly])) len += l / n
+      }
     }
     return len / 1000 / (Math.abs(ringArea(d.poly)) / 1e6)
   }
@@ -901,7 +965,8 @@ describe('lakes bound blocks', () => {
 
 describe('frontage', () => {
   // clipper2 re-roll (v8): seed 42 no longer has a sunken stretch, seed 24 does
-  const cases = [{ ...base, seed: 24, landform: 'coastal', river: true }, { ...base, seed: 20, size: 2, landform: 'coastal', river: true }] as const
+  // seed 1 replaces 24 (no sunken segment left after the 7b stabilisation re-roll): the sunken check needs one
+  const cases = [{ ...base, seed: 1, landform: 'coastal', river: true }, { ...base, seed: 20, size: 2, landform: 'coastal', river: true }] as const
   for (const c of cases) {
     describe(`seed ${c.seed} ${c.size} km`, () => {
       let m: ReturnType<typeof generateSector>
@@ -942,7 +1007,7 @@ describe('frontage', () => {
       })
 
       it('no frontage along sunken segments', () => {
-        if (c.seed === 24) expect(sunken.length).toBeGreaterThan(0) // seed 20 has none; seed 24 must exercise the check
+        if (c.seed === 1) expect(sunken.length).toBeGreaterThan(0) // seed 20 has none; seed 1 must exercise the check
         const total = polylineLength(hwPts)
         const bad: string[] = []
         for (const r of fr) {
@@ -983,8 +1048,8 @@ describe('frontage', () => {
 describe('compound names', () => {
   it('are drawn after the landmark names, which stay as before', { timeout: 300000 }, () => {
     const m = generateSector({ ...base, corpDominance: 0.85, arcology: true, megablock: true })
-    expect(m.arcologies.map((a) => a.name)).toEqual(['Kessler Twin Towers']) // arterials cross the highway (and one-point roads are gone): layout shifts the name draw; same as the original golden
-    expect(m.megablocks.map((a) => a.name)).toEqual(['Docks Block']) // was 'Gardens Block': arterials cross the highway, layout shifts the name draw
+    expect(m.arcologies.map((a) => a.name)).toEqual(['Gemini Robotics Towers']) // C1 fix round re-roll; rule C1: 'Gemini Logistics Towers'; 7b stabilisation: 'The Apex-Robotics Gemini'; v9: 'The Vertex-Dynamics Gemini'; was 'Kessler Twin Towers': arterials cross the highway (and one-point roads are gone): layout shifts the name draw; same as the original golden
+    expect(m.megablocks.map((a) => a.name)).toEqual(['The Chrome Hive']) // C1 fix round re-roll; rule C1: 'Row Stacks'; 7b stabilisation: 'The Black Hive'; v9: 'The Iron Hive'; was 'Docks Block', before that 'Gardens Block': arterials cross the highway, layout shifts the name draw
     expect(m.compounds.length).toBeGreaterThan(0)
     for (const c of m.compounds) expect(c.name.length).toBeGreaterThan(0)
     expect(m.pois.filter((p) => p.type === 'corp_campus').map((p) => p.name)).toEqual(m.compounds.map((c) => c.name))
@@ -1011,4 +1076,61 @@ describe('compounds', () => {
     const p = { ...base, corpDominance: 0.85 }
     expect(generateSector(p).compounds).toEqual(generateSector(p).compounds)
   })
+})
+
+describe('arterial ends (model seeds)', () => {
+  const F = { river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'print' }
+  const p1 = { ...resolveTags(['coastal','medium','dense','fringe','lively','mixed','river']), seed: 42, pack: 'generic', theme: 'print' } as any
+  const MODEL_SETS: Record<string, any> = {
+    P1: p1,
+    P2: { seed: 42, size: 4, density: 0.6, corpDominance: 0.85, poiDensity: 0.5, irregularity: 0.5, landform: 'inland', river: false, lakes: false, islands: false, piers: false, arcology: true, megablock: true, pack: 'generic', theme: 'print' },
+    P3: { seed: 42, size: 6, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', river: true, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon' },
+    S7: { ...p1, seed: 7 },
+    S3017268931: { ...p1, seed: 3017268931 },
+    S2982258224: { ...F, seed: 2982258224, size: 2, density: 0.25, corpDominance: 0.15, poiDensity: 0.5, irregularity: 0.85, landform: 'bay' },
+    S4280430344: { ...F, seed: 4280430344, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.7, irregularity: 0.15, landform: 'coastal', river: true, lakes: true },
+    S11: { ...F, seed: 11, size: 4, density: 0.5, corpDominance: 0.85, poiDensity: 0.5, irregularity: 0.5, landform: 'inland', arcology: true, megablock: true },
+    S782008753: { ...F, seed: 782008753, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', lakes: true },
+    R1: { ...F, seed: 123456789, size: 2, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', islands: true, piers: true },
+    R2: { ...F, seed: 987654321, size: 2, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'bay', islands: true, piers: true },
+    R3: { ...F, seed: 555555555, size: 2, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, landform: 'coastal', river: true, islands: true, piers: true },
+  }
+  const onEdge = (p: Pt, s: number) => p.x < 1 || p.y < 1 || p.x > s - 1 || p.y > s - 1
+  /** worst excess (deg) of a turn over its curvature budget: max(15, 2 * shorter leg m) and 45; vertices within skipM of arc of an end or beside a leg <= 10 m (invisible kink at map scale) are ignored */
+  const bendViolation = (pts: Pt[], skipM: number) => {
+    const total = polylineLength(pts)
+    let arc = 0, worst = -Infinity
+    for (let i = 1; i < pts.length - 1; i++) {
+      const l1 = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y), l2 = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y)
+      arc += l1
+      if (arc <= skipM || total - arc <= skipM || l1 <= 10.01 || l2 <= 10.01) continue
+      const a = Math.atan2(pts[i].y - pts[i - 1].y, pts[i].x - pts[i - 1].x), b = Math.atan2(pts[i + 1].y - pts[i].y, pts[i + 1].x - pts[i].x)
+      let d = Math.abs(b - a); if (d > Math.PI) d = 2 * Math.PI - d
+      const deg = (d * 180) / Math.PI
+      worst = Math.max(worst, deg - Math.max(15, 2 * Math.min(l1, l2)), deg - 45)
+    }
+    return worst
+  }
+  // last-resort prune: ideal 0; measured at rule C1 with crossing joins ending as Ts: P1: 3, P2: 6, P3: 17, S7: 5, S3017268931: 3, S2982258224: 0, S4280430344: 6, S11: 11, S782008753: 4, R1: 1, R2: 3, R3: 2 — bound raised 10 → 20 by user ruling 2026-10-13 (the 90° connector rule prunes more ends instead of curving them; the user prefers that)
+  for (const [name, p] of Object.entries(MODEL_SETS)) {
+    it(`${name}: every arterial end is anchored and at most 20 were pruned`, { timeout: 120000 }, () => {
+      const sizeM = p.size * 1000
+      const terrain = sampleTerrain(p, sizeM)
+      const t = traceRoads(p, terrain, sizeM)
+      expect(t.pruned, 'prune fired').toBeLessThanOrEqual(20)
+      const idx = new RoadIndex(200)
+      for (const r of t.arterials) idx.add(r.id, r.points, r.class)
+      for (const r of t.arterials) {
+        const first = r.points[0], last = r.points.at(-1)!
+        if (r.id.startsWith(RING_ID_PREFIX) && Math.hypot(first.x - last.x, first.y - last.y) < 1) continue
+        for (const e of [first, last]) {
+          const near = idx.nearestMatching(e, 6, (h) => h.id !== r.id && h.cls === 'arterial')
+          const ok = onEdge(e, sizeM) || near || nearWater(terrain, e, 15)
+          expect(ok, `${name} ${r.id} end ${e.x.toFixed(0)},${e.y.toFixed(0)}`).toBeTruthy()
+        }
+      }
+      // rings are polygons by design
+      for (const r of t.arterials) if (!r.id.startsWith(RING_ID_PREFIX)) expect(bendViolation(r.points, 15), `${name} ${r.id} bend`).toBeLessThan(1e-6)
+    })
+  }
 })

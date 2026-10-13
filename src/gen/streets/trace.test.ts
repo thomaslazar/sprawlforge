@@ -7,7 +7,7 @@ import { sampleTerrain } from '../terrain'
 import { nearestOnPolyline } from '../terrain/rivers'
 import type { Road, SectorParams, Terrain } from '../types'
 import { buildRoadField, type RoadField } from './field'
-import { bboxesFar, maxCloseRun } from './testutil'
+import { bboxesFar, maxBendDeg, maxCloseRun } from './testutil'
 import {
   MAJOR, MINOR, RoadIndex, endKey, poissonSeeds, pruneDangling, riverCrossingSeeds, seedsAlong, traceLayer, traceStreamline,
   type Seed, type TraceOpts,
@@ -189,12 +189,47 @@ describe('streets/trace', () => {
     const SEP = MAJOR.separation * 0.5
     for (let i = 0; i < roads.length; i++) {
       for (let j = i + 1; j < roads.length; j++) {
-        // a perpendicular/oblique crossing alone holds two arterials within
-        // 0.5 sep for ~2 x 200 m, so the 320 m join-connector bound is
-        // unreachable; measured worst 450 m on this fixture + ~10 %
-        expect(maxCloseRun(roads[i].points, roads[j].points, SEP)).toBeLessThanOrEqual(495)
+        // a join merges at a shallow angle: the converging approach (~ 250 m) plus 200 m past the junction keep the pair within 0.5 sep; measured 540 m on this fixture + ~10 % (arterials re-roll, v9)
+        expect(maxCloseRun(roads[i].points, roads[j].points, SEP)).toBeLessThanOrEqual(600)
       }
     }
+  })
+
+  it('drops crescents: no short arterial has both ends on the same road', () => {
+    const { roads } = traceArterials()
+    for (const r of roads) {
+      if (polylineLength(r.points) >= 3 * MAJOR.separation) continue
+      const idx = othersIndex(roads, r.id)
+      const a = idx.nearestMatching(r.points[0], 6, () => true)?.id
+      const b = idx.nearestMatching(r.points[r.points.length - 1], 6, () => true)?.id
+      expect(a && a === b ? `${r.id} hairpins on ${a}` : '').toBe('')
+    }
+  })
+
+  describe('crescent drop on a U-turning field', () => {
+    // streamlines are circles of any radius round (1000, 150); a seed on the r = 200 circle runs both ways round it
+    const circles = {
+      sizeM: 2000, patches: [],
+      sample: (p: Pt) => {
+        const l = Math.hypot(p.x - 1000, p.y - 150) || 1
+        const major = { x: -(p.y - 150) / l, y: (p.x - 1000) / l }
+        return { major, minor: { x: -major.y, y: major.x } }
+      },
+    } as unknown as RoadField
+    const crescent = (roadY: number) => {
+      const { terrain, irregularityAt } = setup({ landform: 'inland', river: false, lakes: false, irregularity: 0.05 })
+      const index = new RoadIndex(200)
+      index.add('X', [{ x: 0, y: roadY }, { x: 2000, y: roadY }], 'arterial')
+      return traceStreamline(circles, 'major', { at: { x: 1000, y: 350 } }, terrain, 2000, index, MAJOR, mulberry32(1), irregularityAt)
+    }
+    it('both ends land on the source road within 3 separations: dropped', () => {
+      expect(crescent(0)).toBeNull()
+    })
+    it('the same field with the road out of reach is kept (the control)', () => {
+      const r = crescent(-300)
+      expect(r).not.toBeNull()
+      expect(polylineLength(r!)).toBeGreaterThan(MAJOR.minLength)
+    })
   })
 
   it('snaps endpoints', () => {
@@ -609,5 +644,97 @@ describe('RoadIndex.remove', () => {
     idx.remove('a')
     expect(probe(idx)).toEqual(probe(build(['c', 'b'])))
     idx.remove('zzz')
+  })
+})
+
+describe('arterial smoothing and singularity stop', () => {
+  const dryTerrain = sampleTerrain(params({ landform: 'inland', river: false, lakes: false }), 4000)
+  const field = (f: (p: Pt) => number): RoadField => ({
+    sizeM: 4000, patches: [],
+    sample: (p) => { const a = f(p); return { major: { x: Math.cos(a), y: Math.sin(a) }, minor: { x: -Math.sin(a), y: Math.cos(a) } } },
+  })
+  const run = (f: RoadField, opts: TraceOpts) =>
+    traceLayer(f, 'major', [{ at: { x: 500, y: 2000 } }], dryTerrain, 4000, new RoadIndex(200), opts, mulberry32(1), () => 0.2, 'A', 'arterial')
+
+  it('traceLayer smooths each streamline before indexing it', () => {
+    const seam = field((p) => (p.x < 1000 ? 0 : Math.PI / 8))
+    const raw = run(seam, { ...MAJOR, smoothRadius: undefined })[0].points
+    const roads = run(seam, MAJOR)
+    expect(roads.length).toBe(1)
+    const pts = roads[0].points
+    expect(pts.length).toBeLessThan(raw.length)
+    expect(Math.max(...pts.slice(1).map((p, i) => Math.hypot(p.x - pts[i].x, p.y - pts[i].y)))).toBeGreaterThan(30)
+    expect(maxBendDeg(pts)).toBeLessThanOrEqual(15 + 1e-6)
+    expect(pts.some((p) => p.x > 1000)).toBe(true)
+    expect(Math.abs(pts[pts.length - 1].y - 2000)).toBeGreaterThan(50)
+  })
+
+  it('arterials stop at a field singularity even with the turn clamp', () => {
+    // a radial field is a pencil of straight lines (a walker crosses its centre); a flip of the raw direction is the real singularity
+    const flip = field((p) => (p.x < 2000 ? 0 : (85 * Math.PI) / 180))
+    const roads = run(flip, MAJOR)
+    expect(MAJOR.stopAtSingularity).toBe(true)
+    expect(roads.length).toBe(1)
+    const pts = roads[0].points
+    // seeded at x=500: 500 m back to the window edge, the forward half stops at the flip
+    expect(Math.max(...pts.map((q) => q.x))).toBeLessThanOrEqual(2030)
+    expect(Math.max(...pts.map((q) => q.x))).toBeGreaterThanOrEqual(1970)
+    expect(polylineLength(pts)).toBeLessThan(2100)
+    for (let i = 0; i < pts.length; i++)
+      for (let j = i + 4; j < pts.length; j++) expect(Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y)).toBeGreaterThan(5)
+  })
+
+  describe('arterial join', () => {
+    // the walker converges on X (at height y) at `deg` (0 = exactly parallel)
+    const joinRun = (xEnd: number, deg = 10, y = 150) => {
+      const index = new RoadIndex(200)
+      index.add('X', [{ x: 0, y }, { x: xEnd, y }], 'arterial')
+      const a = (deg * Math.PI) / 180, d = { x: Math.cos(a), y: Math.sin(a) }
+      const f: RoadField = { sizeM: 4000, patches: [], sample: () => ({ major: d, minor: { x: -d.y, y: d.x } }) }
+      return traceLayer(f, 'major', [{ at: { x: 100, y: 0 }, dir: d }], dryTerrain, 4000, index, MAJOR, mulberry32(1), () => 0.2, 'A', 'arterial')
+    }
+    it('an arterial beside an exactly parallel arterial does not join it (a planned grid stays straight)', () => {
+      for (const r of joinRun(2000, 0)) expect(Math.abs(r.points[r.points.length - 1].y - 150)).toBeGreaterThan(50)
+    })
+    it('an arterial diverging from a road does not hook back into it', () => {
+      const a = (20 * Math.PI) / 180, d = { x: Math.cos(a), y: Math.sin(a) }
+      const index = new RoadIndex(200)
+      index.add('X', [{ x: 0, y: 0 }, { x: 3000, y: 0 }], 'arterial')
+      const f: RoadField = { sizeM: 4000, patches: [], sample: () => ({ major: d, minor: { x: -d.y, y: d.x } }) }
+      const roads = traceLayer(f, 'major', [{ at: { x: 0, y: 125 }, dir: d }], dryTerrain, 4000, index, MAJOR, mulberry32(1), () => 0.2, 'A', 'arterial')
+      // the walker stops at once (foot behind it); what must not happen is a curve hooking back onto X
+      for (const r of roads) expect(r.points[r.points.length - 1].y).toBeGreaterThan(50)
+    })
+    it('an arterial stopped by a near-parallel arterial joins it with a curve after a walk of 0.5 sep', () => {
+      // X 400 m out: the hit (within 0.7 sep) comes after ~400 m of walk
+      const roads = joinRun(2000, 10, 400)
+      expect(roads.length).toBe(1)
+      const pts = roads[0].points
+      expect(Math.abs(pts[pts.length - 1].y - 400)).toBeLessThan(1)
+      expect(maxBendDeg(pts)).toBeLessThan(15 + 1e-6)
+    })
+    it('a near-parallel hit before a walk of 0.5 sep stops the walker, no hook', () => {
+      // X 150 m out: already within 0.7 sep at the seed
+      for (const r of joinRun(2000, 10, 150)) for (const q of r.points) expect(Math.abs(q.y - 150)).toBeGreaterThan(50)
+    })
+    it('a join target beyond the target road end is clamped to that end', () => {
+      // the hit comes at x ≈ 780 (y ≈ 120), the target 200 m further would lie past x = 900
+      const pts = joinRun(900, 10, 400)[0].points
+      const e = pts[pts.length - 1]
+      expect(Math.hypot(e.x - 900, e.y - 400)).toBeLessThan(1)
+    })
+  })
+})
+
+describe('RoadIndex.pointAlong', () => {
+  it('returns the road direction at the target, not at the foot', () => {
+    const index = new RoadIndex(200)
+    index.add('L', [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 300 }], 'arterial')
+    const hit = index.nearestMatching({ x: 50, y: 10 }, 20, () => true)!
+    const { at, tangent } = index.pointAlong(hit, 200)
+    expect(at.x).toBeCloseTo(100, 6)
+    expect(at.y).toBeCloseTo(150, 6)
+    expect(tangent.x).toBeCloseTo(0, 6)
+    expect(tangent.y).toBeCloseTo(1, 6)
   })
 })

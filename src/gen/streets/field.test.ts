@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { Pt } from '../geometry'
 import { sampleTerrain } from '../terrain'
+import { effectiveIrregularity } from '../sector/zoning'
 import type { SectorParams } from '../types'
-import { buildPatches, buildRoadField, radialBasis, shoreTangent } from './field'
+import { PLAN_CELL, buildPatches, buildRoadField, radialBasis, shoreTangent } from './field'
 
 const params = (over: Partial<SectorParams> = {}): SectorParams => ({
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
@@ -29,6 +30,27 @@ describe('streets/field', () => {
         expect(s2.major.y).toBeCloseTo(s1.major.y, 6)
       }
     }
+  })
+
+  it('planned patches in one plan cell share an angle; organic patches do not', () => {
+    const byCell = (p: SectorParams) => {
+      const cells = new Map<string, Array<{ angle: number; irr: number }>>()
+      const irr = effectiveIrregularity(p)
+      for (const c of buildPatches(p, sampleTerrain(p, p.size * 1000), p.size * 1000)) {
+        const k = `${Math.floor(c.center.x / PLAN_CELL)},${Math.floor(c.center.y / PLAN_CELL)}`
+        cells.set(k, [...(cells.get(k) ?? []), { angle: c.angle, irr: irr(c.center) }])
+      }
+      return [...cells.values()]
+    }
+    const planned = byCell(params({ landform: 'inland', river: false, irregularity: 0.15 }))
+    expect(planned.length).toBeGreaterThanOrEqual(2)
+    expect(planned.some((cell) => cell.filter((c) => c.irr < 0.4).length >= 2)).toBe(true)
+    for (const cell of planned) {
+      const a = cell.filter((c) => c.irr < 0.4)
+      for (const c of a) expect(c.angle).toBeCloseTo(a[0].angle, 6)
+    }
+    const organic = byCell(params({ landform: 'inland', river: false, irregularity: 0.85 }))
+    expect(organic.some((cell) => cell.some((c) => Math.abs(c.angle - cell[0].angle) > 1e-6))).toBe(true)
   })
 
   it('patch size follows irregularity', () => {
