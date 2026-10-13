@@ -65,7 +65,9 @@ longer". Sources: infill frontage doubles (2.3 removes), infill pieces laid alon
 inside the face, traced streets joining a near-parallel neighbour over up to 100 m.
 
 Rule (generic, on the final street set, before 2.2): walk every street in 5 m samples; while
-consecutive samples lie within 8 m of the same other road (any class but highway), measure that run.
+consecutive samples lie within 8 m of any other road (any class but highway and ramp; every road
+within 8 m counts, so a short chain piece does not break the run), measure that run. Frontage and
+ring roads are weld targets but are never cut themselves.
 A run longer than 20 m cuts the street at the run's first sample, welded onto the other road there.
 When the run starts at the street's own start, the part **after** the run is kept instead (welded at
 the run's last sample). A remainder under 60 m is dropped. `ponytail:` a run in the middle of a
