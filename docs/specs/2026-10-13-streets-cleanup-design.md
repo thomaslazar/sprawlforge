@@ -42,8 +42,10 @@ blocks were already cut along such chains, and trimming one leaves a block side 
 is the real one; the ponytail note in `withTrimmedFrontage` goes with it.
 
 Order in `generateSector`: infill → converge-and-weld (2.4) → final prune → blocks → `markWetSpans`.
-A dangling street is never a face edge (the planar graph drops dangling edges before faces), so
-pruning after infill does not change blocks; the block tests guard this.
+Blocks are cut before the weld and the final prune, so neither may delete a road that bounds a block:
+infill ends are kept by the prune (infillFaces anchored them), a weld run in the middle of a street keeps both
+parts, and only tails that never bounded a block (dangling trees) are trimmed. The `block sides have a road`
+ratchet guards this.
 
 ### 2.3 One frontage piece per face side (item 1, the doubled pieces along the highway)
 
