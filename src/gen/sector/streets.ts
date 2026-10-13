@@ -24,6 +24,8 @@ export interface TracedRoads {
   streets: Road[]
   /** highway frontage roads (F prefix, class street, whole highway); also present in `streets` */
   frontage: Road[]
+  /** street ends the tracer deliberately left as decay cul-de-sacs (the final street prune keeps them) */
+  decayEnds: Pt[]
   /** arterials the last-resort prune dropped or cut (0 when every end is anchored) */
   pruned: number
 }
@@ -156,6 +158,7 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
     megablocks,
     streets: [...prunedStreets, ...frontage],
     frontage,
+    decayEnds,
     pruned,
   }
 }

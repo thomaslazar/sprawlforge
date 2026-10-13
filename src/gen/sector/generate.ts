@@ -217,17 +217,25 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
           if (!anchored(r.points[0], r) || !anchored(r.points[1], r)) { pieces.splice(i, 1); again = true }
         }
       }
+      // a street inside the face whose end rests on nothing (ring, any other road, a piece) would cross a sub-block: it goes, and
+      // so does whatever only rested on it. The rest divide the sub-faces like the pieces do.
+      const inside = roads.filter((r) => !dropped.has(r.id) && r.class === 'street' && pointInRings(r.points[Math.floor(r.points.length / 2)], [f.footprint]))
+      const gone = new Set<string>()
+      for (let again = true; again;) {
+        again = false
+        for (const r of inside) {
+          if (gone.has(r.id)) continue
+          const loose = [r.points[0], r.points[r.points.length - 1]].some((e) => distToPolyline(e, closed) > 6
+            && ![...others, ...roads.filter((o) => !dropped.has(o.id) && !gone.has(o.id)), ...infill, ...pieces].some((o) => o.id !== r.id && distToPolyline(e, o.points) <= 6))
+          if (loose) { gone.add(r.id); again = true }
+        }
+      }
+      const kept = inside.filter((r) => !gone.has(r.id))
       // footprints may contain water: sub-faces with no land are dropped (landM2 > 0), the rest keep their footprint
-      const sub: Face[] = pieces.length ? dropSlivers(facesOf(pruneDanglers(buildPlanarGraph(pieces, [f.footprint, ...gaps])))).map((poly) => ({ poly, footprint: poly })).filter((x) => landM2(x.footprint) > 0) : []
+      const sub: Face[] = pieces.length ? dropSlivers(facesOf(pruneDanglers(buildPlanarGraph([...pieces, ...kept], [f.footprint, ...gaps])))).map((poly) => ({ poly, footprint: poly })).filter((x) => landM2(x.footprint) > 0) : []
       if (sub.length < 2) { out.push(f); continue }
       infill.push(...pieces)
-      // a dead-end street stranded inside the split face would now cross a sub-block: it goes
-      for (const r of roads) {
-        if (dropped.has(r.id) || r.class !== 'street' || !pointInRings(r.points[Math.floor(r.points.length / 2)], [f.footprint])) continue
-        const loose = [r.points[0], r.points[r.points.length - 1]].some((e) => distToPolyline(e, [...f.footprint, f.footprint[0]]) > 6
-          && ![...others, ...pieces].some((o) => o.id !== r.id && distToPolyline(e, o.points) <= 6))
-        if (loose) dropped.add(r.id)
-      }
+      for (const id of gone) dropped.add(id)
       out.push(...sub)
       split = true
     }
@@ -277,8 +285,8 @@ function pruneCutStreets(streets: Road[], arterials: Road[], highway: Road, terr
 
 /**
  * Frontage roads were traced along the whole highway; drop the stretches beside sunken segments, then cut back
- * streets that ended on a dropped stretch. ponytail: the decay cul-de-sac set is not available here, so every
- * street end not resting on a dropped stretch is kept as is.
+ * streets that ended on a dropped stretch. Every street end not resting on a dropped stretch is kept as is
+ * (decay cul-de-sacs included); the final street prune in generateSector protects them by their real set.
  */
 function withTrimmedFrontage(
   traced: Road[], frontage: Road[], highway: Road, segments: HighwaySegment[], arterials: Road[], terrain: Terrain, sizeM: number,
@@ -296,10 +304,21 @@ function withTrimmedFrontage(
   const all = [...streets, ...kept]
   const index = new RoadIndex(200)
   for (const r of [...arterials, ...all]) index.add(r.id, r.points, r.class)
-  // ponytail: decay cul-de-sacs are not protected here (the decay set is not available), so a pass may cut one back
   return pruneDangling(all, index, terrain, sizeM, {
     accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, exemptPrefixes: [RING_ID_PREFIX],
     keep: new Set([...endsOf(streets).filter((p) => !orphan(p)), ...endsOf(kept).filter((p) => !cutEnd(p))].map(endKey)), waterAnchor: streetWaterAnchor(terrain, sizeM),
+  })
+}
+
+/**
+ * Infill and the stranded-street rule can leave street ends resting on nothing: prune once against the complete
+ * road set (the highway never anchors). Decay cul-de-sacs, being intended, stay.
+ */
+function finalStreetPrune(streets: Road[], others: Road[], terrain: Terrain, sizeM: number, decayEnds: Pt[]): Road[] {
+  const index = new RoadIndex(200)
+  for (const r of [...others, ...streets]) index.add(r.id, r.points, r.class)
+  return pruneDangling(streets, index, terrain, sizeM, {
+    accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, keep: new Set(decayEnds.map(endKey)), waterAnchor: streetWaterAnchor(terrain, sizeM),
   })
 }
 
@@ -308,7 +327,7 @@ export function generateSector(params: SectorParams): SectorModel {
   const pack = getPack(params.pack)
 
   const terrain = sampleTerrain(params, sizeM)
-  const { highway, arterials, streets: tracedStreets, frontage, arcologies, megablocks } = traceRoads(params, terrain, sizeM)
+  const { highway, arterials, streets: tracedStreets, frontage, arcologies, megablocks, decayEnds } = traceRoads(params, terrain, sizeM)
   const boundaries = [windowRing(sizeM), ...terrain.land.map((poly) => poly[0].map(([x, y]) => ({ x, y })))]
 
   const districtFaces = facesFor([...(highway ? [highway] : []), ...arterials], boundaries, terrain)
@@ -329,10 +348,13 @@ export function generateSector(params: SectorParams): SectorModel {
   const hw = highway ? [{ ...highway, segments, crossings: finalCrossings }] : []
 
   const { faces, infill, dropped } = infillFaces(facesFor([...hw, ...arterials, ...minorAll], boundaries, terrain), minorAll, arterials, highway, terrain, sizeM, [...arcologies.filter((a) => a.access === 'ring'), ...megablocks].map((l) => l.center), [...megablocks.map((k) => k.core), ...arcologies.filter((a) => a.access !== 'ring').map((a) => a.plaza)])
-  const minor = minorAll.filter((r) => !dropped.has(r.id))
+  const infillIds = new Set(infill.map((r) => r.id))
+  const prunedStreets = finalStreetPrune([...minorAll.filter((r) => !dropped.has(r.id)), ...infill], [...hw, ...arterials, ...ramps], terrain, sizeM, decayEnds)
+  const minor = prunedStreets.filter((r) => !infillIds.has(r.id))
+  const infillKept = prunedStreets.filter((r) => infillIds.has(r.id))
   const rawBlocks = toBlocks(faces, districts)
 
-  const roads = markWetSpans([...hw, ...arterials, ...minor, ...infill, ...ramps], terrain)
+  const roads = markWetSpans([...hw, ...arterials, ...minor, ...infillKept, ...ramps], terrain)
 
   const nameRng = mulberry32(hashSeed(params.seed, 'names'))
   const namedDistricts = districts.map((d) => ({

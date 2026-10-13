@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-import { pointAtT, pointInRings, polylineLength, ringArea, ringCentroid, segmentsIntersect, type Pt } from '../geometry'
+import { onWindowEdge, pointAtT, pointInRings, polylineLength, ringArea, ringCentroid, segmentsIntersect, type Pt } from '../geometry'
 import { ISLET_MOAT_OUTER_FACTOR, ISLET_RADIUS_MAX } from '../terrain/field'
-import { GENERATOR_VERSION, type Block, type District, type Road, type SectorParams, type Terrain } from '../types'
+import { GENERATOR_VERSION, type SectorModel, type Block, type District, type Road, type SectorParams, type Terrain } from '../types'
 import { hashSeed, mulberry32 } from '../rng'
 import { distToPolyline } from '../terrain/rivers'
 import { RoadIndex, riverCrossingSeeds } from '../streets/trace'
@@ -1133,4 +1133,42 @@ describe('arterial ends (model seeds)', () => {
       for (const r of t.arterials) if (!r.id.startsWith(RING_ID_PREFIX)) expect(bendViolation(r.points, 15), `${name} ${r.id} bend`).toBeLessThan(1e-6)
     })
   }
+})
+
+describe('street free ends', () => {
+  const DECAY: Record<number, number> = { 42: 12, 426750495: 11, 2268324149: 19 } // decay ends alive after the final prune, as measured without it
+  const refs: [string, number, SectorParams, number][] = [
+    // [label, seed, params, BOUND]. Seed 42 BOUND is provisional (the 79 of the investigation predates the C1 re-roll; measured 26 on BASE 98c8665, 10 after task 1). Others: 18 / 49 before, 9 / 14 after
+    ['seed 42', 42, { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 15],
+    ['seed 426750495', 426750495, { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 9],
+    ['seed 2268324149', 2268324149, { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 14],
+  ]
+  for (const [label, seed, params, bound] of refs) describe(label, () => {
+    let m: SectorModel
+    beforeAll(() => { m = generateSector(params) }, 120000)
+    it('has few free street ends', () => {
+      const sizeM = m.meta.sizeM
+      const idx = new RoadIndex(200)
+      for (const r of m.roads) idx.add(r.id, r.points, r.class)
+      const lands = [...m.arcologies.map((a) => a.plaza), ...m.megablocks.map((k) => k.core)]
+      const wet = (p: Pt) => inWater(m.terrain, p) || [0, 1, 2, 3, 4, 5, 6, 7].some((k) => inWater(m.terrain, { x: p.x + 15 * Math.cos((k * Math.PI) / 4), y: p.y + 15 * Math.sin((k * Math.PI) / 4) }))
+      const free: string[] = []
+      for (const r of m.roads.filter((x) => x.class === 'street')) {
+        for (const [i, p] of [r.points[0], r.points[r.points.length - 1]].entries()) {
+          if (onWindowEdge(p, sizeM, 1) || wet(p) || lands.some((poly) => pointInRings(p, [poly]))) continue
+          if (!idx.nearestMatching(p, 6, (h) => h.id !== r.id)) free.push(`${r.id}${i ? '>' : '<'}@${Math.round(p.x)},${Math.round(p.y)}`)
+        }
+      }
+      console.log(`free street ends ${label}: ${free.length}`, free.join(' '))
+      expect(free.length, `seed ${seed}`).toBeLessThanOrEqual(bound)
+    })
+    it('keeps the decay cul-de-sacs', () => {
+      const sizeM = m.meta.sizeM
+      const t = traceRoads(params, sampleTerrain(params, sizeM), sizeM)
+      const ends = m.roads.filter((x) => x.class === 'street').flatMap((r) => [r.points[0], r.points[r.points.length - 1]])
+      const alive = t.decayEnds.filter((d) => ends.some((e) => Math.hypot(e.x - d.x, e.y - d.y) < 1)).length
+      console.log(`decay ends ${label}: ${alive} of ${t.decayEnds.length} still street ends`)
+      expect(alive).toBeGreaterThanOrEqual(DECAY[seed])
+    })
+  })
 })
