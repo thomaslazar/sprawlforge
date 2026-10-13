@@ -13,6 +13,7 @@ import { inWater, isLakeShore } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
 import { bboxesFar, endMeetings, maxCloseRun } from '../streets/testutil'
 import { materializeTags, resolveTags } from '../../app/tags'
+import { closeRuns } from '../streets/cleanup'
 import { deriveDistricts, footprintTouchPoints, frontageOf, generateSector, toBlocks } from './generate'
 
 // full pipeline is ~3-10 s per 4 km generation (tracing + land clipping dominate)
@@ -1256,28 +1257,20 @@ describe('no doubled streets', () => {
     ['seed 2268324149', { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams],
   ]
   for (const [label, params] of refs) it(label, () => {
-    const streets = generateSector(params).roads.filter((r) => r.class === 'street')
+    const roads = generateSector(params).roads
+    const streets = roads.filter((r) => r.class === 'street')
+    const ids = new Set(streets.map((r) => r.id))
+    const idx = new RoadIndex(200)
+    for (const r of roads) idx.add(r.id, r.points, r.class)
     const bad: string[] = []
-    for (let i = 0; i < streets.length; i++) for (let j = i + 1; j < streets.length; j++) {
-      const a = streets[i], b = streets[j]
-      if (bboxesFar(a.points, b.points, 6)) continue
-      const run = Math.max(maxRun5(a.points, b.points), maxRun5(b.points, a.points))
-      if (run > 20) bad.push(`${a.id}~${b.id} ${Math.round(run)}m`)
+    // the weld's own run finder: a crossing is not a double
+    for (const r of streets) for (const c of closeRuns(r.points, idx, 6, r.id).runs) {
+      if (ids.has(c.id) && c.arc > 20 && !c.crosses) bad.push(`${r.id}~${c.id} ${Math.round(c.arc)}m`)
     }
     console.log(`doubled pairs ${label}: ${bad.length}`, bad.join(' '))
     expect(bad).toEqual([])
   })
 })
-
-/** longest run (m, sampled every 5 m along a) within 6 m of b */
-function maxRun5(a: Pt[], b: Pt[]): number {
-  const len = polylineLength(a)
-  let run = 0, best = 0
-  for (let d = 0; d <= len; d += 5) {
-    if (distToPolyline(pointAtT(a, d / len), b) <= 6) { run += 5; best = Math.max(best, run) } else run = 0
-  }
-  return best
-}
 
 describe('block sides have a road', () => {
   // BOUND measured after the crossing exemption: 66 / 31 / 14 (201 / 90 / 103 at BASE 0f45e0a, before it). Ratchet down, never up.
