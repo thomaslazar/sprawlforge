@@ -1007,8 +1007,8 @@ describe('frontage', () => {
 describe('compound names', () => {
   it('are drawn after the landmark names, which stay as before', { timeout: 300000 }, () => {
     const m = generateSector({ ...base, corpDominance: 0.85, arcology: true, megablock: true })
-    expect(m.arcologies.map((a) => a.name)).toEqual(['The Apex-Robotics Gemini']) // 7b stabilisation re-roll; v9: 'The Vertex-Dynamics Gemini'; was 'Kessler Twin Towers': arterials cross the highway (and one-point roads are gone): layout shifts the name draw; same as the original golden
-    expect(m.megablocks.map((a) => a.name)).toEqual(['The Black Hive']) // 7b stabilisation re-roll; v9: 'The Iron Hive'; was 'Docks Block', before that 'Gardens Block': arterials cross the highway, layout shifts the name draw
+    expect(m.arcologies.map((a) => a.name)).toEqual(['Gemini Logistics Towers']) // rule C1 re-roll; 7b stabilisation: 'The Apex-Robotics Gemini'; v9: 'The Vertex-Dynamics Gemini'; was 'Kessler Twin Towers': arterials cross the highway (and one-point roads are gone): layout shifts the name draw; same as the original golden
+    expect(m.megablocks.map((a) => a.name)).toEqual(['Row Stacks']) // rule C1 re-roll; 7b stabilisation: 'The Black Hive'; v9: 'The Iron Hive'; was 'Docks Block', before that 'Gardens Block': arterials cross the highway, layout shifts the name draw
     expect(m.compounds.length).toBeGreaterThan(0)
     for (const c of m.compounds) expect(c.name.length).toBeGreaterThan(0)
     expect(m.pois.filter((p) => p.type === 'corp_campus').map((p) => p.name)).toEqual(m.compounds.map((c) => c.name))
@@ -1070,7 +1070,7 @@ describe('arterial ends (model seeds)', () => {
     }
     return worst
   }
-  // last-resort prune: ideal 0; measured P1: 3, P2: 9, P3: 2, S7: 2, S3017268931: 2, S2982258224: 0, S4280430344: 2, S11: 5, S782008753: 1, R1: 0, R2: 0, R3: 1 (arterials re-roll, v9)
+  // last-resort prune: ideal 0; measured at rule C1 (hook after a walk, connector turn <= 90°, no crossing join curves): P1: 7, P2: 8, P3: 31, S7: 8, S3017268931: 6, S2982258224: 1, S4280430344: 12, S11: 14, S782008753: 7, R1: 1, R2: 3, R3: 3 — P3, S4280430344 and S11 exceed the bound (open; before C1: 7, 6, 3)
   for (const [name, p] of Object.entries(MODEL_SETS)) {
     it(`${name}: every arterial end is anchored and at most 10 were pruned`, { timeout: 120000 }, () => {
       const sizeM = p.size * 1000
