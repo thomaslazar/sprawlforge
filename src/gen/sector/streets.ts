@@ -9,6 +9,7 @@ import {
 import type { Arcology, Megablock, Road, SectorParams, Terrain } from '../types'
 import { dryStreetPieces, inWater, isLakeShore, joinRiverStubs, truncateUnlandableRoads } from './bridges'
 import { joinFreeEnds } from '../streets/join'
+import { dropStreetHairpins } from '../streets/cleanup'
 import { distToPolyline } from '../terrain/rivers'
 import { effectiveIrregularity } from './zoning'
 
@@ -139,7 +140,17 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   const decayEnds: Pt[] = []
   // FIFO seed queue: arterial seeds first, then every kept street seeds its own
   // children (crossing it), so the fabric grows outward until nothing is left
-  const queue = arterials.flatMap((a) => crossing(field, seedsAlong(a.points, 100, true, undefined, { size: sizeM, m: 400 })))
+  // a ring road seeds streets outward only (one way, radial; not through `crossing`, which would pick the grid's axis): a both-sides seed
+  // inside the ring grows a hook into the band between ring and plaza
+  const queue = arterials.flatMap((a) => {
+    const i = ringsOrNull.findIndex((r) => r?.id === a.id)
+    if (i < 0) return crossing(field, seedsAlong(a.points, 100, true, undefined, { size: sizeM, m: 400 }))
+    const c = arcologies[i].center
+    return seedsAlong(a.points, 100, false).map((x) => {
+      const dx = x.at.x - c.x, dy = x.at.y - c.y, len = Math.hypot(dx, dy) || 1
+      return { ...x, dir: { x: dx / len, y: dy / len }, axis: 'major' as const, oneWay: true }
+    })
+  })
   const raw = traceLayer(
     field, 'minor', queue, terrain, sizeM, index, { ...MINOR, obstacles: [...plazas, ...cores] }, mulberry32(hashSeed(params.seed, 'streets')), irregularityAt, 'S', 'street', decayEnds,
     (r) => crossing(field, seedsAlong(r.points, 100, true)),
@@ -150,13 +161,14 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   const prunedStreets = pruneDangling(streets, all, terrain, sizeM, { accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, keep: new Set(decayEnds.map(endKey)),
     waterAnchor: streetWaterAnchor(terrain, sizeM),
   })
+  const keptStreets = dropStreetHairpins(prunedStreets, all)
   return {
     highway: highway && simplify(highway),
     arterials,
     ringRoads,
     arcologies,
     megablocks,
-    streets: [...prunedStreets, ...frontage],
+    streets: [...keptStreets, ...frontage],
     frontage,
     decayEnds,
     pruned,

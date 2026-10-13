@@ -80,3 +80,18 @@ export function weldConverging(streets: Road[], index: RoadIndex, opts: { near?:
   }
   return out
 }
+
+/**
+ * A short street whose two ends rest on the same road (chord under `chord` m, length under `maxLength` m) is a hook
+ * back onto it: dropped. A long crescent on one road, or a street between two roads, stays.
+ */
+export function dropStreetHairpins(streets: Road[], index: RoadIndex, chord = 40, maxLength = 80): Road[] {
+  return streets.filter((r) => {
+    if (r.id.startsWith(FRONTAGE_ID_PREFIX) || r.points.length < 2) return true
+    const a = r.points[0], b = r.points[r.points.length - 1]
+    const ha = index.nearestMatching(a, 6, (h) => h.id !== r.id), hb = index.nearestMatching(b, 6, (h) => h.id !== r.id)
+    const hook = ha && hb && ha.id === hb.id && Math.hypot(a.x - b.x, a.y - b.y) < chord && polylineLength(r.points) < maxLength
+    if (hook) index.remove(r.id)
+    return !hook
+  })
+}

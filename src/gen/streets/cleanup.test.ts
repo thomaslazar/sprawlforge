@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Pt } from '../geometry'
 import { distToPolyline } from '../terrain/rivers'
 import type { Road, RoadClass } from '../types'
-import { weldConverging } from './cleanup'
+import { dropStreetHairpins, weldConverging } from './cleanup'
 import { RoadIndex } from './trace'
 
 const line = (...p: [number, number][]): Pt[] => p.map(([x, y]) => ({ x, y }))
@@ -44,5 +44,23 @@ describe('weldConverging', () => {
   it('never cuts a frontage road', () => {
     const B = road('F1L', line([0, 150], [100, 40], [120, 4], [330, 4], [330, 300]))
     expect(weldConverging([B], setup(A, B))).toEqual([B])
+  })
+})
+
+describe('dropStreetHairpins', () => {
+  const run = (...rs: Road[]) => {
+    const index = new RoadIndex(200)
+    rs.forEach((r) => index.add(r.id, r.points, r.class))
+    return dropStreetHairpins(rs.filter((r) => r.class === 'street'), index).map((r) => r.id)
+  }
+  it('drops a 70 m U with both ends on one road 25 m apart', () => {
+    expect(run(A, road('S1', line([100, 0], [100, 22], [125, 22], [125, 0])))).toEqual([])
+  })
+  it('keeps a 70 m street between two different roads', () => {
+    const A2 = road('A2', line([0, 70], [400, 70]), 'arterial')
+    expect(run(A, A2, road('S1', line([100, 0], [100, 70])))).toEqual(['S1'])
+  })
+  it('keeps a 300 m crescent on one road', () => {
+    expect(run(A, road('S1', line([100, 0], [100, 100], [300, 100], [300, 0])))).toEqual(['S1'])
   })
 })

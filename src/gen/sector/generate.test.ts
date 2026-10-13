@@ -918,6 +918,52 @@ describe('no hairpin spokes', () => {
   }
 })
 
+describe('ring streets run outward', () => {
+  // seed 42 coastal/medium/dense/fringe/lively/mixed/river/arcology 4 km (the `street free ends` seed)
+  const params = { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams
+  let m: SectorModel
+  beforeAll(() => { m = generateSector(params) }, 120000)
+  const rings = () => m.roads.filter((r) => r.id.startsWith(RING_ID_PREFIX) && r.points.length > 1)
+  it('has a K road', () => { expect(rings().length).toBeGreaterThan(0) })
+  it('no street has both ends on the same K road', () => {
+    const bad: string[] = []
+    for (const r of m.roads.filter((x) => x.class === 'street')) for (const k of rings()) {
+      if (distToPolyline(r.points[0], k.points) <= 6 && distToPolyline(r.points[r.points.length - 1], k.points) <= 6) bad.push(`${r.id} ${k.id}`)
+    }
+    expect(bad).toEqual([])
+  })
+  it('no street enters the ring band (inside the ring, outside the plaza) unless it crosses the ring', () => {
+    const bad: string[] = []
+    for (const a of m.arcologies) {
+      const ring = rings().find((r) => r.id === a.ringRoadId)
+      if (!ring) continue
+      const poly = ring.points
+      for (const r of m.roads.filter((x) => x.class === 'street')) {
+        let inBand = false, inside = false, outside = false
+        for (let i = 1; i < r.points.length; i++) {
+          const p0 = r.points[i - 1], p1 = r.points[i], n = Math.max(1, Math.ceil(Math.hypot(p1.x - p0.x, p1.y - p0.y) / 10))
+          for (let k = 0; k <= n; k++) {
+            const q = { x: p0.x + ((p1.x - p0.x) * k) / n, y: p0.y + ((p1.y - p0.y) * k) / n }
+            const inRing = pointInRings(q, [poly])
+            if (inRing) inside = true; else outside = true
+            if (inRing && !pointInRings(q, [a.plaza])) inBand = true
+          }
+        }
+        if (inBand && !(inside && outside)) bad.push(`${r.id} ${ring.id}`)
+      }
+    }
+    expect(bad).toEqual([])
+  })
+  it('each K road keeps at least 4 roads ending on it', () => {
+    const counts = rings().map((k) => {
+      const n = m.roads.filter((r) => r.id !== k.id && r.points.length > 1 && [r.points[0], r.points[r.points.length - 1]].some((e) => distToPolyline(e, k.points) <= 6)).length
+      return `${k.id}:${n}`
+    })
+    console.log('roads ending on each K road', counts.join(' '))
+    for (const c of counts) expect(Number(c.split(':')[1]), c).toBeGreaterThanOrEqual(4)
+  })
+})
+
 describe('lakes bound blocks', () => {
   const models: [string, SectorParams][] = [
     ['seed 782008753 inland 6 km', { ...base, seed: 782008753, size: 6, landform: 'inland', density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, river: true, lakes: true, islands: true, piers: true, pack: 'generic', theme: 'print' }],
