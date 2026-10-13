@@ -97,7 +97,13 @@ crosses or touches an arterial or ring (`crossingGuard`, a segment query
 on the index): the target road counts too, except on the last piece (the
 last 10 m land on it), and the road the curve leaves is exempt on the
 first piece only. A join curve never makes a lens or a knot with another
-arterial. The highway is not a blocker here — arterials cross it anyway
+arterial. A curve whose first such crossing is a third arterial or ring
+(not the target, not its own road), crossed at 25° or more
+(`angleGapLines`, the 'no acute arterial merges' bound) after at least
+20 m of curve, is not refused but truncated there: it lands on that road
+as a T, which becomes the join target (anchored end, pinned re-smooth;
+the end pass skips it when the road's other end already sits on that
+road). The highway is not a blocker here — arterials cross it anyway
 and `highwayCrossings` decks them.
 
 ### 3.2 In-trace join on a near-parallel road

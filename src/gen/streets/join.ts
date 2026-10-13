@@ -72,19 +72,39 @@ export function joinCurve(p: Pt, dir: Pt, target: Pt, tangent: Pt, reject: (q: P
   return out
 }
 
+/** a join curve crossing a third arterial at least this steeply ends on it (the 'no acute arterial merges' bound) */
+const JOIN_CUT_ANGLE = PARALLEL_ANGLE
+/** ... and only when the truncated connector is at least this long (m) */
+const JOIN_CUT_MIN = 20
+
+/** a join curve truncated where it first crosses a third arterial: its samples (ending on that road) and that road's id */
+export interface JoinCut { id: string; pts: Pt[] }
+
 /**
  * Reject part for a join curve sampled from `from` to `target` (call it for every sample, in order): true when the
  * piece ending at q crosses or touches an arterial or ring; `ownId` (the road the curve leaves) is exempt on the first
- * piece only, the target road on the last piece only (it lands there).
+ * piece only, the target road on the last piece only (it lands there). When the first such road is a third road crossed
+ * at JOIN_CUT_ANGLE or more after at least JOIN_CUT_MIN of curve, `cut` holds the curve truncated there (a T on that road).
  */
-export function crossingGuard(index: RoadIndex, from: Pt, target: Pt, ownId: string | null, targetId: string): (q: Pt) => boolean {
+export function crossingGuard(index: RoadIndex, from: Pt, target: Pt, ownId: string | null, targetId: string): ((q: Pt) => boolean) & { cut: JoinCut | null } {
   let prev = from
-  return (q) => {
+  const seen: Pt[] = []
+  const guard = Object.assign((q: Pt) => {
     const first = prev === from, last = q.x === target.x && q.y === target.y
-    const hit = index.segmentCrosses(prev, q, (id, cls) => cls === 'arterial' && !(first && id === ownId) && !(last && id === targetId))
+    const blocks = (id: string, cls: string) => cls === 'arterial' && !(first && id === ownId) && !(last && id === targetId)
+    const third = index.firstCrossing(prev, q, (id, cls) => cls === 'arterial' && id !== targetId && id !== ownId)
+    if (third) {
+      const pts = [...seen, third.at]
+      if (angleGapLines(Math.atan2(q.y - prev.y, q.x - prev.x), third.segAngle) >= JOIN_CUT_ANGLE
+        && polylineLength([from, ...pts]) >= JOIN_CUT_MIN && !index.segmentCrosses(prev, third.at, (id, cls) => id !== third.id && blocks(id, cls))) guard.cut = { id: third.id, pts }
+      return true
+    }
+    const hit = index.segmentCrosses(prev, q, blocks)
     prev = q
+    seen.push(q)
     return hit
-  }
+  }, { cut: null as JoinCut | null })
+  return guard
 }
 
 const END_TRY = 8
@@ -137,7 +157,9 @@ export function joinFreeEnds(
             || obstacles.some((r) => pointInRings(q, [r]))
             || !!index.nearestMatching(q, 0.15 * separation, (h) => h.id !== road.id && h.id !== c.id && h.cls === 'arterial' && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE)
             || crosses(q)
-          const curve = joinCurve(end, dir, c.at, tangent, reject)
+          let curve = joinCurve(end, dir, c.at, tangent, reject)
+          // crossing a third road: end on it instead (unless the other end already sits on it: a hairpin)
+          if (!curve && crosses.cut && !index.nearestMatching(other, 6, (h) => h.id === crosses.cut!.id)) curve = crosses.cut.pts
           if (!curve) continue
           const pinned = (v: Pt, t: number, arc: Pt[]) => {
             let moved = false

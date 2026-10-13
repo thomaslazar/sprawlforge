@@ -53,12 +53,25 @@ const near = (p: Pt, pts: Pt[]) => Math.min(...pts.map((q) => Math.hypot(p.x - q
 
 describe('crossingGuard', () => {
   // a join from (0,0) heading east to (300,100) on road T; the cubic passes (200,25)
-  const guarded = (T: Pt[]) => {
+  const guarded = (T: Pt[], R?: Pt[]) => {
     const index = new RoadIndex(200)
     index.add('T', T, 'arterial')
+    if (R) index.add('R', R, 'arterial')
     const crosses = crossingGuard(index, { x: 0, y: 0 }, { x: 300, y: 100 }, null, 'T')
-    return joinCurve({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 300, y: 100 }, { x: 1, y: 0 }, (q) => crosses(q))
+    return joinCurve({ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 300, y: 100 }, { x: 1, y: 0 }, (q) => crosses(q)) ?? crosses.cut?.pts ?? null
   }
+  const straightT = [{ x: 0, y: 100 }, { x: 600, y: 100 }]
+  it('a curve crossing a third road steeply (~70°) ends on that road', () => {
+    const c = guarded(straightT, [{ x: 200, y: -50 }, { x: 200, y: 80 }])!
+    expect(c.at(-1)!.x).toBeCloseTo(200, 6)
+    expect(c.at(-1)!.y).toBeGreaterThan(0)
+    for (const q of c) expect(q.x).toBeLessThanOrEqual(200 + 1e-9)
+  })
+  it('a curve crossing a third road at 15° is refused', () => {
+    // the curve heads ~20° at (200,25); R runs at 35° through that point
+    const a = (35 * Math.PI) / 180
+    expect(guarded(straightT, [{ x: 200 - 40 * Math.cos(a), y: 25 - 40 * Math.sin(a) }, { x: 200 + 40 * Math.cos(a), y: 25 + 40 * Math.sin(a) }])).toBeNull()
+  })
   it('refuses a curve that crosses its target road before landing on it (the target bends across its path)', () => {
     expect(guarded([{ x: 0, y: 100 }, { x: 150, y: 100 }, { x: 200, y: 20 }, { x: 260, y: 100 }, { x: 600, y: 100 }])).toBeNull()
   })

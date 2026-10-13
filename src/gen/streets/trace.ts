@@ -435,10 +435,11 @@ function traceHalf(
         // arrive at JOIN_ARRIVE to the road where the curve meets it (a curving road turns between foot and target)
         const { at: target, tangent } = index.pointAlong(hitPar, sign * JOIN_AHEAD * sep)
         const crosses = crossingGuard(index, p, target, null, hitPar.id)
+        // crossing a third arterial: the curve ends on it (crosses.cut)
         const curve = joinCurve(p, dir, target, tangent, (q, dirAt) =>
           inWater(terrain, q) || inObstacle(q) || !inWindow(q, sizeM)
           || !!index.nearestMatching(q, 0.15 * sep, (h) => h.id !== hitPar.id && h.cls !== 'highway' && sameOrHigher(h.cls) && angleGapLines(Math.atan2(dirAt.y, dirAt.x), h.segAngle) < PARALLEL_ANGLE)
-          || crosses(q))
+          || crosses(q)) ?? crosses.cut?.pts
         if (curve) pts.push(...curve)
       }
       break
