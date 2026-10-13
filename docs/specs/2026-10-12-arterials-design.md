@@ -289,7 +289,9 @@ attributes; `data-ramps` counts both.
   own copy of the 12 parameter sets): every arterial end is on the window
   edge, within 6 m of another arterial/ring, on the highway (T end, phase
   3), or at water; the arterial prune (`TracedRoads.pruned`) fires at most
-  10 times per seed — a ratchet that only tightens; the ideal is 0, the
+  20 times per seed (10 until rule C1; raised by the user, who prefers a
+  pruned end to a connector turning more than 90°) — a ratchet that
+  only tightens from here; the ideal is 0, the
   rest are the last-resort cases of §3.4 (plaza in the way, water, window
   edge, hairpin, nothing in reach). Measured at phase 1: 0–9 per seed.
 - Curvature, not angle: the clamp fixes 15° per 10 m step and the 1 m

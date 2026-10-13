@@ -1075,13 +1075,13 @@ describe('arterial ends (model seeds)', () => {
     }
     return worst
   }
-  // last-resort prune: ideal 0; measured at rule C1 with crossing joins ending as Ts: P1: 3, P2: 6, P3: 17, S7: 5, S3017268931: 3, S2982258224: 0, S4280430344: 6, S11: 11, S782008753: 4, R1: 1, R2: 3, R3: 2 — P3 and S11 exceed the bound (open; mostly ends whose only connectors turn > 90°)
+  // last-resort prune: ideal 0; measured at rule C1 with crossing joins ending as Ts: P1: 3, P2: 6, P3: 17, S7: 5, S3017268931: 3, S2982258224: 0, S4280430344: 6, S11: 11, S782008753: 4, R1: 1, R2: 3, R3: 2 — bound raised 10 → 20 by user ruling 2026-10-13 (the 90° connector rule prunes more ends instead of curving them; the user prefers that)
   for (const [name, p] of Object.entries(MODEL_SETS)) {
-    it(`${name}: every arterial end is anchored and at most 10 were pruned`, { timeout: 120000 }, () => {
+    it(`${name}: every arterial end is anchored and at most 20 were pruned`, { timeout: 120000 }, () => {
       const sizeM = p.size * 1000
       const terrain = sampleTerrain(p, sizeM)
       const t = traceRoads(p, terrain, sizeM)
-      expect(t.pruned, 'prune fired').toBeLessThanOrEqual(10)
+      expect(t.pruned, 'prune fired').toBeLessThanOrEqual(20)
       const idx = new RoadIndex(200)
       for (const r of t.arterials) idx.add(r.id, r.points, r.class)
       for (const r of t.arterials) {
