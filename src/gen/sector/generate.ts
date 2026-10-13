@@ -335,7 +335,7 @@ function pruneCutStreets(streets: Road[], arterials: Road[], highway: Road, terr
       if (distToPolyline(p, highway.points) > HIGHWAY_WIDTH / 2 + 10) keep.add(endKey(p))
     }
   }
-  return pruneDangling(streets, index, terrain, sizeM, { accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, keep })
+  return pruneDangling(streets, index, terrain, sizeM, { accept: (c) => c !== 'highway', minLength: 60, keep })
 }
 
 /**
@@ -360,20 +360,20 @@ function withTrimmedFrontage(
   const index = new RoadIndex(200)
   for (const r of [...arterials, ...all]) index.add(r.id, r.points, r.class)
   return pruneDangling(all, index, terrain, sizeM, {
-    accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, exemptPrefixes: [RING_ID_PREFIX],
+    accept: (c) => c !== 'highway', minLength: 60, exemptPrefixes: [RING_ID_PREFIX],
     keep: new Set([...endsOf(streets).filter((p) => !orphan(p)), ...endsOf(kept).filter((p) => !cutEnd(p))].map(endKey)), waterAnchor: streetWaterAnchor(terrain, sizeM),
   })
 }
 
 /**
  * Infill and the stranded-street rule can leave street ends resting on nothing: prune once against the complete
- * road set (the highway never anchors). Decay cul-de-sacs, being intended, stay.
+ * road set (the highway never anchors; an end resting on another street's end anchors: that chain is a block edge). Decay cul-de-sacs, being intended, stay.
  */
 function finalStreetPrune(streets: Road[], others: Road[], terrain: Terrain, sizeM: number, decayEnds: Pt[]): Road[] {
   const index = new RoadIndex(200)
   for (const r of [...others, ...streets]) index.add(r.id, r.points, r.class)
   return pruneDangling(streets, index, terrain, sizeM, {
-    accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, keep: new Set(decayEnds.map(endKey)), waterAnchor: streetWaterAnchor(terrain, sizeM),
+    accept: (c) => c !== 'highway', minLength: 60, keep: new Set(decayEnds.map(endKey)), waterAnchor: streetWaterAnchor(terrain, sizeM),
   })
 }
 
