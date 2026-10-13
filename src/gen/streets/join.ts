@@ -20,8 +20,10 @@ const JOIN_SNAP = 40
 
 /** angle at which a join curve meets the target road */
 const JOIN_ARRIVE = (60 * Math.PI) / 180
-/** end pass: widest total turn of a connector (end heading to arrival direction) */
+/** end pass: widest total turn of a connector (end heading → chord → arrival direction) */
 const JOIN_MAX_TURN = Math.PI / 2
+
+const angleBetween = (u: Pt, v: Pt) => Math.acos(Math.max(-1, Math.min(1, u.x * v.x + u.y * v.y)))
 
 /** unit direction in which a join from p (heading dir) arrives at target on a road with direction `tangent` */
 function arrival(p: Pt, dir: Pt, target: Pt, tangent: Pt): Pt {
@@ -127,8 +129,9 @@ export function joinFreeEnds(
           // a road with both ends on one road is a hairpin
           if (index.nearestMatching(other, 6, (h) => h.id === c.id)) continue
           const tangent = { x: Math.cos(c.ang), y: Math.sin(c.ang) }
-          const a = arrival(end, dir, c.at, tangent)
-          if (Math.acos(Math.max(-1, Math.min(1, a.x * dir.x + a.y * dir.y))) > JOIN_MAX_TURN) continue
+          // some tangent of the connector is parallel to its chord: it turns at least heading → chord → arrival
+          const cl = Math.hypot(c.at.x - end.x, c.at.y - end.y) || 1, chord = { x: (c.at.x - end.x) / cl, y: (c.at.y - end.y) / cl }
+          if (angleBetween(dir, chord) + angleBetween(chord, arrival(end, dir, c.at, tangent)) > JOIN_MAX_TURN) continue
           const crosses = crossingGuard(index, end, c.at, road.id, c.id)
           const reject = (q: Pt, dirAt: Pt) => inWater(terrain, q) || !inWindow(q, sizeM)
             || obstacles.some((r) => pointInRings(q, [r]))

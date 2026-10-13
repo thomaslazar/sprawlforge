@@ -89,6 +89,9 @@ describe('joinFreeEnds', () => {
     // (B's own free west end may join A: only A's end is asserted)
     const away = line(600, 773.2, 700, 600)
     expect(run([road('A', away), B]).roads[0].points).toEqual(away)
+    // heading straight at B's line but 330 m short of B's nearest point: arrival = heading, yet the S-bend via the chord turns ~146°
+    const short = line(500, 500, 500, 700)
+    expect(run([road('A', short), B]).roads[0].points).toEqual(short)
     // heading along B: the connector turns 60°
     const r = run([road('A', line(500, 600, 700, 600)), B])
     expect(near(r.roads[0].points.at(-1)!, B.points)).toBeLessThan(1)
