@@ -8,6 +8,8 @@ import type { Road, Terrain } from '../types'
 const SAMPLE = 10
 const LANDING = 15
 const MIN_STREET_PIECE = 40
+/** an arterial end piece shorter than this is a float crumb, not a landing */
+const MIN_LANDING_PIECE = 1
 // minimum angle (radians) between a sea bridge and the local shoreline
 // tangent — below this the crossing reads as "running along the coast"
 // rather than crossing it, so it gets truncated instead of bridged.
@@ -316,7 +318,9 @@ export function truncateUnlandableRoads(roads: Road[], terrain: Terrain): Road[]
 /**
  * Mark wet spans of traced roads as bridges. A road with no wet interval is
  * returned as-is. Otherwise it is split into dry pieces (ids `<id>-<n>`,
- * dropped if shorter than MIN_STREET_PIECE) and wet pieces (`<id>-b<n>`,
+ * dropped if shorter than MIN_STREET_PIECE, except an arterial's end piece:
+ * that is the short dry landing from the deck onto the far-bank road, kept so
+ * no gap opens; a short dry gap between two decks is bridged over) and wet pieces (`<id>-b<n>`,
  * bridge: true, widened by LANDING metres of dry road each side, clamped to
  * the polyline, never dropped). segments/crossings are copied to every piece.
  */
@@ -336,14 +340,18 @@ export function markWetSpans(roads: Road[], terrain: Terrain): Road[] {
       const a = Math.max(0, t0 - pad)
       const b = Math.min(1, t1 + pad)
       const last = merged[merged.length - 1]
-      if (last && a <= last[1]) last[1] = Math.max(last[1], b)
+      // a dry gap too short to keep as a road piece is bridged over, never left as a hole
+      if (last && (a - last[1]) * len < MIN_STREET_PIECE) last[1] = Math.max(last[1], b)
       else merged.push([a, b])
     }
     let dry = 0
     let br = 0
     let cursor = 0
+    // an arterial's end piece is its landing on the road past the bank (anchored): kept at any length
+    const keepShort = road.class === 'arterial' || road.class === 'highway'
     const dryPiece = (t0: number, t1: number) => {
-      if ((t1 - t0) * len >= MIN_STREET_PIECE) {
+      const atEnd = t0 === 0 || t1 === 1
+      if ((t1 - t0) * len >= (keepShort && atEnd ? MIN_LANDING_PIECE : MIN_STREET_PIECE)) {
         dry += 1
         out.push({ ...road, id: `${road.id}-${dry}`, points: slicePolyline(road.points, t0, t1) })
       }

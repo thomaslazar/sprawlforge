@@ -382,13 +382,49 @@ describe('arterial bridges', () => {
 })
 
 describe('river decks land on the far-bank road (seed 42 arcology)', () => {
+  let m: ReturnType<typeof generateSector>
+  let decks: Road[]
+  beforeAll(() => {
+    m = generateSector({ ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, pack: 'generic', theme: 'print' } as SectorParams)
+    decks = m.roads.filter((r) => r.class === 'arterial' && r.bridge)
+  }, 300000)
+  const family = (id: string) => id.replace(/-(b?\d+)$/, '')
+  const anchoredAt = (e: Pt, fam: string) => {
+    const S = m.meta.sizeM
+    return e.x < 1 || e.y < 1 || e.x > S - 1 || e.y > S - 1 || nearWater(m.terrain, e, 15)
+      || m.roads.some((r) => r.class === 'arterial' && family(r.id) !== fam && distToPolyline(e, r.points) <= 1)
+  }
+  /** the dry piece of the deck's own road that starts at deck end e, if any */
+  const landing = (d: Road, e: Pt) => m.roads.find((r) => r.class === 'arterial' && !r.bridge && family(r.id) === family(d.id)
+    && [r.points[0], r.points.at(-1)!].some((q) => Math.hypot(q.x - e.x, q.y - e.y) < 1))
   it('the three north-west arterials ending on the river are bridged', () => {
-    const m = generateSector({ ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, pack: 'generic', theme: 'print' } as SectorParams)
-    const decks = m.roads.filter((r) => r.class === 'arterial' && r.bridge)
     // the NW-bank ends (investigation item 6): their decks were blocked by the arcology spoke along the far bank, 50–70 m past it
     for (const e of [{ x: 1086, y: 2727 }, { x: 791, y: 2954 }, { x: 527, y: 3193 }])
       expect(decks.filter((d) => distToPolyline(e, d.points) < 30).length, `${e.x},${e.y}`).toBeGreaterThanOrEqual(1)
-  }, 300000)
+  })
+  it('every deck covers only the water plus its landing; the road goes on over land to an end anchored within 1 m', () => {
+    for (const d of decks) for (const e of [d.points[0], d.points.at(-1)!]) {
+      // walk into the deck from this end until the water: at most the 15 m landing + the 10 m water sampling step
+      const pts = e === d.points[0] ? d.points : d.points.slice().reverse()
+      let dry = 0
+      while (dry <= 40 && !inWater(m.terrain, pointAtT(pts, Math.min(1, dry / polylineLength(pts))))) dry += 1
+      expect(dry, `${d.id} landing`).toBeLessThanOrEqual(26)
+      const piece = landing(d, e)
+      const far = piece ? [piece.points[0], piece.points.at(-1)!].sort((a, b) => Math.hypot(b.x - e.x, b.y - e.y) - Math.hypot(a.x - e.x, a.y - e.y))[0] : e
+      expect(anchoredAt(far, family(d.id)), `${d.id} end ${far.x.toFixed(0)},${far.y.toFixed(0)}`).toBe(true)
+    }
+  })
+  it('the two southern north-west decks land on the far-bank arterial by a dry piece of road', () => {
+    for (const at of [{ x: 791, y: 2954 }, { x: 527, y: 3193 }]) {
+      const d = decks.find((x) => distToPolyline(at, x.points) < 30)!
+      const ends = [d.points[0], d.points.at(-1)!].filter((e) => Math.hypot(e.x - at.x, e.y - at.y) > 100)
+      expect(ends.length).toBe(1)
+      const piece = landing(d, ends[0])!
+      expect(piece, `${d.id} landing piece`).toBeDefined()
+      const far = [piece.points[0], piece.points.at(-1)!].find((q) => Math.hypot(q.x - ends[0].x, q.y - ends[0].y) > 1)!
+      expect(m.roads.some((r) => r.class === 'arterial' && family(r.id) !== family(d.id) && distToPolyline(far, r.points) <= 1), `${d.id} lands`).toBe(true)
+    }
+  })
 })
 
 describe('river bridges (seed 42)', () => {
@@ -423,7 +459,7 @@ describe('river bridges (seed 42)', () => {
     for (const b of arterialBridges) for (const e of [b.points[0], b.points.at(-1)!]) {
       // an end continuing into its own dry piece is checked at that piece's far end ('no arterial dangles'); a deck that IS the road end must meet another road
       if (sib.some((d) => family(d.id) === family(b.id) && [d.points[0], d.points.at(-1)!].some((q) => Math.hypot(q.x - e.x, q.y - e.y) < 1))) continue
-      expect(idx.nearestMatching(e, 6, (h) => family(h.id) !== family(b.id) && (h.cls === 'arterial' || h.cls === 'highway')), b.id).not.toBeNull()
+      expect(idx.nearestMatching(e, 1, (h) => family(h.id) !== family(b.id) && (h.cls === 'arterial' || h.cls === 'highway')), b.id).not.toBeNull()
     }
   })
   it('no arterial ends on the highway', () => {
