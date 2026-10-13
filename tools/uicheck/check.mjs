@@ -399,6 +399,18 @@ await page.goto(`${BASE}/?seed=42&tags=coastal,river,arcology`)
 await page.waitForSelector('svg'); await page.screenshot({ path: `${OUT}/arterials-coast.png` })
 if ((await page.locator('svg [data-bridge]').count()) < 1) fail('arterials-coast: no bridge rendered')
 
+// streets cleanup (spec 2026-10-13): highway landing east of the river bridge, zoomed (map metres x 1850-2450, y 1900-2350)
+await page.goto(`${BASE}/?seed=42&tags=coastal,medium,dense,fringe,lively,mixed,river,arcology&pack=generic&theme=print`)
+await page.waitForSelector('svg')
+const zoomed = await page.evaluate(({ x, y, w, h }) => {
+  const el = [...document.querySelectorAll('svg')].find((s) => /^0 0 4000 4000$/.test(s.getAttribute('viewBox') ?? ''))
+  if (!el) return false
+  el.setAttribute('viewBox', `${x} ${y} ${w} ${h}`)
+  return true
+}, { x: 1850, y: 1900, w: 600, h: 450 })
+if (!zoomed) fail('streets-highway: no 4 km map svg to zoom')
+await page.screenshot({ path: `${OUT}/streets-highway.png` })
+
 // bare URL (no tags) still auto-resolves a landform via resolveTerrain, but
 // the chips/URL must materialize that roll instead of showing nothing staged
 await page.goto(`${BASE}/?seed=42`)
