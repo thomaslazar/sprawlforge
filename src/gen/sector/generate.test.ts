@@ -1190,8 +1190,8 @@ describe('street free ends', () => {
   // seed 42: 12 before the ring-outward seeding re-rolled the streets stream (13 decay ends, 11 alive now)
   const DECAY: Record<number, number> = { 42: 11, 426750495: 11, 2268324149: 19 } // decay ends alive after the final prune, as measured without it
   const refs: [string, number, SectorParams, number][] = [
-    // [label, seed, params, BOUND]. Seed 42 BOUND is provisional (the 79 of the investigation predates the C1 re-roll; measured 26 on BASE 98c8665, 10 after task 1). Others: 18 / 49 before, 9 / 14 after
-    ['seed 42', 42, { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 15],
+    // [label, seed, params, BOUND]. Measured free ends main f27a294 -> HEAD: seed 42 26 -> 9, 426750495 18 -> 9, 2268324149 49 -> 14 (all remaining ends are decay cul-de-sacs; the 79 of the investigation predates the C1 re-roll)
+    ['seed 42', 42, { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 9],
     ['seed 426750495', 426750495, { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 9],
     ['seed 2268324149', 2268324149, { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 14],
   ]
