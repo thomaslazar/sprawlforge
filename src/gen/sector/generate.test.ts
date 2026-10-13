@@ -573,7 +573,8 @@ describe('coast-aligned streets', () => {
     // hole / pruned dead ends; buildings still never sit on them (second assertion). Ratchet down, never up. Documented exceptions: seed 3017268931 -> 2 (boulevard arcology access replaced its ring and the 'streets' rng stream shifted; PROOF the two offenders are the pre-existing decay cul-de-sac class, not ours: both are traced streets (not infill) whose free end is in decayEnds, i.e. kept on purpose by pruneDangling: B0901:S066 end (1912,1581), 538 m from the arcology, B0808:S038 end (925,666), 317 m, beyond the 187 m plaza and away from the boulevard; was 1 and 2 before landmarks; briefly 3 until the planar-graph zero-length-edge fix); seed 42 coastal+river -> 15 (was 10; rose with the landmark-changed map, every remaining offender proven > 400 m from any landmark); 15 → 17 after shore stubs < 150 m are pruned (face reshuffle moves infill chords S416, S428, S417, S308; infill-chord class, see ROADMAP).
     const cases: Array<[SectorParams, number]> = [
       [{ seed: 3017268931, size: 2, density: 0.9, corpDominance: 0.85, poiDensity: 0.25, irregularity: 0.15, landform: 'bay', river: true, lakes: false, islands: false, piers: false, arcology: true, megablock: false, pack: 'generic', theme: 'print' }, 2],
-      [{ ...base, seed: 42, landform: 'coastal', river: true }, 17],
+      // user ruling 2026-10-13 after the arterials re-roll; documented class (faces with holes, dead ends, infill chords)
+      [{ ...base, seed: 42, landform: 'coastal', river: true }, 18],
     ]
     for (const [params, max] of cases) {
       const m = modelFor(params)
