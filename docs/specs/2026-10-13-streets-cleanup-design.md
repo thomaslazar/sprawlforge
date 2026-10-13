@@ -66,7 +66,10 @@ inside the face, traced streets joining a near-parallel neighbour over up to 100
 
 Rule (generic, on the final street set, before 2.2): walk every street in 5 m samples; while
 consecutive samples lie within 8 m of any other road (any class but highway and ramp; every road
-within 8 m counts, so a short chain piece does not break the run), measure that run. Frontage and
+within 8 m counts, so a short chain piece does not break the run), measure that run by arc length.
+A run in which the street crosses that road (samples on both sides of it) is a junction, not a
+double, and is ignored: a crossing at 45° already stays within 8 m for 23 m. The doubled-streets
+test uses the same run finder (`closeRuns`), so rule and test cannot drift. Frontage and
 ring roads are weld targets but are never cut themselves.
 A run longer than 20 m cuts the street at the run's first sample, welded onto the other road there.
 When the run starts at the street's own start, the part **after** the run is kept instead (welded at
@@ -100,6 +103,9 @@ arterials against rings only.)
   goes green with no change to its assertions.
 - **Rings**: no street has both ends within 6 m of one `K` road; no street sample lies between a ring
   and its plaza unless the street crosses the ring (seed 42 S002/S003 class).
+- **Block sides have a road**: every block edge midpoint within 10 m of a road, or within 15 m of
+  water, or on the window edge, landmark blocks excepted; ratchet per reference seed (the weld's
+  crossing cuts were the bulk of the offenders before the exemption).
 - Existing ratchets hold (`no road runs through a block` 18 coast-aligned, block size, street density,
   prune ≤ 20). Re-pins listed with numbers; a ratchet never moves for our changes.
 - uicheck: a zoomed scene on the seed 42 highway landing east of the bridge (the user's crop), shots
