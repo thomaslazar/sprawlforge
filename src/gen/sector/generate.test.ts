@@ -1189,13 +1189,14 @@ describe('arterial ends (model seeds)', () => {
 describe('street free ends', () => {
   // seed 42: 12 before the ring-outward seeding re-rolled the streets stream (13 decay ends, 11 alive now)
   const DECAY: Record<number, number> = { 42: 11, 426750495: 11, 2268324149: 19 } // decay ends alive after the final prune, as measured without it
-  const refs: [string, number, SectorParams, number][] = [
-    // [label, seed, params, BOUND]. Measured free ends main f27a294 -> HEAD: seed 42 26 -> 9, 426750495 18 -> 9, 2268324149 49 -> 14 (all remaining ends are decay cul-de-sacs; the 79 of the investigation predates the C1 re-roll)
-    ['seed 42', 42, { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 9],
-    ['seed 426750495', 426750495, { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 9],
-    ['seed 2268324149', 2268324149, { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 14],
+  const refs: [string, number, SectorParams, number, number][] = [
+    // [label, seed, params, BOUND, STRAY]. BOUND = free ends measured at 3e3416d, all but STRAY decay cul-de-sacs; a re-roll re-pins it to the new decay count; a non-decay free end is a defect.
+    // STRAY = the free ends that are no decay end: infill ends (S372/S375 at the window inset, S351 6.0 m off a street, shore ends), kept by the final prune because blocks were cut along them. Ratchet down, never up.
+    ['seed 42', 42, { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 12, 3],
+    ['seed 426750495', 426750495, { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 13, 4],
+    ['seed 2268324149', 2268324149, { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 16, 2],
   ]
-  for (const [label, seed, params, bound] of refs) describe(label, () => {
+  for (const [label, seed, params, bound, strayBound] of refs) describe(label, () => {
     let m: SectorModel
     beforeAll(() => { m = generateSector(params) }, 120000)
     it('has few free street ends', () => {
@@ -1204,14 +1205,20 @@ describe('street free ends', () => {
       for (const r of m.roads) idx.add(r.id, r.points, r.class)
       const lands = [...m.arcologies.map((a) => a.plaza), ...m.megablocks.map((k) => k.core)]
       const wet = (p: Pt) => inWater(m.terrain, p) || [0, 1, 2, 3, 4, 5, 6, 7].some((k) => inWater(m.terrain, { x: p.x + 15 * Math.cos((k * Math.PI) / 4), y: p.y + 15 * Math.sin((k * Math.PI) / 4) }))
+      const decayEnds = traceRoads(params, sampleTerrain(params, sizeM), sizeM).decayEnds
       const free: string[] = []
+      const stray: string[] = []
       for (const r of m.roads.filter((x) => x.class === 'street')) {
         for (const [i, p] of [r.points[0], r.points[r.points.length - 1]].entries()) {
           if (onWindowEdge(p, sizeM, 1) || wet(p) || lands.some((poly) => pointInRings(p, [poly]))) continue
-          if (!idx.nearestMatching(p, 6, (h) => h.id !== r.id)) free.push(`${r.id}${i ? '>' : '<'}@${Math.round(p.x)},${Math.round(p.y)}`)
+          if (idx.nearestMatching(p, 6, (h) => h.id !== r.id)) continue
+          const tag = `${r.id}${i ? '>' : '<'}@${Math.round(p.x)},${Math.round(p.y)}`
+          free.push(tag)
+          if (!decayEnds.some((d) => Math.hypot(p.x - d.x, p.y - d.y) <= 1)) stray.push(tag)
         }
       }
-      console.log(`free street ends ${label}: ${free.length}`, free.join(' '))
+      console.log(`free street ends ${label}: ${free.length}`, free.join(' '), `| not decay: ${stray.join(' ') || '-'}`)
+      expect(stray.length, `${seed} free ends that are no decay cul-de-sac: ${stray.join(' ')}`).toBeLessThanOrEqual(strayBound)
       expect(free.length, `seed ${seed}`).toBeLessThanOrEqual(bound)
     })
     it('keeps the decay cul-de-sacs', () => {
@@ -1277,11 +1284,11 @@ describe('no doubled streets', () => {
 })
 
 describe('block sides have a road', () => {
-  // BOUND measured after the crossing exemption: 66 / 31 / 14 (201 / 90 / 103 at BASE 0f45e0a, before it). Ratchet down, never up.
+  // BOUND measured at 3e3416d: 3 / 7 / 4. Before this round 66 / 31 / 14 (main 57 / 28 / 134; 201 / 90 / 103 at BASE 0f45e0a). Ratchet down, never up.
   // [label, params, BOUND]: edges of block footprints with no road within 10 m, no water within 15 m, not on the window edge, not in a megablock/arcology
   const refs: [string, SectorParams, number][] = [
-    ['seed 42', { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 66],
-    ['seed 426750495', { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 31],
+    ['seed 42', { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 3],
+    ['seed 426750495', { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 7],
     ['seed 2268324149', { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 14],
   ]
   for (const [label, params, bound] of refs) it(label, () => {
