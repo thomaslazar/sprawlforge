@@ -361,6 +361,7 @@ export function highwayCrossings(highway: Road, roads: Road[], segments: Highway
     }
   }
   // an arterial ending on the highway is a tee: no rng, ground level goes under like an elevated one
+  // (a half-ring K road is an arterial too: a K end that sits on the highway IS a T junction and may take a half)
   for (const road of roads) {
     if (road.class !== 'arterial') continue
     for (const end of [road.points[0], road.points[road.points.length - 1]]) {
