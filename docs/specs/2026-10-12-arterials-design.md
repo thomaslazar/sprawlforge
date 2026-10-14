@@ -280,7 +280,7 @@ Phase 2 as built (decisions beyond the text above, all pinned in code):
   `traceHighway` draws every entry axis and position up front so the rng
   stream does not depend on which attempt wins.
 - Sweep ratchet 38 → 18 of 200 coastal cases still end inside the window
-  or on the entry edge; 16 of the 18 are steer-outrun dead ends on
+  or on the entry edge; 16 of 200 swept cases (of the 18 that still stop inside) are steer-outrun dead ends on
   concave 2 km coasts (lookahead 300 m against the turn room).
 - Frontage end extension takes its tangent from a 30 m chord (a 10 m chord
   folded at a highway kink).
