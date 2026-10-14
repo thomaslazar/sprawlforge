@@ -2,7 +2,7 @@ import { angleGapLines, bboxOf, inWindow, onWindowEdge, PARALLEL_ANGLE, pointAtT
 import type { Rng } from '../rng'
 import { RING_ID_PREFIX } from '../landmarks/place'
 import { inWater, nearWater } from '../sector/bridges'
-import { distToPolyline } from '../terrain/rivers'
+import { distToPolyline, nearestOnPolyline } from '../terrain/rivers'
 import type { Road, RoadClass, Terrain } from '../types'
 import { shoreTangent, type RoadField } from './field'
 import { crossingGuard, HOOK_MIN_WALK, joinCurve, JOIN_AHEAD } from './join'
@@ -44,6 +44,8 @@ export interface TraceOpts {
   shoreLookahead?: number
   /** longest river span (m) a deck may bridge; used by riverAhead from the bridging task on */
   deckMax?: number
+  /** highway only: once steering, keep the shore heading until the field's ray is dry this far (m) or meets a river a deck can span */
+  steerHold?: number
 }
 
 /** share of walkers that dock: they walk straight on and stop at the bank */
@@ -415,9 +417,26 @@ function traceHalf(
         const far = { x: p.x + v.x * opts.shoreLookahead!, y: p.y + v.y * opts.shoreLookahead! }
         return opts.deckMax === undefined ? (inWater(terrain, far) ? far : null) : firstWet(terrain, p, v, opts.shoreLookahead!, opts.step, sizeM)
       }).find((q) => q)
+      const river = terrain.riverSlice
+      const hw = opts.deckMax !== undefined
       if (wet && !riverAhead(terrain, wet, opts.deckMax)) {
         if (opts.bridgeRivers && !dockDecided) { dockDecided = true; dock = rng.chance(DOCK_CHANCE) }
-        const t = dock ? null : shoreTangent(terrain, opts.deckMax === undefined ? p : wet, opts.shoreLookahead)
+        if (dock) { /* walks on to the bank */ } else if (hw && river && distToPolyline(wet, river.course) <= river.width + 450) {
+          // a river too wide to deck: turn toward the narrower reach (tie: the side nearer the heading)
+          const tg = courseTangentAt(river.course, wet)
+          const spanOn = (sign: number) => riverSpanAt(terrain, pointAtT(river.course, nearestOnPolyline({ x: p.x + sign * tg.x * 200, y: p.y + sign * tg.y * 200 }, river.course).t01))
+          const [up, down] = [spanOn(1), spanOn(-1)]
+          const sign = up === down ? (tg.x * dir.x + tg.y * dir.y >= 0 ? 1 : -1) : up < down ? 1 : -1
+          want = { x: sign * tg.x, y: sign * tg.y }
+        } else {
+          const t = shoreTangent(terrain, hw ? wet : p, opts.shoreLookahead)
+          if (t) want = towards({ x: Math.cos(t.angle), y: Math.sin(t.angle) }, dir)
+        }
+      } else if (hw && steering && opts.steerHold && !dock) {
+        // hold the shore heading until the field's own ray is clear
+        const hit = firstWet(terrain, p, rawDir, opts.steerHold, opts.step, sizeM)
+        const clear = !hit || (!!river && distToPolyline(hit, river.course) <= river.width + 450 && riverSpanAt(terrain, hit) <= opts.deckMax!)
+        const t = clear ? null : shoreTangent(terrain, p, opts.steerHold)
         if (t) want = towards({ x: Math.cos(t.angle), y: Math.sin(t.angle) }, dir)
       }
     }

@@ -420,6 +420,6 @@ describe('highway coast and mouth', () => {
       const p = params({ seed, size, landform, river }), s = size * 1000, pts = traceHighway(p, sampleTerrain(p, s), s).road.points
       if (pts.length && (edgeOf(pts[0], s) === null || edgeOf(pts.at(-1)!, s) === null || edgeOf(pts.at(-1)!, s) === edgeOf(pts[0], s))) inside++
     }
-    expect(inside).toBeLessThanOrEqual(20)   // 38 at ac52d2f (end inside only) → 20 with an end on the entry edge counted (8 without)
+    expect(inside).toBeLessThanOrEqual(18)   // 38 at ac52d2f (end inside only) → 18 with an end on the entry edge counted
   })
 })

@@ -144,9 +144,11 @@ function traceFromEdge(
 
 /** longest river span (m) the highway deck bridges; a wider one is steered along until it narrows */
 export const HIGHWAY_DECK_MAX = 350
+/** once steering along a shore the highway holds it until the field's ray is dry this far (m) */
+export const HIGHWAY_STEER_HOLD = 600
 
 /** shoreLookahead 300: maxTurn = step / 300 is a 300 m turning radius, and a turn of angle a needs R*tan(a/2) of room (300 m at 90 deg); fitted on seeds, 200 and 250 each leave a test red */
-export const HIGHWAY_OPTS: TraceOpts = { ...MAJOR, maxSteps: 2000, maxTurn: MAJOR.step / 300, bridgeRivers: false, stopAtSingularity: false, shoreLookahead: 300, deckMax: HIGHWAY_DECK_MAX }
+export const HIGHWAY_OPTS: TraceOpts = { ...MAJOR, maxSteps: 2000, maxTurn: MAJOR.step / 300, bridgeRivers: false, stopAtSingularity: false, shoreLookahead: 300, deckMax: HIGHWAY_DECK_MAX, steerHold: HIGHWAY_STEER_HOLD }
 
 export function traceHighway(
   params: SectorParams, terrain: Terrain, sizeM: number,
@@ -164,13 +166,18 @@ export function traceHighway(
   let turned: Pt[] | null = null
   let turnedField: RoadField | null = null
 
-  edgeLoop: for (const edge of EDGES) {
-    const axis = edge.axisBase + (rng.next() * 2 - 1) * AXIS_JITTER
+  // every entry is drawn up front, so a change in how much a trace draws never reshuffles the later entries
+  const entries = EDGES.map((edge) => ({
+    axis: edge.axisBase + (rng.next() * 2 - 1) * AXIS_JITTER,
+    pos: Array.from({ length: ENTRY_ATTEMPTS }, () => sizeM * (ENTRY_LO + ENTRY_SPAN * rng.next())),
+  }))
+
+  edgeLoop: for (const [e, edge] of EDGES.entries()) {
+    const { axis, pos } = entries[e]
     const field = buildRoadField(params, terrain, sizeM, [spineBasis(axis)])
 
     for (let attempt = 0; attempt < ENTRY_ATTEMPTS; attempt++) {
-      const pos = sizeM * (ENTRY_LO + ENTRY_SPAN * rng.next())
-      const seedAt = edge.seedAt(pos, sizeM)
+      const seedAt = edge.seedAt(pos[attempt], sizeM)
       if (inWater(terrain, seedAt)) continue // R11: skip a wet entry point
 
       const candidate = traceFromEdge(field, edge, seedAt, terrain, sizeM, opts, rng, irregularityAt)
