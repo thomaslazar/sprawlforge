@@ -65,11 +65,6 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
   const poly = (p: Pt[], stroke: string, w: number | string, extra = '') =>
     `<polyline points="${pts(p)}" fill="none" stroke="${stroke}" stroke-width="${w}"${extra}/>`
   const total = polylineLength(line) || 1
-  const every = (s: { from: number; to: number }, step: number) => {
-    const ts: number[] = []
-    for (let m = 0; m < (s.to - s.from) * total; m += step) ts.push(s.from + m / total)
-    return ts
-  }
   const slice = (s: { from: number; to: number }) => slicePolyline(line, s.from, s.to)
 
   for (const s of segs) {
@@ -79,7 +74,6 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
       poly(p, theme.bg, W + 8),
       poly(offset(p, W / 2), theme.highway.trench, 1.5),
       poly(offset(p, -W / 2), theme.highway.trench, 1.5),
-      `<path d="${ticks(line, every(s, 20), W / 2, W / 2 - 6, true).join('')}" fill="none" stroke="${theme.highway.hatch}" stroke-width="1" opacity="0.8"/>`,
     )
   }
 
@@ -99,13 +93,10 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
   for (const s of runs) {
     const p = slice(s)
     out.push(`<g data-level="${s.level}">`)
-    out.push(poly(p, theme.highway.level[s.level], W, ' stroke-linejoin="round"' + glowAttr))
+    out.push(poly(p, theme.road.highway, W, ' stroke-linejoin="round"' + glowAttr))
     if (s.level === 'ground')
       for (const d of [W / 2 + 3, -(W / 2 + 3)]) out.push(poly(offset(p, d), theme.highway.trench, 1))
-    if (s.level === 'elevated') {
-      out.push(poly(offset(p, W / 2 - 3), theme.highway.column, 1.5, ' opacity="0.7"'), poly(offset(p, -(W / 2 - 3)), theme.highway.column, 1.5, ' opacity="0.7"'))
-      out.push(`<path d="${ticks(line, every(s, 40), -(W / 2 - 3), W / 2 - 3).join('')}" fill="none" stroke="${theme.highway.column}" stroke-width="1" opacity="0.5"/>`)
-    }
+    if (s.level !== 'ground') out.push(poly(p, `url(#hachure-${s.level})`, W, ' stroke-linejoin="round" opacity="0.35"'))
     out.push('</g>')
   }
 

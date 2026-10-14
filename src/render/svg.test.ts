@@ -141,7 +141,7 @@ describe('renderSector', () => {
     }
     const svg = renderSector(glowModel, theme)
     // highway and arterial polylines carry the glow filter
-    expect(svg).toMatch(new RegExp(`stroke="${theme.highway.level.ground}"[^/]*filter="url\\(#glow\\)"`))
+    expect(svg).toMatch(new RegExp(`stroke="${theme.road.highway}"[^/]*filter="url\\(#glow\\)"`))
     expect(svg).toMatch(new RegExp(`stroke="${theme.road.arterial}"[^/]*filter="url\\(#glow\\)"`))
     // street never does
     expect(svg).not.toMatch(new RegExp(`stroke="${theme.road.street}"[^/]*filter="url\\(#glow\\)"`))
@@ -150,7 +150,7 @@ describe('renderSector', () => {
     expect(svg.match(/<circle[^>]*filter="url\(#glow\)"/)).toBeNull()
   })
 
-  it('draws highway levels as in-band patterns, no column legs', () => {
+  it('draws elevated and sunken highways with hachures over one colour', () => {
     const theme = getTheme('neon')
     const seg = (from: number, to: number, level: 'elevated' | 'sunken' | 'ground') => ({ from, to, level, districtId: 'D01', transition: false })
     const m: SectorModel = {
@@ -161,13 +161,12 @@ describe('renderSector', () => {
     }
     const svg = renderSector(m, theme)
     const group = (l: string) => svg.match(new RegExp(`<g data-level="${l}">[\\s\\S]*?</g>`))![0]
-    expect(svg).not.toContain(`stroke="${theme.highway.column}" stroke-width="2"`)
-    expect(group('elevated')).toContain(`stroke="${theme.highway.column}" stroke-width="1.5"`)
-    expect(group('elevated')).toContain(`stroke="${theme.highway.column}" stroke-width="1" opacity="0.5"`)
-    expect(group('ground')).not.toContain(theme.highway.column)
-    const band = (l: string) => group(l).match(/<polyline[^>]*stroke="(#\w+)" stroke-width="\d+" stroke-linejoin="round"/)![1]
-    expect(new Set(['sunken', 'ground', 'elevated'].map(band)).size).toBe(3)
-    expect(svg).toContain(`stroke="${theme.highway.hatch}" stroke-width="1" opacity="0.8"`)
+    expect(group('elevated')).toContain('stroke="url(#hachure-elevated)"')
+    expect(group('sunken')).toContain('stroke="url(#hachure-sunken)"')
+    expect(group('ground')).not.toContain('url(#hachure')
+    for (const l of ['sunken', 'ground', 'elevated']) expect(group(l)).toContain(`stroke="${theme.road.highway}" stroke-width="32"`)
+    expect(svg).toContain('<pattern id="hachure-elevated"')
+    expect(svg).toContain('<pattern id="hachure-sunken"')
   })
 
   it('renders shallow band and shore glow via clip paths', () => {

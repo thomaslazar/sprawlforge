@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { HighwayCrossing, HighwaySegment, Road, SectorModel } from '../gen/types'
 import { GENERATOR_VERSION } from '../gen/types'
-import { HIGHWAY_WIDTH } from '../gen/streets/highway'
 import { renderHighway } from './highway'
 import { getTheme } from './theme'
 
@@ -37,13 +36,10 @@ describe('renderHighway', () => {
   ]), theme, out)
   const svg = out.join('')
 
-  it('emits level groups in order with trench, shoulders, columns, decks, hatch', () => {
+  it('emits level groups in order with trench, shoulders, decks, hatch', () => {
     expect([...svg.matchAll(/data-level="(\w+)"/g)].map((m) => m[1])).toEqual(['sunken', 'ground', 'elevated'])
     expect(svg).toContain(`stroke="${theme.highway.trench}" stroke-width="1.5"`)
     expect(svg).toContain(`stroke="${theme.highway.trench}" stroke-width="1"`)
-    const col = svg.match(new RegExp(`<path d="([^"]*)" fill="none" stroke="${theme.highway.column}"`))!
-    const xs = [...col[1].matchAll(/[ML]([\d.-]+),/g)].map((m) => Number(m[1]))
-    expect(xs.every((x) => Math.abs(x - 2000) <= HIGHWAY_WIDTH / 2 - 3 + 0.1)).toBe(true) // joints stay inside the band, no legs
     expect(svg.match(/opacity="0.6"/g)!.length).toBe(2)
   })
   it('places over deck near y=800 and dashed under near y=3400', () => {
