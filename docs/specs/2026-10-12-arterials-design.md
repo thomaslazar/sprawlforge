@@ -179,6 +179,11 @@ plus the usual 15 m landing: `markWetSpans` keeps an arterial's dry end
 piece at any length, so the stretch from the deck to the landing road is
 drawn as road, never dropped (a gap) and never decked.
 
+The highway blocks a river deck only over the water (`highwayBlocksDeck`,
+bridges.ts), and only by a deck-on-deck crossing or by a highway segment
+within 45° of the deck inside the clearance; a deck may cross the highway
+square (never along it or over its deck) on dry land.
+
 ## 4. Smooth corners (phase 1)
 
 `smoothBends(points, minRadius, pinned?)` in `src/gen/streets/smooth.ts`:
@@ -209,21 +214,28 @@ road it meets, and a road's own ends are never moved.
 `shoreProfile(params)` in field.ts: two seeded 2-D noises (`hashSeed(seed,
 'shore-setback')`, `hashSeed(seed, 'shore-gap')`, scale 600 m): the
 *setback* `s(p) = 30 + 120 × n1(p)` metres, and the band is *off* where
-`n2(p) > 0.7` (roughly 30 % of any shore, in stretches of a few hundred
-metres). Both are evaluated at the walker/point position, not along the
+`n2(p) > 0.6` (30 % of the shore, in stretches of a few hundred metres;
+measured: the threshold 0.7 first written here switches only 18.5 % off,
+0.6 switches 30 %). Both are evaluated at the walker/point position, not along the
 shore, which is good enough for 600 m waves.
 
 ### 5.2 Boundary basis
 
-`boundaryBasis` weight becomes `1 − |dist − s(p)| / 150` clamped to 0..1
-(peak at the setback, zero at the water and 150 m past the setback), and
-0 where the band is off. Reach stays 250 m for the tangent lookup. Shore
-patches (`SHORE_DIST = 300`) are unchanged.
+`boundaryBasis` weight is a tent: `dist / s(p)` up to the setback (0 at
+the water, 1 at the setback), then `1 − (dist − s(p)) / 150` (0 again 150
+m past it), and 0 where the band is off. The first formula written here,
+`1 − |dist − s| / 150`, contradicted its own prose (it is not zero at the
+water when the setback is under 150 m). Reach is 300 m for the tangent
+lookup (was 250). The mid-river weight is unchanged (`1 − dist / 250`).
+Shore patches (`SHORE_DIST = 300`) are unchanged.
 
 ### 5.3 Shore steer in the tracer
 
-In `traceHalf`, arterials only, before the water stop: when the point
-`p + dir × 60` is in water (not a river band the walker may bridge) and
+In `traceHalf`, arterials only, after the singularity test and before the
+water stop (the steer is evaluated on the raw direction, and the
+singularity stop compares raw against the previous raw direction while
+steering, so a steer turn is not read as a singularity): when the point
+`p + dir × 60` (probed along both `dir` and `rawDir`) is in water (not a river band the walker may bridge) and
 the walker is not already a dock walker: roll `rng.chance(0.15)` once per
 half (`dockDecided` flag) — on success the walker is a *dock walker* and
 walks on to the bank and stops there (dock end, kept by the prune as a
@@ -234,16 +246,46 @@ boundary basis keeps it along the shore; where the band is off the field
 pulls it inland and the steer fires again when water comes ahead. The
 river bridge rule runs first and is unchanged. The dock roll draws from
 the arterial rng stream passed to `traceHalf` (one draw per water
-approach, so seeds stay reproducible).
+approach, so seeds stay reproducible). The net turn of a steer is capped
+at `SHORE_MAX_TURN = π` (180°) as a backstop; on a straight shore field it
+never binds because the singularity stop fires first, a field that curves
+along a lake could still need it. A river is steered around with
+`RIVER_STEER_SLACK = 60` m of slack on the deck decision.
 
 The highway gets the same steer, never a dock: with `HIGHWAY_OPTS` the
-lookahead is 200 m and the turn follows the highway's own clamp, so a
+lookahead is 300 m (the spec's first 200 m is shorter than the highway's
+300 m turning radius; 200, 250 and 400 each fail a highway test) and the
+turn follows the highway's own clamp, so a
 coastal highway that would run into the sea bends along the coast and
 exits on an adjacent land edge (R11 adjacent-edge rule) instead of
-stopping dry at the beach (today 29 of 200 swept coastal 2 km cases; user
-seed 1584279735 coastal/small/sparse/corp-run/normal/mixed/river ends at
+stopping dry at the beach (38 of 200 swept coastal 2 km cases at the phase 2 start, 29 in the first
+draft of this text;
+as built: 18, ratchet in `highway.test.ts`; user
+seed 1584279735 coastal/small/sparse/corp-run/normal/mixed/river ended at
 696,1740 pointing at the sea). `traceHighway` keeps its entry-edge
 search; an attempt that reaches any edge beats one that stops.
+
+Phase 2 as built (decisions beyond the text above, all pinned in code):
+
+- Highway probe: a marched 10 m probe finds the first wet point inside the
+  300 m window (highway only; arterials probe one point at 60 m).
+- Deck cap `HIGHWAY_DECK_MAX = 350` m (seed 3 had a 440 m deck over the
+  river mouth); `deckMax: 0` after the highway's one bridge.
+- At a river too wide to deck the highway steers upstream: the sign comes
+  from the narrower `riverSpanAt` measured 200 m along the bank.
+- `HIGHWAY_STEER_HOLD = 600` m: the steer is held until the field heading
+  has been dry for 600 m, or hits a deckable river.
+- R11 ranking puts an attempt that comes back to its entry edge (a
+  hairpin) last; R12 is the approach heading over the last 50 m.
+  `traceHighway` draws every entry axis and position up front so the rng
+  stream does not depend on which attempt wins.
+- Sweep ratchet 38 → 18 of 200 coastal cases still end inside the window
+  or on the entry edge; 16 of the 18 are steer-outrun dead ends on
+  concave 2 km coasts (lookahead 300 m against the turn room).
+- Frontage end extension takes its tangent from a 30 m chord (a 10 m chord
+  folded at a highway kink).
+- Measured on P1 seed 42: longest arterial run within 150 m of the sea
+  580 m, water ends 3 of 84, longest bare shore stretch 975 m.
 
 ### 5.4 Expected look
 
