@@ -793,3 +793,31 @@ describe('shore steer', () => {
     expect(go(undefined).at(-1)!.y).toBeGreaterThan(1000 - 15)   // control: ends at the bank
   })
 })
+
+describe('river deck beside the highway (7b)', () => {
+  const river = {
+    water: [[[[500, -10], [600, -10], [600, 2010], [500, 2010], [500, -10]]]],
+    riverSlice: { course: [{ x: 550, y: -10 }, { x: 550, y: 2010 }], width: 60 },
+  } as unknown as Terrain
+  const f: RoadField = { sizeM: 2000, patches: [], sample: () => ({ major: { x: 1, y: 0 }, minor: { x: 0, y: 1 } }) }
+  const hw = (pts: Array<[number, number]>) => {
+    const i = new RoadIndex(200)
+    i.add('H1', pts.map(([x, y]) => ({ x, y })), 'highway')
+    return i
+  }
+  const run = (index: RoadIndex) =>
+    traceLayer(f, 'major', [{ at: { x: 300, y: 1000 }, dir: { x: 1, y: 0 }, oneWay: true }], river, 2000, index, MAJOR, mulberry32(1), () => 0.2, 'A', 'arterial')[0].points
+  const t35 = Math.tan((35 * Math.PI) / 180)
+  const line35: Array<[number, number]> = [[450, 1060 - 100 * t35], [650, 1060 + 100 * t35]]
+
+  it('a highway along the far bank, crossed square, no longer blocks the deck', () => {
+    // H1 (640, 0) → (640, 2000): today the deck is blocked (40–90 m) and the road ends at x ≈ 490
+    expect(Math.max(...run(hw([[640, 0], [640, 2000]])).map((q) => q.x))).toBeGreaterThan(640)
+  })
+  it('a highway at 35° to the deck over the water still blocks it', () => {
+    expect(Math.max(...run(hw(line35)).map((q) => q.x))).toBeLessThan(500)
+  })
+  it('a deck that would cross a highway over the water is refused', () => {
+    expect(Math.max(...run(hw([[550, 0], [550, 2000]])).map((q) => q.x))).toBeLessThan(500)
+  })
+})

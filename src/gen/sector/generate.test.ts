@@ -1311,3 +1311,18 @@ describe('block sides have a road', () => {
     expect(bad.length, label).toBeLessThanOrEqual(bound)
   })
 })
+
+describe('river ends beside the highway (seed 426750495)', () => {
+  // BOUND measured at e4f7ec2: 2 (the highway 30 m and 93 m from the deck blocked it); with decks crossing the highway square: 1. Ratchet down, never up.
+  it('few arterials end unbridged at the river', () => {
+    const params = { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams
+    const terrain = sampleTerrain(params, 2000)
+    const course = terrain.riverSlice!.course
+    const ends = traceRoads(params, terrain, 2000).arterials
+      .filter((r) => !r.id.startsWith(RING_ID_PREFIX))
+      .flatMap((r) => [r.points[0], r.points.at(-1)!])
+      .filter((e) => nearWater(terrain, e, 15) && distToPolyline(e, course) <= 250)
+    console.log('river ends beside the highway', ends.length)
+    expect(ends.length).toBeLessThanOrEqual(1)
+  })
+})

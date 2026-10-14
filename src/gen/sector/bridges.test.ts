@@ -141,6 +141,10 @@ describe('joinRiverStubs', () => {
     expect(out.map((r) => r.id)).toEqual(['A001'])
     expect(out[0].points).toEqual([...A.points, ...B.points])
   })
+  it('joins across the river when the highway runs along the far bank, crossed square', () => {
+    const hw = stub('H1', [[580, 0], [580, 1000]], 'highway')
+    expect(joinRiverStubs([A, B], banded, 1000, indexOf([A, B, hw])).map((r) => r.id)).toEqual(['A001'])   // today: 2 roads
+  })
   it('does not join when a highway runs along the water between them', () => {
     const hw = stub('H1', [[500, 0], [500, 1000]], 'highway')
     const roads = [A, B]

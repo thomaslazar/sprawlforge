@@ -1,7 +1,7 @@
 import { angleGapLines, bboxOf, inWindow, onWindowEdge, PARALLEL_ANGLE, pointAtT, pointInRings, polylineLength, segHit, segmentCrossesPolyline, segmentsIntersect, simplifyPolyline, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import { RING_ID_PREFIX } from '../landmarks/place'
-import { inWater, nearWater } from '../sector/bridges'
+import { highwayBlocksDeck, inWater, nearWater } from '../sector/bridges'
 import { distToPolyline, nearestOnPolyline } from '../terrain/rivers'
 import type { Road, RoadClass, Terrain } from '../types'
 import { shoreTangent, type RoadField } from './field'
@@ -471,8 +471,9 @@ function traceHalf(
       }
       let blocked = false
       for (let s = 0; s < d && !blocked; s += CROSSING_SAMPLE_STEP) {
-        blocked = !!index.nearestMatching({ x: p.x + dir.x * s, y: p.y + dir.y * s }, 0.3 * sep, (h) => sameOrHigher(h.cls) && h.id !== onto?.id)
+        blocked = !!index.nearestMatching({ x: p.x + dir.x * s, y: p.y + dir.y * s }, 0.3 * sep, (h) => h.cls !== 'highway' && sameOrHigher(h.cls) && h.id !== onto?.id)
       }
+      blocked ||= highwayBlocksDeck(index, terrain, p, land, 0.3 * sep)
       if (blocked) break
       pts.push(land)
       // the deck ends on its landing road: a T, anchored
