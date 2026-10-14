@@ -155,7 +155,7 @@ function traceFromEdge(
   }
 }
 
-export const HIGHWAY_OPTS: TraceOpts = { ...MAJOR, maxSteps: 2000, maxTurn: MAJOR.step / 300, bridgeRivers: false, stopAtSingularity: false }
+export const HIGHWAY_OPTS: TraceOpts = { ...MAJOR, maxSteps: 2000, maxTurn: MAJOR.step / 300, bridgeRivers: false, shoreLookahead: undefined, stopAtSingularity: false }
 
 export function traceHighway(
   params: SectorParams, terrain: Terrain, sizeM: number,

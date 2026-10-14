@@ -4,7 +4,7 @@ import { RING_ID_PREFIX } from '../landmarks/place'
 import { inWater, nearWater } from '../sector/bridges'
 import { distToPolyline } from '../terrain/rivers'
 import type { Road, RoadClass, Terrain } from '../types'
-import type { RoadField } from './field'
+import { shoreTangent, type RoadField } from './field'
 import { crossingGuard, HOOK_MIN_WALK, joinCurve, JOIN_AHEAD } from './join'
 import { smoothBends } from './smooth'
 
@@ -40,9 +40,19 @@ export interface TraceOpts {
   stopAtSingularity?: boolean
   /** fillet radius (m) for polyline bends sharper than 15° */
   smoothRadius?: number
+  /** arterials: water this far (m) ahead that is no bridgeable river bends the road along the shore (undefined = no steer) */
+  shoreLookahead?: number
+  /** longest river span (m) a deck may bridge; used by riverAhead from the bridging task on */
+  deckMax?: number
 }
 
-export const MAJOR: TraceOpts = { separation: 400, step: 10, maxSteps: 600, minLength: 60, jitter: 0, decay: 0, bridgeRivers: true, maxTurn: (15 * Math.PI) / 180, stopAtSingularity: true, smoothRadius: 60 }
+/** share of walkers that dock: they walk straight on and stop at the bank */
+export const DOCK_CHANCE = 0.15
+/** net heading change (rad) since the first steered step after which the steer gives up */
+export const SHORE_MAX_TURN = Math.PI
+const RIVER_STEER_SLACK = 60
+
+export const MAJOR: TraceOpts = { separation: 400, step: 10, maxSteps: 600, minLength: 60, jitter: 0, decay: 0, bridgeRivers: true, maxTurn: (15 * Math.PI) / 180, stopAtSingularity: true, smoothRadius: 60, shoreLookahead: 60 }
 export const MINOR: TraceOpts = { separation: 100, step: 10, maxSteps: 200, minLength: 60, jitter: 0.4, decay: 0.2, smoothRadius: 25 }
 
 // highway > arterial > street > ramp
@@ -291,6 +301,11 @@ function inRiverBand(terrain: Terrain, p: Pt, margin: number, corridorWidth?: nu
   return distToPolyline(p, river.course) <= (corridorWidth ?? river.width) + margin
 }
 
+/** water at q is a river the walker may bridge, so it is not steered around */
+function riverAhead(terrain: Terrain, q: Pt, _deckMax: number | undefined): boolean {
+  return inRiverBand(terrain, q, RIVER_STEER_SLACK)
+}
+
 function clampToWindow(p: Pt, sizeM: number): Pt {
   return { x: clamp(0, sizeM, p.x), y: clamp(0, sizeM, p.y) }
 }
@@ -331,6 +346,8 @@ function traceHalf(
   let p = start
   let dir = initDir
   let bridges = 0
+  let dock = false, dockDecided = false, steering = false, turned = 0
+  let prevRaw = initDir
   // parent exclusion (rules 3 and 4): only while the trace is
   // still within 0.35 × sep of the seed; beyond that the parent is ordinary
   // an arcology ring (id K<n>) is a closed circle: a spoke leaving it is never a twin of the far side
@@ -340,8 +357,23 @@ function traceHalf(
   for (let i = 0; i < opts.maxSteps; i++) {
     const rawDir = rk4Dir(field, axis, p, dir, opts.step)
     // the highway (maxTurn set) is smoothed by its clamp instead
-    if (i > 0 && (opts.stopAtSingularity ?? opts.maxTurn === undefined) && Math.acos(clamp(-1, 1, dir.x * rawDir.x + dir.y * rawDir.y)) > SINGULARITY_TURN) break
-    const newDir = clampTurn(dir, rawDir, maxTurn)
+    if (i > 0 && (opts.stopAtSingularity ?? opts.maxTurn === undefined) && Math.acos(clamp(-1, 1, (steering ? prevRaw : dir).x * rawDir.x + (steering ? prevRaw : dir).y * rawDir.y)) > SINGULARITY_TURN) break
+    // a steered heading is up to 90° off the field: the flip is judged against the last raw direction instead
+    prevRaw = rawDir
+    let want = rawDir
+    if (opts.shoreLookahead && !dock && Math.abs(turned) < SHORE_MAX_TURN) {
+      // looked for along the field's own heading: a walker hugging the bank would otherwise drift into it between steers
+      const ahead = { x: p.x + rawDir.x * opts.shoreLookahead, y: p.y + rawDir.y * opts.shoreLookahead }
+      if (inWater(terrain, ahead) && !riverAhead(terrain, ahead, opts.deckMax)) {
+        if (opts.bridgeRivers && !dockDecided) { dockDecided = true; dock = rng.chance(DOCK_CHANCE) }
+        const t = dock ? null : shoreTangent(terrain, p, opts.shoreLookahead)
+        if (t) want = towards({ x: Math.cos(t.angle), y: Math.sin(t.angle) }, dir)
+      }
+    }
+    const newDir = clampTurn(dir, want, maxTurn)
+    if (want !== rawDir) steering = true
+    // net signed heading change since the first steered step (field turns count too): a coast zigzag stays bounded, a loop does not
+    if (steering) turned += Math.atan2(dir.x * newDir.y - dir.y * newDir.x, dir.x * newDir.x + dir.y * newDir.y)
     const next = { x: p.x + newDir.x * opts.step, y: p.y + newDir.y * opts.step }
 
     if (!inWindow(next, sizeM)) {
