@@ -407,7 +407,8 @@ describe('highway coast and mouth', () => {
     const p = tagged(3, 'coastal,medium,dense,balanced,normal,mixed,river'), s = p.size * 1000, t = sampleTerrain(p, s)
     const pts = traceHighway(p, t, s).road.points
     const b = findBridgeSegment(pts)
-    if (b !== null) expect(Math.hypot(pts[b + 1].x - pts[b].x, pts[b + 1].y - pts[b].y)).toBeLessThanOrEqual(HIGHWAY_DECK_MAX + 10)
+    expect(b).not.toBeNull()
+    expect(Math.hypot(pts[b! + 1].x - pts[b!].x, pts[b! + 1].y - pts[b!].y)).toBeLessThanOrEqual(HIGHWAY_DECK_MAX + 10)
     expect(edgeOf(pts[0], s)).not.toBeNull(); expect(edgeOf(pts.at(-1)!, s)).not.toBeNull()
     expect(edgeOf(pts.at(-1)!, s)).not.toBe(edgeOf(pts[0], s))
   })

@@ -408,10 +408,13 @@ function traceHalf(
     let want = rawDir
     if (opts.shoreLookahead && !dock && Math.abs(turned) < SHORE_MAX_TURN) {
       // water along the heading, or along the field's own heading (a walker hugging the bank would otherwise drift into it between steers)
-      // the highway (deckMax set) marches the ray: the walker meets the FIRST wet point, and its turning radius needs that coast's tangent, not the far probe's
-      const wet = [dir, rawDir].map((v) => opts.deckMax === undefined
-        ? { x: p.x + v.x * opts.shoreLookahead!, y: p.y + v.y * opts.shoreLookahead! }
-        : firstWet(terrain, p, v, opts.shoreLookahead!, opts.step, sizeM)).find((q) => q && inWater(terrain, q))
+      // deckMax is the highway gate. The highway marches the ray: the walker meets the FIRST wet point, and its turning radius needs that coast's tangent, not the far probe's.
+      // Arterials keep the far probe (`snaps endpoints` went red with the marched one).
+      // ponytail: the marched probe is arguably the general rule; unify when arterial pins are re-measured.
+      const wet = [dir, rawDir].map((v) => {
+        const far = { x: p.x + v.x * opts.shoreLookahead!, y: p.y + v.y * opts.shoreLookahead! }
+        return opts.deckMax === undefined ? (inWater(terrain, far) ? far : null) : firstWet(terrain, p, v, opts.shoreLookahead!, opts.step, sizeM)
+      }).find((q) => q)
       if (wet && !riverAhead(terrain, wet, opts.deckMax)) {
         if (opts.bridgeRivers && !dockDecided) { dockDecided = true; dock = rng.chance(DOCK_CHANCE) }
         const t = dock ? null : shoreTangent(terrain, opts.deckMax === undefined ? p : wet, opts.shoreLookahead)

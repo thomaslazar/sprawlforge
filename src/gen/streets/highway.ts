@@ -145,7 +145,7 @@ function traceFromEdge(
 /** longest river span (m) the highway deck bridges; a wider one is steered along until it narrows */
 export const HIGHWAY_DECK_MAX = 350
 
-/** the steer looks one turning radius ahead (maxTurn = step / 300 is a 300 m radius): any less cannot turn a head-on approach */
+/** shoreLookahead 300: maxTurn = step / 300 is a 300 m turning radius, and a turn of angle a needs R*tan(a/2) of room (300 m at 90 deg); fitted on seeds, 200 and 250 each leave a test red */
 export const HIGHWAY_OPTS: TraceOpts = { ...MAJOR, maxSteps: 2000, maxTurn: MAJOR.step / 300, bridgeRivers: false, stopAtSingularity: false, shoreLookahead: 300, deckMax: HIGHWAY_DECK_MAX }
 
 export function traceHighway(
