@@ -45,6 +45,7 @@ export function endMeetings(roads: Road[], extra: Road[] = []): Array<{ id: stri
       if (d > Math.PI / 2) d = Math.PI - d
       // through: the end lands on the TIP of another road and carries on in the same direction (two roads end to end, one bend), not a V or a side merge
       const tp = roads.concat(extra).find((x) => x.id === hit.id)?.points
+      // the dot > 0 test only tells a bend from a V because callers look at deg < 25 (an end that lands nearly along the target's line)
       let through = false
       if (tp && hit.edge < 1 && tp.length > 1) {
         const atStart = Math.hypot(tp[0].x - e.x, tp[0].y - e.y) <= Math.hypot(tp[tp.length - 1].x - e.x, tp[tp.length - 1].y - e.y)

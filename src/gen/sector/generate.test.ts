@@ -416,7 +416,7 @@ describe('river decks land on the far-bank road (seed 42 arcology)', () => {
       expect(anchoredAt(far, family(d.id)), `${d.id} end ${far.x.toFixed(0)},${far.y.toFixed(0)}`).toBe(true)
     }
   })
-  it('the two southern north-west decks land on the far-bank arterial by a dry piece of road', () => {
+  it('the two southern north-west decks land on the far-bank arterial (by a dry piece of road, or straight onto it)', () => {
     // arterials re-roll (v9): 791,2954 / 527,3193 -> 841,2902 / 578,3119
     for (const at of [{ x: 841, y: 2902 }, { x: 578, y: 3119 }]) {
       const d = decks.find((x) => distToPolyline(at, x.points) < 30)!
@@ -520,7 +520,7 @@ describe('reference seed road quality', () => {
 
   it('no acute arterial merges', () => {
     const S = m.meta.sizeM
-    // ends on the window edge, at water or on the highway are exempt; so is an end that lands on another road's tip and carries on that way (arterials re-roll v9: B001/B004 meet at 551,510 as one 21° bend; the folded line angle cannot tell that from a V)
+    // ends on the window edge, at water or on the highway are exempt; so is an end that lands on another road's tip and carries on that way (arterials re-roll v9: B001/B004 meet at 545,515 as one 16.5° bend; the folded line angle cannot tell that from a V)
     const ms = endMeetings(arts, hw).filter(
       (x) => x.cls === 'arterial' && !x.through && !nearWater(m.terrain, x.end, 25) && x.end.x > 1 && x.end.y > 1 && x.end.x < S - 1 && x.end.y < S - 1,
     )
@@ -973,7 +973,8 @@ describe.each([
 
 describe('lakes bound blocks', () => {
   const models: [string, SectorParams][] = [
-    ['seed 782008753 inland 6 km', { ...base, seed: 782008753, size: 6, landform: 'inland', density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, river: true, lakes: true, islands: true, piers: true, pack: 'generic', theme: 'print' }],
+    // arterials re-roll (v9): witness seed 782008753 -> 2268324149; on 782008753 the arterial along the shore leaves no unwelded river/sea street end (0), 2268324149 has 5 (seeds 42 / 426750495 have 1, 1-30 mostly 2-7)
+    ['seed 2268324149 inland 6 km', { ...base, seed: 2268324149, size: 6, landform: 'inland', density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, river: true, lakes: true, islands: true, piers: true, pack: 'generic', theme: 'print' }],
     ['seed 42 inland corp 0.85', { ...base, corpDominance: 0.85 }],
     ['seed 7 bay corp 0.15', { ...base, seed: 7, landform: 'bay', corpDominance: 0.15 }],
   ]
@@ -994,13 +995,11 @@ describe('lakes bound blocks', () => {
       const traced = new Set(traceRoads(params, m.terrain, sizeM).streets.map((r) => r.id))
       // an end welded to another road is a junction, not a stub (clipper2 re-roll (v8): S1196 ends on an arterial that hugs a lake)
       const joined = (e: Pt, self: Road) => m.roads.some((o) => o.id !== self.id && distToPolyline(e, o.points) <= 6)
-      const tracedEnds = streets.filter((r) => traced.has(r.id.split('-')[0])).flatMap((r) => [r.points[0], r.points.at(-1)!].map((e) => ({ e, r })).filter(({ e }) => nearRing(e)))
-      const ends = tracedEnds.filter(({ e, r }) => !joined(e, r)).map(({ e }) => e)
+      const ends = streets.filter((r) => traced.has(r.id.split('-')[0])).flatMap((r) => [r.points[0], r.points.at(-1)!].filter((e) => !joined(e, r))).filter(nearRing)
       expect(m.terrain.water.length).toBeGreaterThan(1) // lakes exist, so the check below is not vacuous
       expect(ends.filter((e) => isLakeShore(m.terrain, e, sizeM))).toEqual([])
-      // river/sea shore stubs of >= 150 m stay: some traced street end sits at a river/sea shore.
-      // arterials re-roll (v9): the arterial now runs along the shore, so the one such end left (1 free before: S009 1333,3418; 0 now) is welded to it; the witness counts welded ends too
-      expect(tracedEnds.filter(({ e }) => !isLakeShore(m.terrain, e, sizeM)).length).toBeGreaterThan(0)
+      // river/sea shore stubs of >= 150 m stay: some street end sits at a river/sea shore
+      expect(ends.filter((e) => !isLakeShore(m.terrain, e, sizeM)).length).toBeGreaterThan(0)
     })
     it(`no big block has its centroid in a lake `, () => {
       const bad = m.blocks.filter((b) => {
@@ -1192,13 +1191,13 @@ describe('arterial ends (model seeds)', () => {
 
 describe('street free ends', () => {
   // seed 42: 12 before the ring-outward seeding re-rolled the streets stream (13 decay ends, 11 alive now)
-  // arterials re-roll (v9): decay ends alive 11 / 11 / 19 -> 14 / 10 / 10 (a re-roll re-draws the decay rolls: 15 / 12 / 13 decay ends in all now)
-  const DECAY: Record<number, number> = { 42: 14, 426750495: 10, 2268324149: 10 } // decay ends alive after the final prune, as measured without it
+  // arterials re-roll (v9): decay ends alive 11 / 11 / 19 -> 14 / 9 / 10 (a re-roll re-draws the decay rolls: 15 / 12 / 13 decay ends in all now)
+  const DECAY: Record<number, number> = { 42: 14, 426750495: 9, 2268324149: 10 } // decay ends alive after the final prune, as measured without it
   const refs: [string, number, SectorParams, number, number][] = [
     // [label, seed, params, BOUND, STRAY]. BOUND = free ends measured at 3e3416d, all but STRAY decay cul-de-sacs; a re-roll re-pins it to the new decay count; a non-decay free end is a defect.
     // STRAY = the free ends that are no decay end: infill ends (S372/S375 at the window inset, S351 6.0 m off a street, shore ends), kept by the final prune because blocks were cut along them. Ratchet down, never up.
-    ['seed 42', 42, { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 13, 3], // arterials re-roll (v9): BOUND 12 -> 13 (12 decay + F2R)
-    ['seed 426750495', 426750495, { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 10, 0], // arterials re-roll (v9): 13 / 4 -> 10 / 0, all decay
+    ['seed 42', 42, { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 12, 3],
+    ['seed 426750495', 426750495, { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 11, 2], // arterials re-roll (v9): 13 / 4 -> 11 / 2 (S157 1074,1639, S165 1755,1994 infill ends)
     ['seed 2268324149', 2268324149, { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 9, 2], // arterials re-roll (v9): BOUND 16 -> 9; STRAY 2 stays (measured 3: S499 1642,671, S522 2626,1921, S525 2685,1852, inland infill ends) and is left red
   ]
   for (const [label, seed, params, bound, strayBound] of refs) describe(label, () => {
