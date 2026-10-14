@@ -461,6 +461,14 @@ describe('pruneDangling', () => {
     return pruneDangling(roads, idx, terrain, 1000, o)
   }
   const B = road('B', [{ x: 300, y: 0 }, { x: 300, y: 1000 }])
+  it('pruneDangling keeps an end that anchorEnd accepts', () => {
+    const H = road('H', [{ x: 600, y: 0 }, { x: 600, y: 1000 }], 'highway')
+    const A = road('A', [{ x: 0, y: 500 }, { x: 600, y: 500 }])
+    const o = { accept: (c: Road['class']) => c === 'arterial', minLength: 100 }
+    expect(run([A, B, H], dry, o).find((r) => r.id === 'A')!.points.at(-1)!.x).toBeCloseTo(300, 0)
+    const kept = run([A, B, H], dry, { ...o, anchorEnd: (p) => Math.abs(p.x - 600) <= 1 })
+    expect(kept.find((r) => r.id === 'A')).toBe(A)
+  })
   it('pruneDangling cuts an unanchored arterial tail back to its junction', () => {
     const A = road('A', [{ x: 0, y: 500 }, { x: 600, y: 500 }])
     const out = run([A, B]).find((r) => r.id === 'A')!

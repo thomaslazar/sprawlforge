@@ -797,6 +797,8 @@ export interface PruneOpts {
   exemptPrefixes?: string[]
   /** replaces the plain "near water" acceptance of an end; `stubLength` = arc length from the end to the nearest accepted junction (whole road if none) */
   waterAnchor?: (p: Pt, stubLength: number) => boolean
+  /** an end for which this returns true counts as anchored (a T end on the highway) */
+  anchorEnd?: (p: Pt) => boolean
 }
 
 /**
@@ -838,7 +840,7 @@ export function pruneDangling(roads: Road[], index: RoadIndex, terrain: Terrain,
       for (const fromEnd of [false, true]) {
         const seq = fromEnd ? pts.slice().reverse() : pts
         const end = seq[0]
-        if (seq.length < 2 || onWindowEdge(end, sizeM, 1) || opts.keep?.has(endKey(end)) || near(end)) continue
+        if (seq.length < 2 || onWindowEdge(end, sizeM, 1) || opts.keep?.has(endKey(end)) || near(end) || opts.anchorEnd?.(end)) continue
         const dx = end.x - seq[1].x
         const dy = end.y - seq[1].y
         const len = Math.hypot(dx, dy) || 1
