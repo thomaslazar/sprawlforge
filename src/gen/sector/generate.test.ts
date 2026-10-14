@@ -509,7 +509,7 @@ describe('no doubled arterials', () => {
     // 66 streets / 9 arterials measured (66 before the singularity stop, 41 with it ending
     // halves at the seed; 74 / 13 before prune-dangling); bounds = measured - 10 %
     expect(m.roads.filter((r) => r.class === 'street').length).toBeGreaterThanOrEqual(44) // 49 measured after streets stopped anchoring on the highway (hooks gone)
-    expect(arts.length).toBeGreaterThanOrEqual(7) // was >= 8: arterials cross the highway; a tail past it with no arterial junction is pruned (half interchanges: ROADMAP)
+    expect(arts.length).toBeGreaterThanOrEqual(8) // 14 measured after the half interchanges (v9)
     let worst = 0
     for (let i = 0; i < arts.length; i++) {
       for (let j = i + 1; j < arts.length; j++) {
@@ -685,7 +685,7 @@ describe('block size', () => {
         // blocks beside a megablock, and an arcology's own block, stay big on purpose
         // a strip block is a long band between frontage road and highway (about 40 m wide): its area says nothing about street spacing
         const nearCore = m.megablocks.some((k) => k.core.some((p) => pointInRings(p, [b.footprint])) || pointInRings(k.center, [b.footprint]))
-        return Math.abs(ringArea(b.footprint)) > ([2982258224, 42].includes(params.seed) ? 64000 : params.seed === 4280430344 ? 61000 : 60000) && // 4280430344: 61000 (was 60000; arterials re-roll (v9): B4406 60227, a courtyard block 220 m from water, user accepted) // 2982258224 and 42: 64000 (was 60000; measured 61431 / 63192 for B0419/B0423 and 63158 / 62743 for B0505/B0829): arterials cross the highway; a tail past it with no arterial junction is pruned (half interchanges: ROADMAP)
+        return Math.abs(ringArea(b.footprint)) > (params.seed === 4280430344 ? 61000 : 60000) && // 4280430344: 61000 (was 60000; arterials re-roll (v9): B4406 60227, a courtyard block 220 m from water, user accepted) // 2982258224 and 42: 64000 -> 60000 (arterials phase 3 measured 58046 / 59794 at most: the tail past the highway is a tee now)
          Math.min(c.x, c.y, s - c.x, s - c.y) >= 150 && !wet(c) && !nearCore && b.style !== 'strip' && !m.arcologies.some((a) => pointInRings(a.center, [b.footprint]))
       })
       expect(big.map((b) => `${b.id} ${Math.round(Math.abs(ringArea(b.footprint)))}`), `seed ${params.seed}`).toEqual([])
@@ -849,7 +849,7 @@ describe('landmarks in road tracing', () => {
           const closed = [...pts, pts[0]]
           const spokes = m.roads.filter((r) => r.class === 'arterial' && !ring.includes(r)).flatMap((r) => [r.points[0], r.points[r.points.length - 1]])
             .filter((e) => distToPolyline(e, closed) <= 6)
-          expect(spokes.length).toBeGreaterThanOrEqual(2) // was 3 (seed 11 lost one ring spoke): arterials cross the highway; a tail past it with no arterial junction is pruned (half interchanges: ROADMAP)
+          expect(spokes.length).toBeGreaterThanOrEqual(3) // 5 / 6 measured (seeds 11 / 7) after the half interchanges (v9)
         }
       })
       it('half rings are open and spoked', () => {
@@ -1133,8 +1133,8 @@ describe('frontage', () => {
 describe('compound names', () => {
   it('are drawn after the landmark names, which stay as before', { timeout: 300000 }, () => {
     const m = generateSector({ ...base, corpDominance: 0.85, arcology: true, megablock: true })
-    expect(m.arcologies.map((a) => a.name)).toEqual(['Gemini Robotics Towers']) // C1 fix round re-roll; rule C1: 'Gemini Logistics Towers'; 7b stabilisation: 'The Apex-Robotics Gemini'; v9: 'The Vertex-Dynamics Gemini'; was 'Kessler Twin Towers': arterials cross the highway (and one-point roads are gone): layout shifts the name draw; same as the original golden
-    expect(m.megablocks.map((a) => a.name)).toEqual(['The Chrome Hive']) // C1 fix round re-roll; rule C1: 'Row Stacks'; 7b stabilisation: 'The Black Hive'; v9: 'The Iron Hive'; was 'Docks Block', before that 'Gardens Block': arterials cross the highway, layout shifts the name draw
+    expect(m.arcologies.map((a) => a.name)).toEqual(['Apex Twin Towers']) // arterials re-roll (v9): 'Gemini Robotics Towers' -> 'Apex Twin Towers' (half interchanges re-roll the layout and so the name draw); C1 fix round re-roll; rule C1: 'Gemini Logistics Towers'; 7b stabilisation: 'The Apex-Robotics Gemini'; v9: 'The Vertex-Dynamics Gemini'; was 'Kessler Twin Towers': arterials cross the highway (and one-point roads are gone): layout shifts the name draw; same as the original golden
+    expect(m.megablocks.map((a) => a.name)).toEqual(['Docks Stacks']) // arterials re-roll (v9): 'The Chrome Hive' -> 'Docks Stacks'; C1 fix round re-roll; rule C1: 'Row Stacks'; 7b stabilisation: 'The Black Hive'; v9: 'The Iron Hive'; was 'Docks Block', before that 'Gardens Block': arterials cross the highway, layout shifts the name draw
     expect(m.compounds.length).toBeGreaterThan(0)
     for (const c of m.compounds) expect(c.name.length).toBeGreaterThan(0)
     expect(m.pois.filter((p) => p.type === 'corp_campus').map((p) => p.name)).toEqual(m.compounds.map((c) => c.name))
@@ -1266,7 +1266,7 @@ describe('waterfront arterials (P1 seed 42)', () => {
 describe('street free ends', () => {
   // seed 42: 12 before the ring-outward seeding re-rolled the streets stream (13 decay ends, 11 alive now)
   // arterials re-roll (v9): decay ends alive 11 / 11 / 19 -> 14 / 9 / 10 (a re-roll re-draws the decay rolls: 15 / 12 / 13 decay ends in all now)
-  const DECAY: Record<number, number> = { 42: 14, 426750495: 9, 2268324149: 10 } // decay ends alive after the final prune, as measured without it
+  const DECAY: Record<number, number> = { 42: 11, 426750495: 7, 2268324149: 10 } // decay ends alive after the final prune, as measured without it; arterials re-roll (v9): 42: 14 -> 11, 426750495: 9 -> 7 (half interchanges re-roll the fabric)
   const refs: [string, number, SectorParams, number, number][] = [
     // [label, seed, params, BOUND, STRAY]. BOUND = free ends measured at 3e3416d, all but STRAY decay cul-de-sacs; a re-roll re-pins it to the new decay count; a non-decay free end is a defect.
     // STRAY = the free ends that are no decay end: infill ends (S372/S375 at the window inset, S351 6.0 m off a street, shore ends), kept by the final prune because blocks were cut along them. Ratchet down, never up.
