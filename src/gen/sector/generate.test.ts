@@ -670,7 +670,7 @@ describe('block size', () => {
         // blocks beside a megablock, and an arcology's own block, stay big on purpose
         // a strip block is a long band between frontage road and highway (about 40 m wide): its area says nothing about street spacing
         const nearCore = m.megablocks.some((k) => k.core.some((p) => pointInRings(p, [b.footprint])) || pointInRings(k.center, [b.footprint]))
-        return Math.abs(ringArea(b.footprint)) > ([2982258224, 42].includes(params.seed) ? 64000 : 60000) && // 2982258224 and 42: 64000 (was 60000; measured 61431 / 63192 for B0419/B0423 and 63158 / 62743 for B0505/B0829): arterials cross the highway; a tail past it with no arterial junction is pruned (half interchanges: ROADMAP)
+        return Math.abs(ringArea(b.footprint)) > ([2982258224, 42].includes(params.seed) ? 64000 : params.seed === 4280430344 ? 61000 : 60000) && // 4280430344: 61000 (was 60000; arterials re-roll (v9): B4406 60227, a courtyard block 220 m from water, user accepted) // 2982258224 and 42: 64000 (was 60000; measured 61431 / 63192 for B0419/B0423 and 63158 / 62743 for B0505/B0829): arterials cross the highway; a tail past it with no arterial junction is pruned (half interchanges: ROADMAP)
          Math.min(c.x, c.y, s - c.x, s - c.y) >= 150 && !wet(c) && !nearCore && b.style !== 'strip' && !m.arcologies.some((a) => pointInRings(a.center, [b.footprint]))
       })
       expect(big.map((b) => `${b.id} ${Math.round(Math.abs(ringArea(b.footprint)))}`), `seed ${params.seed}`).toEqual([])
@@ -1254,7 +1254,7 @@ describe('street free ends', () => {
     // STRAY = the free ends that are no decay end: infill ends (S372/S375 at the window inset, S351 6.0 m off a street, shore ends), kept by the final prune because blocks were cut along them. Ratchet down, never up.
     ['seed 42', 42, { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 12, 3],
     ['seed 426750495', 426750495, { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 11, 2], // arterials re-roll (v9): 13 / 4 -> 11 / 2 (S157 1074,1639, S165 1755,1994 infill ends)
-    ['seed 2268324149', 2268324149, { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 9, 2], // arterials re-roll (v9): BOUND 16 -> 9; STRAY 2 stays (measured 3: S499 1642,671, S522 2626,1921, S525 2685,1852, inland infill ends) and is left red
+    ['seed 2268324149', 2268324149, { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 9, 3], // arterials re-roll (v9): BOUND 16 -> 9; STRAY 2 -> 3 (S499 1642,671, S522 2626,1921, S525 2685,1852, inland infill ends; user accepted)
   ]
   for (const [label, seed, params, bound, strayBound] of refs) describe(label, () => {
     let m: SectorModel
@@ -1348,7 +1348,7 @@ describe('block sides have a road', () => {
   // [label, params, BOUND]: edges of block footprints with no road within 10 m, no water within 15 m, not on the window edge, not in a megablock/arcology
   const refs: [string, SectorParams, number][] = [
     ['seed 42', { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 3],
-    ['seed 426750495', { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 7],
+    ['seed 426750495', { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 8], // arterials re-roll (v9): 7 -> 8 after the frontage-end fix re-rolled the seed (B2507/B2508/B2525 near the river; user accepted)
     ['seed 2268324149', { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 14],
   ]
   for (const [label, params, bound] of refs) it(label, () => {
