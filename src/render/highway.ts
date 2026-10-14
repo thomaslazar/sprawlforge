@@ -96,7 +96,8 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
     out.push(poly(p, theme.road.highway, W, ' stroke-linejoin="round"' + glowAttr))
     if (s.level === 'ground')
       for (const d of [W / 2 + 3, -(W / 2 + 3)]) out.push(poly(offset(p, d), theme.highway.trench, 1))
-    if (s.level !== 'ground') out.push(poly(p, `url(#hachure-${s.level})`, W, ' stroke-linejoin="round" opacity="0.35"'))
+    // elevated hachure reads light (deck colour, near-opaque), sunken stays faint: same colour at 0.35 was too close
+    if (s.level !== 'ground') out.push(poly(p, `url(#hachure-${s.level})`, W, ` stroke-linejoin="round" opacity="${s.level === 'elevated' ? 0.85 : 0.35}"`))
     out.push('</g>')
   }
 
