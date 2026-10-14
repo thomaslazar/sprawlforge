@@ -404,7 +404,7 @@ function traceHalf(
     const rawDir = rk4Dir(field, axis, p, dir, opts.step)
     const ref = steering ? prevRaw : dir
     // the highway (maxTurn set) is smoothed by its clamp instead
-    if (i > 0 && (opts.stopAtSingularity ?? opts.maxTurn === undefined) && Math.acos(clamp(-1, 1, ref.x * rawDir.x + ref.y * rawDir.y)) > SINGULARITY_TURN) break
+    const flipped = i > 0 && (opts.stopAtSingularity ?? opts.maxTurn === undefined) && Math.acos(clamp(-1, 1, ref.x * rawDir.x + ref.y * rawDir.y)) > SINGULARITY_TURN
     // a steered heading is up to 90° off the field: the flip is judged against the last raw direction instead
     prevRaw = rawDir
     let want = rawDir
@@ -440,6 +440,8 @@ function traceHalf(
         if (t) want = towards({ x: Math.cos(t.angle), y: Math.sin(t.angle) }, dir)
       }
     }
+    // while steering, the field's flip at the bank (boundary weight 0 at the water line) is not a singularity: the walk is bounded by SHORE_MAX_TURN and maxSteps
+    if (flipped && !(steering && Math.abs(turned) < SHORE_MAX_TURN)) break
     const newDir = clampTurn(dir, want, maxTurn)
     if (want !== rawDir) steering = true
     // net signed heading change since the first steered step (field turns count too): a coast zigzag stays bounded, a loop does not

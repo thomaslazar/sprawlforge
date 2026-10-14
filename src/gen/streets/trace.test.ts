@@ -760,6 +760,14 @@ describe('shore steer', () => {
     expect(onWindowEdge(r.at(-1)!, 4000, 1)).toBe(true)
     expect(maxBendDeg(r)).toBeLessThanOrEqual(15 + 1e-6)
   })
+  it('a field that flips at the bank does not park the walker short of it', () => {
+    // plain grid at 90° to the coast: past the bank the field turns, as the boundary basis does at weight 0
+    const f: RoadField = { sizeM: 4000, patches: [], sample: (q) => { const d = q.y > 1000 - 55 ? { x: 0.966, y: 0.259 } : { x: 0, y: 1 }; return { major: d, minor: { x: -d.y, y: d.x } } } }
+    const r = traceLayer(f, 'major', [{ at: { x: 2000, y: 400 }, dir: { x: 0, y: 1 }, oneWay: true }], coast, 4000, new RoadIndex(200), MAJOR, noDock, () => 0.2, 'A', 'arterial')[0].points
+    const end = r.at(-1)!
+    expect(r.some((q) => inWater(coast, q))).toBe(false)
+    expect(onWindowEdge(end, 4000, 1) || end.y > 1000 - 15).toBe(true)
+  })
   it('a dock walker walks on to the bank and stops', () => {
     const r = runShore(coast, dockRng)[0].points
     expect(r.at(-1)!.y).toBeGreaterThan(1000 - 15); expect(r.some((q) => inWater(coast, q))).toBe(false)
