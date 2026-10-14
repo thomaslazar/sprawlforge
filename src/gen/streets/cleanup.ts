@@ -100,6 +100,8 @@ export function weldConverging(streets: Road[], index: RoadIndex, opts: { near?:
     if (!changed) { out.push(r); continue }
     index.remove(r.id)
     for (const t of [...done, ...todo]) {
+      // a one-point or <= 5 m remainder is no road, whatever its id (5 m: the infill pass's own floor)
+      if (t.road.points.length < 2 || polylineLength(t.road.points) <= 5) continue
       if (!t.kept && polylineLength(t.road.points) < minLength && !opts.keepShort?.(r.id)) continue
       index.add(t.road.id, t.road.points, t.road.class)
       out.push(t.road)

@@ -259,7 +259,7 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
       }
       // welding can pull both ends of a short piece onto the same neighbour: a piece left shorter than a cut may be (add's 5 m) goes
       for (let i = pieces.length - 1; i >= 0; i--) if (polylineLength(pieces[i].points) <= 5) pieces.splice(i, 1)
-      // a short hook with both ends on the face ring (chord < 40 m, length < 80 m: dropStreetHairpins' rule) only nicks a corner into a sliver block: it goes
+      // a piece under 80 m whose ends are both on the face ring and under 40 m apart only nicks a corner into a sliver block (S352: a straight 10.9 m nick): it goes
       const ringLine = [...f.footprint, f.footprint[0]]
       for (let i = pieces.length - 1; i >= 0; i--) {
         const pts = pieces[i].points, a = pts[0], z = pts[pts.length - 1]
