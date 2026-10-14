@@ -356,16 +356,17 @@ function traceHalf(
     id === sourceId && Math.hypot(at.x - seedAt.x, at.y - seedAt.y) < 0.35 * opts.separation
   for (let i = 0; i < opts.maxSteps; i++) {
     const rawDir = rk4Dir(field, axis, p, dir, opts.step)
+    const ref = steering ? prevRaw : dir
     // the highway (maxTurn set) is smoothed by its clamp instead
-    if (i > 0 && (opts.stopAtSingularity ?? opts.maxTurn === undefined) && Math.acos(clamp(-1, 1, (steering ? prevRaw : dir).x * rawDir.x + (steering ? prevRaw : dir).y * rawDir.y)) > SINGULARITY_TURN) break
+    if (i > 0 && (opts.stopAtSingularity ?? opts.maxTurn === undefined) && Math.acos(clamp(-1, 1, ref.x * rawDir.x + ref.y * rawDir.y)) > SINGULARITY_TURN) break
     // a steered heading is up to 90° off the field: the flip is judged against the last raw direction instead
     prevRaw = rawDir
     let want = rawDir
     if (opts.shoreLookahead && !dock && Math.abs(turned) < SHORE_MAX_TURN) {
-      // looked for along the field's own heading: a walker hugging the bank would otherwise drift into it between steers
-      const ahead = { x: p.x + rawDir.x * opts.shoreLookahead, y: p.y + rawDir.y * opts.shoreLookahead }
-      if (inWater(terrain, ahead) && !riverAhead(terrain, ahead, opts.deckMax)) {
-        if (opts.bridgeRivers && !dockDecided) { dockDecided = true; dock = rng.chance(DOCK_CHANCE) }
+      // water along the heading, or along the field's own heading (a walker hugging the bank would otherwise drift into it between steers)
+      const wet = [dir, rawDir].map((v) => ({ x: p.x + v.x * opts.shoreLookahead!, y: p.y + v.y * opts.shoreLookahead! })).find((q) => inWater(terrain, q))
+      if (wet && !riverAhead(terrain, wet, opts.deckMax)) {
+      if (opts.bridgeRivers && !dockDecided) { dockDecided = true; dock = rng.chance(DOCK_CHANCE) }
         const t = dock ? null : shoreTangent(terrain, p, opts.shoreLookahead)
         if (t) want = towards({ x: Math.cos(t.angle), y: Math.sin(t.angle) }, dir)
       }
