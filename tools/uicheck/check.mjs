@@ -411,19 +411,38 @@ for (let i = 0; i < 40 && (await readTransform()).zoom / z0 < 4000 / 600; i++) {
 await page.waitForTimeout(600) // gesture settles, labels re-render
 await page.screenshot({ path: `${OUT}/streets-highway.png` })
 
-// highway levels (task 6): seed 3 has ground, elevated and sunken; full map, then zoom on the sunken->ground transition (map metres ~1611, 1125)
-await page.goto(`${BASE}/?seed=3&tags=coastal,medium,dense,balanced,normal,mixed,river&pack=generic&theme=print`)
+// highway levels (task 6): seed 23 has ground, elevated and sunken; full map, then zoom on the sunken->ground transition (map metres ~1709, 1111; seed 3 lost its sunken stretch when phase 2 re-rolled the highway)
+await page.goto(`${BASE}/?seed=23&tags=coastal,medium,dense,balanced,normal,mixed,river&pack=generic&theme=print`)
 await page.waitForSelector('svg')
 await page.getByLabel('Show POIs').uncheck()
 await page.screenshot({ path: `${OUT}/highway-levels-full.png` })
 for (const lv of ['sunken', 'ground', 'elevated'])
   if ((await page.locator(`svg [data-level="${lv}"]`).count()) < 1) fail(`highway-levels: no ${lv} stretch rendered`)
 const svgBox2 = await page.locator('.map-viewport svg').first().boundingBox()
-await page.mouse.move(svgBox2.x + (1611 / 4000) * svgBox2.width, svgBox2.y + (1125 / 4000) * svgBox2.height)
+await page.mouse.move(svgBox2.x + (1709 / 4000) * svgBox2.width, svgBox2.y + (1111 / 4000) * svgBox2.height)
 const zz = (await readTransform()).zoom
 for (let i = 0; i < 40 && (await readTransform()).zoom / zz < 4000 / 600; i++) { await page.mouse.wheel(0, -240); await page.waitForTimeout(30) }
 await page.waitForTimeout(600)
 await page.screenshot({ path: `${OUT}/highway-levels.png` })
+
+// shores (spec 2026-10-12 §5.3): the highway reaches the window edge at both ends and decks no river mouth
+const highwayEnds = () => page.evaluate(() => {
+  const runs = [...document.querySelectorAll('svg [data-level] > polyline:first-child')]
+    .map((el) => el.getAttribute('points').trim().split(/\s+/).map((s) => s.split(',').map(Number)))
+  return runs.length ? [runs[0][0], runs.at(-1).at(-1)] : []
+})
+for (const [name, seed, tags, S] of [['highway-coast', 3, 'coastal,medium,dense,balanced,normal,mixed,river', 4000], ['highway-coast-small', 1584279735, 'coastal,small,sparse,corp-run,normal,mixed,river', 2000]]) {
+  await page.goto(`${BASE}/?seed=${seed}&tags=${tags}&pack=generic&theme=print`)
+  await page.waitForSelector('svg'); await page.getByLabel('Show POIs').uncheck()
+  await page.screenshot({ path: `${OUT}/${name}.png` })
+  const ends = await highwayEnds()
+  const onEdge = ([x, y]) => x <= 2 || y <= 2 || x >= S - 2 || y >= S - 2
+  if (ends.length !== 2 || !ends.every(onEdge)) fail(`${name}: highway ends inside the window ${JSON.stringify(ends)}`)
+  const decks = await page.evaluate(() => [...document.querySelectorAll('svg polyline[data-bridge][stroke-width="32"]')]
+    .map((el) => el.getAttribute('points').trim().split(/\s+/).map((s) => s.split(',').map(Number)))
+    .map((p) => p.slice(1).reduce((L, q, i) => L + Math.hypot(q[0] - p[i][0], q[1] - p[i][1]), 0)))
+  if (decks.some((L) => L > 380)) fail(`${name}: highway deck over 380 m (${decks.map(Math.round)})`)
+}
 
 // bare URL (no tags) still auto-resolves a landform via resolveTerrain, but
 // the chips/URL must materialize that roll instead of showing nothing staged
