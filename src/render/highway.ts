@@ -92,7 +92,7 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
       for (let m = 0; m < (s.to - s.from) * total; m += 40) ts.push(s.from + m / total)
       out.push(`<path d="${ticks(line, ts, W / 2, W / 2 + 8, true).join('')}" fill="none" stroke="${theme.highway.column}" stroke-width="2"/>`)
     }
-    out.push(poly(p, theme.road.highway, W, glowAttr), '</g>')
+    out.push(poly(p, theme.road.highway, W, ' stroke-linecap="round"' + glowAttr), '</g>')
   }
 
   for (const c of hw.first.crossings ?? []) {
