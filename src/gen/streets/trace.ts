@@ -42,7 +42,7 @@ export interface TraceOpts {
   smoothRadius?: number
   /** arterials: water this far (m) ahead that is no bridgeable river bends the road along the shore (undefined = no steer) */
   shoreLookahead?: number
-  /** longest river span (m) a deck may bridge; used by riverAhead from the bridging task on */
+  /** highway only: a river ahead counts as bridgeable only if its span there is <= deckMax; 0 after the one bridge */
   deckMax?: number
   /** highway only: once steering, keep the shore heading until the field's ray is dry this far (m) or meets a river a deck can span */
   steerHold?: number
@@ -357,6 +357,8 @@ function clampToWindow(p: Pt, sizeM: number): Pt {
 }
 
 const CROSSING_MAX_REACH = 450
+/** generous band used only to choose the upstream sign at a mouth */
+const RIVER_SIGN_SLACK = 450
 /** a river deck may land on an arterial this far (m) past the far bank, crossing it at DECK_LANDING_ANGLE or more */
 const DECK_LANDING = 120
 const DECK_LANDING_ANGLE = Math.PI / 4
@@ -421,7 +423,7 @@ function traceHalf(
       const hw = opts.deckMax !== undefined
       if (wet && !riverAhead(terrain, wet, opts.deckMax)) {
         if (opts.bridgeRivers && !dockDecided) { dockDecided = true; dock = rng.chance(DOCK_CHANCE) }
-        if (dock) { /* walks on to the bank */ } else if (hw && river && distToPolyline(wet, river.course) <= river.width + 450) {
+        if (dock) { /* walks on to the bank */ } else if (hw && river && distToPolyline(wet, river.course) <= river.width + RIVER_SIGN_SLACK) {
           // a river too wide to deck: turn toward the narrower reach (tie: the side nearer the heading)
           const tg = courseTangentAt(river.course, wet)
           const spanOn = (sign: number) => riverSpanAt(terrain, pointAtT(river.course, nearestOnPolyline({ x: p.x + sign * tg.x * 200, y: p.y + sign * tg.y * 200 }, river.course).t01))
@@ -435,7 +437,7 @@ function traceHalf(
       } else if (hw && steering && opts.steerHold && !dock) {
         // hold the shore heading until the field's own ray is clear
         const hit = firstWet(terrain, p, rawDir, opts.steerHold, opts.step, sizeM)
-        const clear = !hit || (!!river && distToPolyline(hit, river.course) <= river.width + 450 && riverSpanAt(terrain, hit) <= opts.deckMax!)
+        const clear = !hit || (!!river && distToPolyline(hit, river.course) <= river.width + RIVER_SIGN_SLACK && riverSpanAt(terrain, hit) <= opts.deckMax!)
         const t = clear ? null : shoreTangent(terrain, p, opts.steerHold)
         if (t) want = towards({ x: Math.cos(t.angle), y: Math.sin(t.angle) }, dir)
       }

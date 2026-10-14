@@ -85,9 +85,10 @@ const EDGES: EdgeSpec[] = [
  * with dir = the bridge direction (so the splice OUT of the bridge stays
  * turn-continuous with the resumed trace; the splice INTO the bridge is a
  * one-off engineered transition, not subject to the tracer's own curvature
- * limit). Exactly one bridge per trace (R12) — a second river stop just
- * ends the trace where it stands. A stop at water that ISN'T the river
- * (sea/lake), a side-edge exit, or a corridor too wide to bridge (>450 m)
+ * limit). Exactly one bridge per trace (R12), decks capped at
+ * HIGHWAY_DECK_MAX (350 m); after its one bridge the walker gets `deckMax: 0`
+ * and steers along any further river. A stop at water that ISN'T the river
+ * (sea/lake), a side-edge exit, or a river too wide to deck
  * all just end the trace where it stands — the caller compares candidates
  * by length and by whether they spanned, so a shorter dead end simply loses
  * to a better entry.

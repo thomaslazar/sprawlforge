@@ -273,8 +273,8 @@ Phase 2 as built (decisions beyond the text above, all pinned in code):
   river mouth); `deckMax: 0` after the highway's one bridge.
 - At a river too wide to deck the highway steers upstream: the sign comes
   from the narrower `riverSpanAt` measured 200 m along the bank.
-- `HIGHWAY_STEER_HOLD = 600` m: the steer is held until the field heading
-  has been dry for 600 m, or hits a deckable river.
+- `HIGHWAY_STEER_HOLD = 600` m: the steer is held until the ray 600 m ahead
+  along the field heading is dry (or hits a river narrow enough to deck).
 - R11 ranking puts an attempt that comes back to its entry edge (a
   hairpin) last; R12 is the approach heading over the last 50 m.
   `traceHighway` draws every entry axis and position up front so the rng
