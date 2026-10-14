@@ -64,6 +64,12 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
   const W = HIGHWAY_WIDTH
   const poly = (p: Pt[], stroke: string, w: number | string, extra = '') =>
     `<polyline points="${pts(p)}" fill="none" stroke="${stroke}" stroke-width="${w}"${extra}/>`
+  const total = polylineLength(line) || 1
+  const every = (s: { from: number; to: number }, step: number) => {
+    const ts: number[] = []
+    for (let m = 0; m < (s.to - s.from) * total; m += step) ts.push(s.from + m / total)
+    return ts
+  }
   const slice = (s: { from: number; to: number }) => slicePolyline(line, s.from, s.to)
 
   for (const s of segs) {
@@ -73,6 +79,7 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
       poly(p, theme.bg, W + 8),
       poly(offset(p, W / 2), theme.highway.trench, 1.5),
       poly(offset(p, -W / 2), theme.highway.trench, 1.5),
+      `<path d="${ticks(line, every(s, 20), W / 2, W / 2 - 6, true).join('')}" fill="none" stroke="${theme.highway.hatch}" stroke-width="1" opacity="0.8"/>`,
     )
   }
 
@@ -81,18 +88,17 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
     out.push(
       `<path data-halo="highway" d="${segs.map((s) => `M${pts(slice(s)).replace(/ /g, 'L')}`).join(' ')}" fill="none" stroke="${theme.road.highway}" stroke-width="${n(W * 1.6)}" stroke-opacity="0.35" stroke-linecap="round" stroke-linejoin="round"/>`,
     )
-  const total = polylineLength(line) || 1
   for (const s of segs) {
     const p = slice(s)
     out.push(`<g data-level="${s.level}">`)
+    out.push(poly(p, theme.road.highway, W, ' stroke-linecap="round"' + glowAttr))
     if (s.level === 'ground')
       for (const d of [W / 2 + 3, -(W / 2 + 3)]) out.push(poly(offset(p, d), theme.highway.trench, 1))
     if (s.level === 'elevated') {
-      const ts: number[] = []
-      for (let m = 0; m < (s.to - s.from) * total; m += 40) ts.push(s.from + m / total)
-      out.push(`<path d="${ticks(line, ts, W / 2, W / 2 + 8, true).join('')}" fill="none" stroke="${theme.highway.column}" stroke-width="2"/>`)
+      out.push(poly(offset(p, W / 2 - 3), theme.highway.column, 1.5, ' opacity="0.7"'), poly(offset(p, -(W / 2 - 3)), theme.highway.column, 1.5, ' opacity="0.7"'))
+      out.push(`<path d="${ticks(line, every(s, 40), -(W / 2 - 3), W / 2 - 3).join('')}" fill="none" stroke="${theme.highway.column}" stroke-width="1" opacity="0.5"/>`)
     }
-    out.push(poly(p, theme.road.highway, W, ' stroke-linecap="round"' + glowAttr), '</g>')
+    out.push('</g>')
   }
 
   for (const c of hw.first.crossings ?? []) {

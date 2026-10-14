@@ -150,6 +150,24 @@ describe('renderSector', () => {
     expect(svg.match(/<circle[^>]*filter="url\(#glow\)"/)).toBeNull()
   })
 
+  it('draws highway levels as in-band patterns, no column legs', () => {
+    const theme = getTheme('neon')
+    const seg = (from: number, to: number, level: 'elevated' | 'sunken' | 'ground') => ({ from, to, level, districtId: 'D01', transition: false })
+    const m: SectorModel = {
+      meta: { seed: 1, generatorVersion: GENERATOR_VERSION, params: base, sizeM: 1000, metroSeed: 1 },
+      terrain: { landform: 'inland', river: false, lakes: false, islands: false, metroSeed: 1, water: [], land: [[[[0, 0], [1000, 0], [1000, 1000], [0, 1000]]]], riverSlice: null },
+      roads: [{ id: 'RH', class: 'highway', points: [{ x: 0, y: 500 }, { x: 900, y: 500 }], width: 20, name: 'Highway', bridge: false, segments: [seg(0, 0.34, 'ground'), seg(0.34, 0.67, 'elevated'), seg(0.67, 1, 'sunken')] }],
+      districts: [], blocks: [], buildings: [], pois: [], piers: [], arcologies: [], megablocks: [], compounds: [],
+    }
+    const svg = renderSector(m, theme)
+    const group = (l: string) => svg.match(new RegExp(`<g data-level="${l}">[\\s\\S]*?</g>`))![0]
+    expect(svg).not.toContain(`stroke="${theme.highway.column}" stroke-width="2"`)
+    expect(group('elevated')).toContain(`stroke="${theme.highway.column}" stroke-width="1.5"`)
+    expect(group('elevated')).toContain(`stroke="${theme.highway.column}" stroke-width="1" opacity="0.5"`)
+    expect(group('ground')).not.toContain(theme.highway.column)
+    expect(svg).toContain(`stroke="${theme.highway.hatch}" stroke-width="1" opacity="0.8"`)
+  })
+
   it('renders shallow band and shore glow via clip paths', () => {
     const svg = renderSector(wetModel, getTheme('neon'))
     expect(svg).toContain('id="water-clip"')
