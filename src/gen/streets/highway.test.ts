@@ -402,6 +402,7 @@ describe('highway coast and mouth', () => {
     const p = tagged(1584279735, 'coastal,small,sparse,corp-run,normal,mixed,river'), s = p.size * 1000, t = sampleTerrain(p, s)
     const pts = traceHighway(p, t, s).road.points
     expect(edgeOf(pts[0], s)).not.toBeNull(); expect(edgeOf(pts.at(-1)!, s)).not.toBeNull()
+    expect(edgeOf(pts.at(-1)!, s)).not.toBe(edgeOf(pts[0], s))
   })
   it('seed 3 coastal medium: bridges the river above its mouth (deck <= 350 m) and spans two edges', () => {
     const p = tagged(3, 'coastal,medium,dense,balanced,normal,mixed,river'), s = p.size * 1000, t = sampleTerrain(p, s)
@@ -412,13 +413,13 @@ describe('highway coast and mouth', () => {
     expect(edgeOf(pts[0], s)).not.toBeNull(); expect(edgeOf(pts.at(-1)!, s)).not.toBeNull()
     expect(edgeOf(pts.at(-1)!, s)).not.toBe(edgeOf(pts[0], s))
   })
-  // ratchet, down only: highways with an end inside the window (of 200)
+  // ratchet, down only: highways with an end inside the window or back on the entry edge (of 200)
   it('highway sweep: few highways stop inside the window', { timeout: 300000 }, () => {
     let inside = 0
     for (let seed = 1; seed <= 25; seed++) for (const landform of ['coastal', 'bay'] as const) for (const river of [true, false]) for (const size of [2, 4]) {
       const p = params({ seed, size, landform, river }), s = size * 1000, pts = traceHighway(p, sampleTerrain(p, s), s).road.points
-      if (pts.length && (edgeOf(pts[0], s) === null || edgeOf(pts.at(-1)!, s) === null)) inside++
+      if (pts.length && (edgeOf(pts[0], s) === null || edgeOf(pts.at(-1)!, s) === null || edgeOf(pts.at(-1)!, s) === edgeOf(pts[0], s))) inside++
     }
-    expect(inside).toBeLessThanOrEqual(8)   // 38 at ac52d2f → 8
+    expect(inside).toBeLessThanOrEqual(20)   // 38 at ac52d2f (end inside only) → 20 with an end on the entry edge counted (8 without)
   })
 })

@@ -161,6 +161,8 @@ export function traceHighway(
   let adjacent: Pt[] | null = null
   let adjacentField: RoadField | null = null
   let spanned = false
+  let turned: Pt[] | null = null
+  let turnedField: RoadField | null = null
 
   edgeLoop: for (const edge of EDGES) {
     const axis = edge.axisBase + (rng.next() * 2 - 1) * AXIS_JITTER
@@ -173,9 +175,15 @@ export function traceHighway(
 
       const candidate = traceFromEdge(field, edge, seedAt, terrain, sizeM, opts, rng, irregularityAt)
       if (!candidate) continue
+      const last = candidate[candidate.length - 1]
+      // a hairpin (ends back on its entry edge) ranks below every other attempt
+      const hairpin = Math.abs(last[edge.travelCoord] - (sizeM - edge.oppositeValue(sizeM))) <= SPAN_TOL
+      if (hairpin) {
+        if (!turned || polylineLength(candidate) > polylineLength(turned)) { turned = candidate; turnedField = field }
+        continue
+      }
       if (!best || polylineLength(candidate) > polylineLength(best)) { best = candidate; bestField = field }
 
-      const last = candidate[candidate.length - 1]
       const p = last[edge.perpCoord]
       if ((p <= SPAN_TOL || p >= sizeM - SPAN_TOL) && (!adjacent || polylineLength(candidate) > polylineLength(adjacent))) {
         adjacent = candidate
@@ -191,6 +199,7 @@ export function traceHighway(
   }
 
   if (!spanned && adjacent) { best = adjacent; bestField = adjacentField }
+  if (!best) { best = turned; bestField = turnedField }
 
   const road: Road = { id: 'H1', class: 'highway', width: HIGHWAY_WIDTH, name: null, points: best ?? [] }
   return { road, field: bestField ?? buildRoadField(params, terrain, sizeM, [spineBasis(Math.PI / 2)]) }
