@@ -1189,6 +1189,48 @@ describe('arterial ends (model seeds)', () => {
   }
 })
 
+describe('waterfront arterials (P1 seed 42)', () => {
+  // spec 2026-10-12 §7 phase 2: arterials run along the sea, end at docks only sometimes, and leave stretches of shore bare
+  let arts: Road[] = [], terrain: Terrain, shore: (Pt | null)[] = []
+  const stats = { longestSeaRun: 0, waterEnds: 0, ends: 0, longestGap: 0 }
+  beforeAll(() => {
+    const p = { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river']), seed: 42, pack: 'generic', theme: 'print' } as SectorParams
+    const s = p.size * 1000
+    terrain = sampleTerrain(p, s)
+    arts = traceRoads(p, terrain, s).arterials.filter((a) => !a.id.startsWith(RING_ID_PREFIX))
+    const rings = terrain.water.flatMap((poly) => poly.map((ring) => ring.map(([x, y]) => ({ x, y }))))
+    const sea = rings.reduce((a, b) => (Math.abs(ringArea(b)) > Math.abs(ringArea(a)) ? b : a))
+    const closed = [...sea, sea[0]], L = polylineLength(closed)
+    for (let d = 0; d < L; d += 25) {
+      const q = pointAtT(closed, d / L)
+      const inside = q.x > 1 && q.y > 1 && q.x < s - 1 && q.y < s - 1
+      shore.push(inside && (!terrain.riverSlice || distToPolyline(q, terrain.riverSlice.course) > 300) ? q : null)
+    }
+    for (const a of arts) {
+      for (const e of [a.points[0], a.points.at(-1)!]) { stats.ends++; if (nearWater(terrain, e, 15)) stats.waterEnds++ }
+      const n = Math.ceil(polylineLength(a.points) / 10)
+      let run = 0
+      for (let k = 0; k <= n; k++) {
+        const q = pointAtT(a.points, k / n)
+        if (shore.some((z) => z && Math.hypot(z.x - q.x, z.y - q.y) < 150)) { run += 10; stats.longestSeaRun = Math.max(stats.longestSeaRun, run) } else run = 0
+      }
+    }
+    const idx = new RoadIndex(200)
+    for (const a of arts) idx.add(a.id, a.points, a.class)
+    let gap = 0
+    for (const q of shore) { if (q && !idx.nearest(q, 150)) { gap += 25; stats.longestGap = Math.max(stats.longestGap, gap) } else gap = 0 }
+  }, 120000)
+  it('an arterial runs at least 400 m within 150 m of the sea', () => {
+    expect(stats.longestSeaRun).toBeGreaterThanOrEqual(400) // 580 m (540 at ac52d2f); arterials re-roll (v9)
+  })
+  it('at most 20 % of arterial ends are water ends', () => {
+    expect(stats.waterEnds / stats.ends).toBeLessThanOrEqual(0.2) // 3 / 84 = 3.6 % (8 / 92 at ac52d2f)
+  })
+  it('some sea shore stretch over 300 m has no arterial within 150 m', () => {
+    expect(stats.longestGap).toBeGreaterThan(300) // 975 m (600 at ac52d2f)
+  })
+})
+
 describe('street free ends', () => {
   // seed 42: 12 before the ring-outward seeding re-rolled the streets stream (13 decay ends, 11 alive now)
   // arterials re-roll (v9): decay ends alive 11 / 11 / 19 -> 14 / 9 / 10 (a re-roll re-draws the decay rolls: 15 / 12 / 13 decay ends in all now)
