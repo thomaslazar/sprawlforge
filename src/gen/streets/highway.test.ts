@@ -2,11 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { pointAtT, polylineLength, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import { inWater } from '../sector/bridges'
+import { resolveTags } from '../../app/tags'
 import { sampleTerrain } from '../terrain'
 import { distToPolyline } from '../terrain/rivers'
 import type { District, HighwaySegment, Road, SectorParams, Terrain, ZoneType } from '../types'
 import {
-  FRONTAGE_ID_PREFIX, HIGHWAY_OPTS, HIGHWAY_WIDTH, FRONTAGE_OFF, assignHighwayLevels, buildInterchanges, cutStreetsAtGround, highwayCrossings, levelAt, noBuildStrips, traceHighway, frontageRoads, trimFrontage,
+  FRONTAGE_ID_PREFIX, HIGHWAY_OPTS, HIGHWAY_WIDTH, FRONTAGE_OFF, HIGHWAY_DECK_MAX, assignHighwayLevels, buildInterchanges, cutStreetsAtGround, highwayCrossings, levelAt, noBuildStrips, traceHighway, frontageRoads, trimFrontage,
 } from './highway'
 import { MAJOR } from './trace'
 
@@ -393,4 +394,32 @@ describe('frontage roads', () => {
 
 it('highway trace options keep the singularity stop off', () => {
   expect(HIGHWAY_OPTS.stopAtSingularity).toBe(false)
+})
+
+describe('highway coast and mouth', () => {
+  const tagged = (seed: number, tags: string) => ({ ...resolveTags(tags.split(',') as any), seed, pack: 'generic', theme: 'print' }) as SectorParams
+  it('seed 1584279735 coastal small: bends along the coast and ends on a window edge', () => {
+    const p = tagged(1584279735, 'coastal,small,sparse,corp-run,normal,mixed,river'), s = p.size * 1000, t = sampleTerrain(p, s)
+    const pts = traceHighway(p, t, s).road.points
+    expect(edgeOf(pts[0], s)).not.toBeNull(); expect(edgeOf(pts.at(-1)!, s)).not.toBeNull()
+    expect(edgeOf(pts.at(-1)!, s)).not.toBe(edgeOf(pts[0], s))
+  })
+  it('seed 3 coastal medium: bridges the river above its mouth (deck <= 350 m) and spans two edges', () => {
+    const p = tagged(3, 'coastal,medium,dense,balanced,normal,mixed,river'), s = p.size * 1000, t = sampleTerrain(p, s)
+    const pts = traceHighway(p, t, s).road.points
+    const b = findBridgeSegment(pts)
+    expect(b).not.toBeNull()
+    expect(Math.hypot(pts[b! + 1].x - pts[b!].x, pts[b! + 1].y - pts[b!].y)).toBeLessThanOrEqual(HIGHWAY_DECK_MAX + 10)
+    expect(edgeOf(pts[0], s)).not.toBeNull(); expect(edgeOf(pts.at(-1)!, s)).not.toBeNull()
+    expect(edgeOf(pts.at(-1)!, s)).not.toBe(edgeOf(pts[0], s))
+  })
+  // ratchet, down only: highways with an end inside the window or back on the entry edge (of 200)
+  it('highway sweep: few highways stop inside the window', { timeout: 300000 }, () => {
+    let inside = 0
+    for (let seed = 1; seed <= 25; seed++) for (const landform of ['coastal', 'bay'] as const) for (const river of [true, false]) for (const size of [2, 4]) {
+      const p = params({ seed, size, landform, river }), s = size * 1000, pts = traceHighway(p, sampleTerrain(p, s), s).road.points
+      if (pts.length && (edgeOf(pts[0], s) === null || edgeOf(pts.at(-1)!, s) === null || edgeOf(pts.at(-1)!, s) === edgeOf(pts[0], s))) inside++
+    }
+    expect(inside).toBeLessThanOrEqual(18)   // 38 at ac52d2f (end inside only) → 18 with an end on the entry edge counted
+  })
 })

@@ -1,4 +1,4 @@
-import { bboxOf, onWindowEdge, pointAtT, pointInRings, polylineLength, ringsContainsFn, segmentCrossesPolyline, slicePolyline, type Pt } from '../geometry'
+import { angleGapLines, bboxOf, onWindowEdge, pointAtT, pointInRings, polylineLength, ringsContainsFn, segmentCrossesPolyline, slicePolyline, type Pt } from '../geometry'
 import { RING_ID_PREFIX } from '../landmarks/place'
 import type { RoadIndex } from '../streets/trace'
 import { PIN_SLACK, smoothBends } from '../streets/smooth'
@@ -371,6 +371,27 @@ const JOIN_MAX_SPAN = 550
 const JOIN_MAX_TURN_COS = Math.cos(Math.PI / 4)
 const JOIN_CLEARANCE = 0.3 * 400 // 0.3 * MAJOR.separation
 
+/**
+ * True when a highway forbids a river deck a->b: it blocks only the wet part,
+ * and only by crossing the deck between two wet samples (deck on deck) or by
+ * running within 45 deg of it within `reach` of a wet sample (a deck along it).
+ * A highway crossed square beside the bank does not block.
+ */
+export function highwayBlocksDeck(index: RoadIndex, terrain: Terrain, a: Pt, b: Pt, reach: number): boolean {
+  const len = Math.hypot(b.x - a.x, b.y - a.y)
+  const abAngle = Math.atan2(b.y - a.y, b.x - a.x)
+  const n = Math.max(1, Math.ceil(len / 10))
+  let prev: Pt | null = null
+  for (let k = 0; k <= n; k++) {
+    const q = { x: a.x + ((b.x - a.x) * k) / n, y: a.y + ((b.y - a.y) * k) / n }
+    if (!inWater(terrain, q)) { prev = null; continue }
+    if (prev && index.segmentCrosses(prev, q, (_id, c) => c === 'highway')) return true
+    if (index.nearestMatching(q, reach, (h) => h.cls === 'highway' && angleGapLines(abAngle, h.segAngle) < Math.PI / 4)) return true
+    prev = q
+  }
+  return false
+}
+
 interface StubEnd { road: Road; atStart: boolean; pt: Pt; dir: Pt }
 
 /**
@@ -423,9 +444,9 @@ export function joinRiverStubs(roads: Road[], terrain: Terrain, sizeM: number, i
     const n = Math.ceil(Math.hypot(b.pt.x - a.pt.x, b.pt.y - a.pt.y) / SAMPLE)
     for (let k = 1; k < n && clear; k++) {
       const q = { x: a.pt.x + ((b.pt.x - a.pt.x) * k) / n, y: a.pt.y + ((b.pt.y - a.pt.y) * k) / n }
-      clear = !inWater(terrain, q) || !index.nearestMatching(q, JOIN_CLEARANCE, (h) => (h.cls === 'highway' || h.cls === 'arterial') && !ids.has(h.id))
+      clear = !inWater(terrain, q) || !index.nearestMatching(q, JOIN_CLEARANCE, (h) => h.cls === 'arterial' && !ids.has(h.id))
     }
-    if (!clear) continue
+    if (!clear || highwayBlocksDeck(index, terrain, a.pt, b.pt, JOIN_CLEARANCE)) continue
     used.add(a); used.add(b)
     const pa = points.get(ra)!, pb = points.get(rb)!
     const same = (p: Pt, q: Pt) => p.x === q.x && p.y === q.y

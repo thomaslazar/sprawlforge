@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { pointInRings, polylineLength, type Pt } from '../geometry'
-import { hashSeed, mulberry32 } from '../rng'
+import { onWindowEdge, pointInRings, polylineLength, type Pt } from '../geometry'
+import { hashSeed, mulberry32, type Rng } from '../rng'
 import { dryStreetPieces, inWater, isLakeShore, waterIntervals } from '../sector/bridges'
 import { effectiveIrregularity } from '../sector/zoning'
 import { sampleTerrain } from '../terrain'
@@ -9,7 +9,7 @@ import type { Road, SectorParams, Terrain } from '../types'
 import { buildRoadField, type RoadField } from './field'
 import { bboxesFar, maxBendDeg, maxCloseRun } from './testutil'
 import {
-  MAJOR, MINOR, RoadIndex, endKey, poissonSeeds, pruneDangling, riverCrossingSeeds, seedsAlong, traceLayer, traceStreamline,
+  DOCK_CHANCE, MAJOR, MINOR, RoadIndex, endKey, poissonSeeds, pruneDangling, riverCrossingSeeds, seedsAlong, traceLayer, traceStreamline,
   type Seed, type TraceOpts,
 } from './trace'
 
@@ -736,5 +736,88 @@ describe('RoadIndex.pointAlong', () => {
     expect(at.y).toBeCloseTo(150, 6)
     expect(tangent.x).toBeCloseTo(0, 6)
     expect(tangent.y).toBeCloseTo(1, 6)
+  })
+})
+
+describe('shore steer', () => {
+  const coast = { water: [[[[-10, 1000], [4010, 1000], [4010, 4010], [-10, 4010], [-10, 1000]]]], riverSlice: null } as unknown as Terrain
+  const noDock = { ...mulberry32(1), chance: () => false }
+  const dockRng = { ...mulberry32(1), chance: (p: number) => p === DOCK_CHANCE }
+  const runShore = (terrain: Terrain, rng: Rng) => {
+    const d = { x: 0, y: 1 }
+    const f: RoadField = { sizeM: 4000, patches: [], sample: () => ({ major: d, minor: { x: -d.y, y: d.x } }) }
+    return traceLayer(f, 'major', [{ at: { x: 2000, y: 400 }, dir: d, oneWay: true }], terrain, 4000, new RoadIndex(200), MAJOR, rng, () => 0.2, 'A', 'arterial')
+  }
+  const arcWhere = (pts: Pt[], pred: (q: Pt) => boolean) => {
+    let s = 0
+    for (let i = 1; i < pts.length; i++) if (pred(pts[i - 1]) && pred(pts[i])) s += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y)
+    return s
+  }
+  it('an arterial heading at the coast turns and runs along it', () => {
+    const r = runShore(coast, noDock)[0].points
+    expect(r.some((q) => inWater(coast, q))).toBe(false)
+    expect(arcWhere(r, (q) => q.y > 1000 - 150)).toBeGreaterThanOrEqual(300)
+    expect(onWindowEdge(r.at(-1)!, 4000, 1)).toBe(true)
+    expect(maxBendDeg(r)).toBeLessThanOrEqual(15 + 1e-6)
+  })
+  it('a dock walker walks on to the bank and stops', () => {
+    const r = runShore(coast, dockRng)[0].points
+    expect(r.at(-1)!.y).toBeGreaterThan(1000 - 15); expect(r.some((q) => inWater(coast, q))).toBe(false)
+    expect(Math.max(...r.map((q) => Math.abs(q.x - 2000)))).toBeLessThan(1)
+  })
+  // SHORE_MAX_TURN (180°) is not reachable in a synthetic field: the sign flip of the line field past 90° ends the walker first, so only the steer and the dry stop are pinned here
+  it('a walker on a peninsula tip steers along the bank and stops dry at the wall', () => {
+    const tip = { water: [[[[-10, -10], [1900, -10], [1900, 4010], [-10, 4010], [-10, -10]]], [[[2100, -10], [4010, -10], [4010, 4010], [2100, 4010], [2100, -10]]], [[[1900, 1000], [2100, 1000], [2100, 4010], [1900, 4010], [1900, 1000]]]], riverSlice: null } as unknown as Terrain
+    const r = runShore(tip, noDock)[0].points
+    expect(r.some((q) => inWater(tip, q))).toBe(false)
+    expect(polylineLength(r)).toBeLessThan(1500)
+    expect(Math.max(...r.map((q) => q.x))).toBeGreaterThan(2060)   // steered east along the bank
+    expect(r.at(-1)!.y).toBeGreaterThan(1000 - 60)                 // and ended at the tip, not up the strip
+  })
+  it('a river the walker may bridge is not steered around', () => {
+    const river = { water: [[[[-10, 1000], [4010, 1000], [4010, 1080], [-10, 1080], [-10, 1000]]]], riverSlice: { course: [{ x: -10, y: 1040 }, { x: 4010, y: 1040 }], width: 60 } } as unknown as Terrain
+    let rolls = 0
+    const r = runShore(river, { ...noDock, chance: () => { rolls++; return false } })[0].points
+    expect(Math.max(...r.map((q) => q.y))).toBeGreaterThan(1080)
+    expect(Math.max(...r.map((q) => Math.abs(q.x - 2000)))).toBeLessThan(1)   // never steered
+    expect(rolls).toBe(0)                                                      // no dock roll drawn
+  })
+  it('deckMax 0 steers along a river instead of stopping at it', () => {
+    const river = { water: [[[[-10, 1000], [4010, 1000], [4010, 1080], [-10, 1080], [-10, 1000]]]], riverSlice: { course: [{ x: -10, y: 1040 }, { x: 4010, y: 1040 }], width: 60 } } as unknown as Terrain
+    const d = { x: 0, y: 1 }
+    const f: RoadField = { sizeM: 4000, patches: [], sample: () => ({ major: d, minor: { x: -d.y, y: d.x } }) }
+    const go = (deckMax: number | undefined) => traceLayer(f, 'major', [{ at: { x: 2000, y: 400 }, dir: d, oneWay: true }], river, 4000, new RoadIndex(200), { ...MAJOR, bridgeRivers: false, deckMax }, noDock, () => 0.2, 'A', 'arterial')[0].points
+    const steered = go(0)
+    expect(steered.some((q) => inWater(river, q))).toBe(false)
+    expect(arcWhere(steered, (q) => q.y > 1000 - 150)).toBeGreaterThanOrEqual(300)
+    expect(go(undefined).at(-1)!.y).toBeGreaterThan(1000 - 15)   // control: ends at the bank
+  })
+})
+
+describe('river deck beside the highway (7b)', () => {
+  const river = {
+    water: [[[[500, -10], [600, -10], [600, 2010], [500, 2010], [500, -10]]]],
+    riverSlice: { course: [{ x: 550, y: -10 }, { x: 550, y: 2010 }], width: 60 },
+  } as unknown as Terrain
+  const f: RoadField = { sizeM: 2000, patches: [], sample: () => ({ major: { x: 1, y: 0 }, minor: { x: 0, y: 1 } }) }
+  const hw = (pts: Array<[number, number]>) => {
+    const i = new RoadIndex(200)
+    i.add('H1', pts.map(([x, y]) => ({ x, y })), 'highway')
+    return i
+  }
+  const run = (index: RoadIndex) =>
+    traceLayer(f, 'major', [{ at: { x: 300, y: 1000 }, dir: { x: 1, y: 0 }, oneWay: true }], river, 2000, index, MAJOR, mulberry32(1), () => 0.2, 'A', 'arterial')[0].points
+  const t35 = Math.tan((35 * Math.PI) / 180)
+  const line35: Array<[number, number]> = [[450, 1060 - 100 * t35], [650, 1060 + 100 * t35]]
+
+  it('a highway along the far bank, crossed square, no longer blocks the deck', () => {
+    // H1 (640, 0) → (640, 2000): today the deck is blocked (40–90 m) and the road ends at x ≈ 490
+    expect(Math.max(...run(hw([[640, 0], [640, 2000]])).map((q) => q.x))).toBeGreaterThan(640)
+  })
+  it('a highway at 35° to the deck over the water still blocks it', () => {
+    expect(Math.max(...run(hw(line35)).map((q) => q.x))).toBeLessThan(500)
+  })
+  it('a deck that would cross a highway over the water is refused', () => {
+    expect(Math.max(...run(hw([[550, 0], [550, 2000]])).map((q) => q.x))).toBeLessThan(500)
   })
 })

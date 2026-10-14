@@ -1,10 +1,10 @@
 import { angleGapLines, bboxOf, inWindow, onWindowEdge, PARALLEL_ANGLE, pointAtT, pointInRings, polylineLength, segHit, segmentCrossesPolyline, segmentsIntersect, simplifyPolyline, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import { RING_ID_PREFIX } from '../landmarks/place'
-import { inWater, nearWater } from '../sector/bridges'
-import { distToPolyline } from '../terrain/rivers'
+import { highwayBlocksDeck, inWater, nearWater } from '../sector/bridges'
+import { distToPolyline, nearestOnPolyline } from '../terrain/rivers'
 import type { Road, RoadClass, Terrain } from '../types'
-import type { RoadField } from './field'
+import { shoreTangent, type RoadField } from './field'
 import { crossingGuard, HOOK_MIN_WALK, joinCurve, JOIN_AHEAD } from './join'
 import { smoothBends } from './smooth'
 
@@ -40,9 +40,21 @@ export interface TraceOpts {
   stopAtSingularity?: boolean
   /** fillet radius (m) for polyline bends sharper than 15° */
   smoothRadius?: number
+  /** arterials: water this far (m) ahead that is no bridgeable river bends the road along the shore (undefined = no steer) */
+  shoreLookahead?: number
+  /** highway only: a river ahead counts as bridgeable only if its span there is <= deckMax; 0 after the one bridge */
+  deckMax?: number
+  /** highway only: once steering, keep the shore heading until the field's ray is dry this far (m) or meets a river a deck can span */
+  steerHold?: number
 }
 
-export const MAJOR: TraceOpts = { separation: 400, step: 10, maxSteps: 600, minLength: 60, jitter: 0, decay: 0, bridgeRivers: true, maxTurn: (15 * Math.PI) / 180, stopAtSingularity: true, smoothRadius: 60 }
+/** share of walkers that dock: they walk straight on and stop at the bank */
+export const DOCK_CHANCE = 0.15
+/** net heading change (rad) since the first steered step after which the steer gives up */
+export const SHORE_MAX_TURN = Math.PI
+const RIVER_STEER_SLACK = 60
+
+export const MAJOR: TraceOpts = { separation: 400, step: 10, maxSteps: 600, minLength: 60, jitter: 0, decay: 0, bridgeRivers: true, maxTurn: (15 * Math.PI) / 180, stopAtSingularity: true, smoothRadius: 60, shoreLookahead: 60 }
 export const MINOR: TraceOpts = { separation: 100, step: 10, maxSteps: 200, minLength: 60, jitter: 0.4, decay: 0.2, smoothRadius: 25 }
 
 // highway > arterial > street > ramp
@@ -291,11 +303,62 @@ function inRiverBand(terrain: Terrain, p: Pt, margin: number, corridorWidth?: nu
   return distToPolyline(p, river.course) <= (corridorWidth ?? river.width) + margin
 }
 
+/** water at q is a river the walker may bridge, so it is not steered around */
+function riverAhead(terrain: Terrain, q: Pt, deckMax: number | undefined): boolean {
+  return inRiverBand(terrain, q, RIVER_STEER_SLACK) && (deckMax === undefined || riverSpanAt(terrain, q) <= deckMax)
+}
+
+/** the first wet point along p + v*d (d in steps, up to reach), or null: the window edge ends the ray */
+function firstWet(terrain: Terrain, p: Pt, v: Pt, reach: number, step: number, sizeM: number): Pt | null {
+  for (let d = step; d <= reach; d += step) {
+    const q = { x: p.x + v.x * d, y: p.y + v.y * d }
+    if (!inWindow(q, sizeM)) return null
+    if (inWater(terrain, q)) return q
+  }
+  return null
+}
+
+/** unit tangent of the polyline segment nearest to p */
+export function courseTangentAt(line: Pt[], p: Pt): Pt {
+  let best = Infinity
+  let tangent: Pt = { x: 0, y: 1 }
+  for (let i = 0; i < line.length - 1; i++) {
+    const a = line[i]
+    const b = line[i + 1]
+    const abx = b.x - a.x
+    const aby = b.y - a.y
+    const len2 = abx * abx + aby * aby || 1
+    const f = clamp(0, 1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2)
+    const d = Math.hypot(p.x - (a.x + f * abx), p.y - (a.y + f * aby))
+    if (d < best) { best = d; const l = Math.hypot(abx, aby) || 1; tangent = { x: abx / l, y: aby / l } }
+  }
+  return tangent
+}
+
+/** wet length through q along the course normal at q, both ways; Infinity with no river or when a side is still wet at the full reach */
+export function riverSpanAt(terrain: Terrain, q: Pt): number {
+  const river = terrain.riverSlice
+  if (!river) return Infinity
+  const t = courseTangentAt(river.course, q)
+  let span = 0
+  for (const sign of [1, -1]) {
+    let d = CROSSING_SAMPLE_STEP
+    for (; d <= CROSSING_MAX_REACH; d += CROSSING_SAMPLE_STEP) {
+      if (!inWater(terrain, { x: q.x - sign * t.y * d, y: q.y + sign * t.x * d })) break
+    }
+    if (d > CROSSING_MAX_REACH) return Infinity
+    span += d - CROSSING_SAMPLE_STEP
+  }
+  return span
+}
+
 function clampToWindow(p: Pt, sizeM: number): Pt {
   return { x: clamp(0, sizeM, p.x), y: clamp(0, sizeM, p.y) }
 }
 
 const CROSSING_MAX_REACH = 450
+/** generous band used only to choose the upstream sign at a mouth */
+const RIVER_SIGN_SLACK = 450
 /** a river deck may land on an arterial this far (m) past the far bank, crossing it at DECK_LANDING_ANGLE or more */
 const DECK_LANDING = 120
 const DECK_LANDING_ANGLE = Math.PI / 4
@@ -331,6 +394,8 @@ function traceHalf(
   let p = start
   let dir = initDir
   let bridges = 0
+  let dock = false, dockDecided = false, steering = false, turned = 0
+  let prevRaw = initDir
   // parent exclusion (rules 3 and 4): only while the trace is
   // still within 0.35 × sep of the seed; beyond that the parent is ordinary
   // an arcology ring (id K<n>) is a closed circle: a spoke leaving it is never a twin of the far side
@@ -339,9 +404,48 @@ function traceHalf(
     id === sourceId && Math.hypot(at.x - seedAt.x, at.y - seedAt.y) < 0.35 * opts.separation
   for (let i = 0; i < opts.maxSteps; i++) {
     const rawDir = rk4Dir(field, axis, p, dir, opts.step)
+    const ref = steering ? prevRaw : dir
     // the highway (maxTurn set) is smoothed by its clamp instead
-    if (i > 0 && (opts.stopAtSingularity ?? opts.maxTurn === undefined) && Math.acos(clamp(-1, 1, dir.x * rawDir.x + dir.y * rawDir.y)) > SINGULARITY_TURN) break
-    const newDir = clampTurn(dir, rawDir, maxTurn)
+    if (i > 0 && (opts.stopAtSingularity ?? opts.maxTurn === undefined) && Math.acos(clamp(-1, 1, ref.x * rawDir.x + ref.y * rawDir.y)) > SINGULARITY_TURN) break
+    // a steered heading is up to 90° off the field: the flip is judged against the last raw direction instead
+    prevRaw = rawDir
+    let want = rawDir
+    if (opts.shoreLookahead && !dock && Math.abs(turned) < SHORE_MAX_TURN) {
+      // water along the heading, or along the field's own heading (a walker hugging the bank would otherwise drift into it between steers)
+      // deckMax is the highway gate. The highway marches the ray: the walker meets the FIRST wet point, and its turning radius needs that coast's tangent, not the far probe's.
+      // Arterials keep the far probe (`snaps endpoints` went red with the marched one).
+      // ponytail: the marched probe is arguably the general rule; unify when arterial pins are re-measured.
+      const wet = [dir, rawDir].map((v) => {
+        const far = { x: p.x + v.x * opts.shoreLookahead!, y: p.y + v.y * opts.shoreLookahead! }
+        return opts.deckMax === undefined ? (inWater(terrain, far) ? far : null) : firstWet(terrain, p, v, opts.shoreLookahead!, opts.step, sizeM)
+      }).find((q) => q)
+      const river = terrain.riverSlice
+      const hw = opts.deckMax !== undefined
+      if (wet && !riverAhead(terrain, wet, opts.deckMax)) {
+        if (opts.bridgeRivers && !dockDecided) { dockDecided = true; dock = rng.chance(DOCK_CHANCE) }
+        if (dock) { /* walks on to the bank */ } else if (hw && river && distToPolyline(wet, river.course) <= river.width + RIVER_SIGN_SLACK) {
+          // a river too wide to deck: turn toward the narrower reach (tie: the side nearer the heading)
+          const tg = courseTangentAt(river.course, wet)
+          const spanOn = (sign: number) => riverSpanAt(terrain, pointAtT(river.course, nearestOnPolyline({ x: p.x + sign * tg.x * 200, y: p.y + sign * tg.y * 200 }, river.course).t01))
+          const [up, down] = [spanOn(1), spanOn(-1)]
+          const sign = up === down ? (tg.x * dir.x + tg.y * dir.y >= 0 ? 1 : -1) : up < down ? 1 : -1
+          want = { x: sign * tg.x, y: sign * tg.y }
+        } else {
+          const t = shoreTangent(terrain, hw ? wet : p, opts.shoreLookahead)
+          if (t) want = towards({ x: Math.cos(t.angle), y: Math.sin(t.angle) }, dir)
+        }
+      } else if (hw && steering && opts.steerHold && !dock) {
+        // hold the shore heading until the field's own ray is clear
+        const hit = firstWet(terrain, p, rawDir, opts.steerHold, opts.step, sizeM)
+        const clear = !hit || (!!river && distToPolyline(hit, river.course) <= river.width + RIVER_SIGN_SLACK && riverSpanAt(terrain, hit) <= opts.deckMax!)
+        const t = clear ? null : shoreTangent(terrain, p, opts.steerHold)
+        if (t) want = towards({ x: Math.cos(t.angle), y: Math.sin(t.angle) }, dir)
+      }
+    }
+    const newDir = clampTurn(dir, want, maxTurn)
+    if (want !== rawDir) steering = true
+    // net signed heading change since the first steered step (field turns count too): a coast zigzag stays bounded, a loop does not
+    if (steering) turned += Math.atan2(dir.x * newDir.y - dir.y * newDir.x, dir.x * newDir.x + dir.y * newDir.y)
     const next = { x: p.x + newDir.x * opts.step, y: p.y + newDir.y * opts.step }
 
     if (!inWindow(next, sizeM)) {
@@ -369,8 +473,9 @@ function traceHalf(
       }
       let blocked = false
       for (let s = 0; s < d && !blocked; s += CROSSING_SAMPLE_STEP) {
-        blocked = !!index.nearestMatching({ x: p.x + dir.x * s, y: p.y + dir.y * s }, 0.3 * sep, (h) => sameOrHigher(h.cls) && h.id !== onto?.id)
+        blocked = !!index.nearestMatching({ x: p.x + dir.x * s, y: p.y + dir.y * s }, 0.3 * sep, (h) => h.cls !== 'highway' && sameOrHigher(h.cls) && h.id !== onto?.id)
       }
+      blocked ||= highwayBlocksDeck(index, terrain, p, land, 0.3 * sep)
       if (blocked) break
       pts.push(land)
       // the deck ends on its landing road: a T, anchored

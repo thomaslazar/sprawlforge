@@ -31,10 +31,10 @@ export function maxCloseRun(a: Pt[], b: Pt[], threshold: number): number {
 }
 
 /** for each end (within 6 m of another arterial/highway) of each arterial: meeting line angle (deg) and arc distance of the foot from the target's ends */
-export function endMeetings(roads: Road[], extra: Road[] = []): Array<{ id: string; deg: number; edge: number; end: Pt; cls: string }> {
+export function endMeetings(roads: Road[], extra: Road[] = []): Array<{ id: string; deg: number; edge: number; end: Pt; cls: string; through: boolean }> {
   const idx = new RoadIndex(200)
   for (const r of [...roads, ...extra]) idx.add(r.id, r.points, r.class)
-  const out: Array<{ id: string; deg: number; edge: number; end: Pt; cls: string }> = []
+  const out: Array<{ id: string; deg: number; edge: number; end: Pt; cls: string; through: boolean }> = []
   for (const r of roads.filter((x) => x.class === 'arterial')) {
     const p = r.points
     for (const [e, prev] of [[p[0], p[1]], [p[p.length - 1], p[p.length - 2]]] as const) {
@@ -43,7 +43,16 @@ export function endMeetings(roads: Road[], extra: Road[] = []): Array<{ id: stri
       if (!hit) continue
       let d = Math.abs(Math.atan2(e.y - prev.y, e.x - prev.x) - hit.segAngle) % Math.PI
       if (d > Math.PI / 2) d = Math.PI - d
-      out.push({ id: r.id, deg: (d * 180) / Math.PI, edge: hit.edge, end: e, cls: hit.cls })
+      // through: the end lands on the TIP of another road and carries on in the same direction (two roads end to end, one bend), not a V or a side merge
+      const tp = roads.concat(extra).find((x) => x.id === hit.id)?.points
+      // the dot > 0 test only tells a bend from a V because callers look at deg < 25 (an end that lands nearly along the target's line)
+      let through = false
+      if (tp && hit.edge < 1 && tp.length > 1) {
+        const atStart = Math.hypot(tp[0].x - e.x, tp[0].y - e.y) <= Math.hypot(tp[tp.length - 1].x - e.x, tp[tp.length - 1].y - e.y)
+        const [t0, t1] = atStart ? [tp[0], tp[1]] : [tp[tp.length - 1], tp[tp.length - 2]]
+        through = (e.x - prev.x) * (t1.x - t0.x) + (e.y - prev.y) * (t1.y - t0.y) > 0
+      }
+      out.push({ id: r.id, deg: (d * 180) / Math.PI, edge: hit.edge, end: e, cls: hit.cls, through })
     }
   }
   return out

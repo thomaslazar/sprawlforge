@@ -7,7 +7,7 @@ import type {
   District, HighwayCrossing, HighwayLevel, HighwaySegment, Road, SectorParams, Terrain, ZoneType,
 } from '../types'
 import { buildRoadField, type BasisField, type RoadField } from './field'
-import { FRONTAGE_ID_PREFIX, MAJOR, RoadIndex, measureCorridorWidth, traceStreamline, type TraceOpts } from './trace'
+import { FRONTAGE_ID_PREFIX, MAJOR, courseTangentAt, RoadIndex, measureCorridorWidth, traceStreamline, type TraceOpts } from './trace'
 
 export const HIGHWAY_WIDTH = 32
 
@@ -16,6 +16,7 @@ const ENTRY_ATTEMPTS = 3
 const ENTRY_LO = 0.3
 const ENTRY_SPAN = 0.4
 const SPAN_TOL = 1 // "reaching the opposite edge within 1 m" counts as spanning (R11)
+const APPROACH_M = 50
 const BRIDGE_MAX_TURN_FROM_HEADING = Math.PI / 4 // R12: bridge chord ≤ 45° off the recent approach heading
 
 const clamp = (lo: number, hi: number, v: number) => Math.max(lo, Math.min(hi, v))
@@ -28,23 +29,6 @@ const normalize = (v: Pt): Pt => {
 
 export function spineBasis(angle: number, weight = 2): BasisField {
   return { name: 'spine', angle: () => angle, weight: () => weight }
-}
-
-/** unit tangent of the polyline segment nearest to p */
-function nearestTangent(line: Pt[], p: Pt): Pt {
-  let best = Infinity
-  let tangent: Pt = { x: 0, y: 1 }
-  for (let i = 0; i < line.length - 1; i++) {
-    const a = line[i]
-    const b = line[i + 1]
-    const abx = b.x - a.x
-    const aby = b.y - a.y
-    const len2 = abx * abx + aby * aby || 1
-    const t = clamp(0, 1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2)
-    const d = Math.hypot(p.x - (a.x + t * abx), p.y - (a.y + t * aby))
-    if (d < best) { best = d; tangent = normalize({ x: abx, y: aby }) }
-  }
-  return tangent
 }
 
 /** clamp the angle of `to` to at most maxRad from `from` (both unit vectors) */
@@ -101,9 +85,10 @@ const EDGES: EdgeSpec[] = [
  * with dir = the bridge direction (so the splice OUT of the bridge stays
  * turn-continuous with the resumed trace; the splice INTO the bridge is a
  * one-off engineered transition, not subject to the tracer's own curvature
- * limit). Exactly one bridge per trace (R12) — a second river stop just
- * ends the trace where it stands. A stop at water that ISN'T the river
- * (sea/lake), a side-edge exit, or a corridor too wide to bridge (>450 m)
+ * limit). Exactly one bridge per trace (R12), decks capped at
+ * HIGHWAY_DECK_MAX (350 m); after its one bridge the walker gets `deckMax: 0`
+ * and steers along any further river. A stop at water that ISN'T the river
+ * (sea/lake), a side-edge exit, or a river too wide to deck
  * all just end the trace where it stands — the caller compares candidates
  * by length and by whether they spanned, so a shorter dead end simply loses
  * to a better entry.
@@ -120,7 +105,7 @@ function traceFromEdge(
 
   for (;;) {
     const seg = traceStreamline(
-      field, 'major', { at, dir, axis: 'major', crossWater: false }, terrain, sizeM, index, opts, rng, irregularityAt,
+      field, 'major', { at, dir, axis: 'major', crossWater: false }, terrain, sizeM, index, bridged ? { ...opts, deckMax: 0 } : opts, rng, irregularityAt,
     )
     if (!seg) return points
     points = points ? points.concat(seg.slice(1)) : seg
@@ -133,15 +118,18 @@ function traceFromEdge(
     const river = terrain.riverSlice
     if (!river) return points // no river: the stop was the sea or a lake
 
-    const prev = points.length > 1 ? points[points.length - 2] : last
+    // R12: the recent approach heading is the last ~50 m (a single step jitters on a bend)
+    let back = points.length - 1
+    for (let run = 0; back > 0 && run < APPROACH_M; back--) run += Math.hypot(points[back].x - points[back - 1].x, points[back].y - points[back - 1].y)
+    const prev = back < points.length - 1 ? points[back] : last
     const heading = normalize({ x: last.x - prev.x, y: last.y - prev.y })
-    const tangent = nearestTangent(river.course, last)
+    const tangent = courseTangentAt(river.course, last)
     let normal = { x: -tangent.y, y: tangent.x }
     if (normal.x * heading.x + normal.y * heading.y < 0) normal = { x: -normal.x, y: -normal.y }
     normal = clampAngleTo(heading, normal, BRIDGE_MAX_TURN_FROM_HEADING) // R12
 
     const width = measureCorridorWidth(terrain, last, normal)
-    if (width === null) return points // too wide to bridge — this trace is done
+    if (width === null || width > HIGHWAY_DECK_MAX) return points // too wide to bridge — this trace is done
 
     // R1: a far-bank point computed from an in-window `last` plus a bounded
     // offset can still land fractionally outside — clamp before pushing.
@@ -155,7 +143,13 @@ function traceFromEdge(
   }
 }
 
-export const HIGHWAY_OPTS: TraceOpts = { ...MAJOR, maxSteps: 2000, maxTurn: MAJOR.step / 300, bridgeRivers: false, stopAtSingularity: false }
+/** longest river span (m) the highway deck bridges; a wider one is steered along until it narrows */
+export const HIGHWAY_DECK_MAX = 350
+/** once steering along a shore the highway holds it until the field's ray is dry this far (m) */
+export const HIGHWAY_STEER_HOLD = 600
+
+/** shoreLookahead 300: maxTurn = step / 300 is a 300 m turning radius, and a turn of angle a needs R*tan(a/2) of room (300 m at 90 deg); fitted on seeds, 200 and 250 each leave a test red */
+export const HIGHWAY_OPTS: TraceOpts = { ...MAJOR, maxSteps: 2000, maxTurn: MAJOR.step / 300, bridgeRivers: false, stopAtSingularity: false, shoreLookahead: 300, deckMax: HIGHWAY_DECK_MAX, steerHold: HIGHWAY_STEER_HOLD }
 
 export function traceHighway(
   params: SectorParams, terrain: Terrain, sizeM: number,
@@ -170,21 +164,34 @@ export function traceHighway(
   let adjacent: Pt[] | null = null
   let adjacentField: RoadField | null = null
   let spanned = false
+  let turned: Pt[] | null = null
+  let turnedField: RoadField | null = null
 
-  edgeLoop: for (const edge of EDGES) {
-    const axis = edge.axisBase + (rng.next() * 2 - 1) * AXIS_JITTER
+  // every entry is drawn up front, so a change in how much a trace draws never reshuffles the later entries
+  const entries = EDGES.map((edge) => ({
+    axis: edge.axisBase + (rng.next() * 2 - 1) * AXIS_JITTER,
+    pos: Array.from({ length: ENTRY_ATTEMPTS }, () => sizeM * (ENTRY_LO + ENTRY_SPAN * rng.next())),
+  }))
+
+  edgeLoop: for (const [e, edge] of EDGES.entries()) {
+    const { axis, pos } = entries[e]
     const field = buildRoadField(params, terrain, sizeM, [spineBasis(axis)])
 
     for (let attempt = 0; attempt < ENTRY_ATTEMPTS; attempt++) {
-      const pos = sizeM * (ENTRY_LO + ENTRY_SPAN * rng.next())
-      const seedAt = edge.seedAt(pos, sizeM)
+      const seedAt = edge.seedAt(pos[attempt], sizeM)
       if (inWater(terrain, seedAt)) continue // R11: skip a wet entry point
 
       const candidate = traceFromEdge(field, edge, seedAt, terrain, sizeM, opts, rng, irregularityAt)
       if (!candidate) continue
+      const last = candidate[candidate.length - 1]
+      // a hairpin (ends back on its entry edge) ranks below every other attempt
+      const hairpin = Math.abs(last[edge.travelCoord] - (sizeM - edge.oppositeValue(sizeM))) <= SPAN_TOL
+      if (hairpin) {
+        if (!turned || polylineLength(candidate) > polylineLength(turned)) { turned = candidate; turnedField = field }
+        continue
+      }
       if (!best || polylineLength(candidate) > polylineLength(best)) { best = candidate; bestField = field }
 
-      const last = candidate[candidate.length - 1]
       const p = last[edge.perpCoord]
       if ((p <= SPAN_TOL || p >= sizeM - SPAN_TOL) && (!adjacent || polylineLength(candidate) > polylineLength(adjacent))) {
         adjacent = candidate
@@ -200,6 +207,7 @@ export function traceHighway(
   }
 
   if (!spanned && adjacent) { best = adjacent; bestField = adjacentField }
+  if (!best) { best = turned; bestField = turnedField }
 
   const road: Road = { id: 'H1', class: 'highway', width: HIGHWAY_WIDTH, name: null, points: best ?? [] }
   return { road, field: bestField ?? buildRoadField(params, terrain, sizeM, [spineBasis(Math.PI / 2)]) }
@@ -501,8 +509,8 @@ export function buildInterchanges(
   // ramps fold into loops when the arterial crosses at a shallow angle
   const squareEnough = (c: HighwayCrossing) => {
     const at = pointAtT(hp, c.at)
-    const h = nearestTangent(hp, at)
-    const a = nearestTangent(arterials.get(c.roadId)!.points, at)
+    const h = courseTangentAt(hp, at)
+    const a = courseTangentAt(arterials.get(c.roadId)!.points, at)
     return Math.abs(h.x * a.x + h.y * a.y) <= Math.cos(Math.PI / 4)
   }
   /** both sides run >= IC_CONTINUE_M of arc from the crossing, or meet another arterial within it */
@@ -615,7 +623,8 @@ export function frontageRoads(highway: Road, terrain: Terrain, sizeM: number, ob
     const u = normalize({ x: b.x - a.x, y: b.y - a.y })
     return Array.from({ length: EXTEND_N }, (_, k) => ({ x: b.x + u.x * SAMPLE_M * (k + 1), y: b.y + u.y * SAMPLE_M * (k + 1) }))
   }
-  const samples = [...ext(core[1], core[0]).reverse(), ...core, ...ext(core[n0 - 1] ?? core[0], core[n0])]
+  // the tangent comes from a 30 m chord: the last 10 m step of a coast exit kinks at the window clamp and would swing the extension (seed 42: F2R stopped 37 m short of the edge)
+  const samples = [...ext(core[Math.min(3, n0)], core[0]).reverse(), ...core, ...ext(core[Math.max(0, n0 - 3)], core[n0])]
   const n = samples.length - 1
   // distToPolyline: an offset point folded in on the inside of a sharp highway bend sits closer than FRONTAGE_OFF
   const ok = (p: Pt) => inWindow(p, sizeM) && !inWater(terrain, p) && !pointInRings(p, obstacles)

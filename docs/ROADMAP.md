@@ -218,6 +218,15 @@ statement).
   `src/gen/sector/perf.test.ts` is red at `PERF_SLACK=1` and skipped on CI.
   Floor: Clipper2 (`src/gen/clip.ts`) in the lot pass and face clipping, plus tracing.
   Measure on a laptop and profile before optimizing.
+- **Shore steer disagrees with the prune** — the arterial shore steer, the
+  singularity stop and the 15 m water anchor disagree: a steered walker
+  parked 20-25 m short of the bank is pruned (P3 seed 42 6 km: prune 27 > 20,
+  5 of 6 singularity stops are such walkers; arterial A006 lost 790 m).
+- **Steer-outrun highway dead ends** — 16 of 200 swept coastal 2 km cases
+  (of the 18 that still stop inside the window) end on concave coasts
+  (lookahead 300 m against the turn room).
+- **Unwelded lake-shore street ends** on seeds 19, 20, 24; the lake test
+  does not run on them.
 - **Infill streets are a crutch** — they split blocks the tracer leaves
   > 60 000 m² (hundreds on some seeds). The tracer should cover them.
 - **Odd 90° arterial bends** at orientation-patch seams.
@@ -236,7 +245,6 @@ statement).
   cloverleafs; a tag to force one highway level; ground-level noise walls
   as geometry (render-only today).
 - **Half interchanges** — an arterial that cannot continue past the highway (water/edge/obstacle beyond it) could keep a T-end there with two ramps instead of being cut back; needs T ramp geometry and spacing against full interchanges. Today such an arterial is cut back to its last arterial junction; seeds 2982258224 (one arterial fewer, blocks B0419/B0423 ≈ 61 431 and 63 192 m²) and 11 (ring spoke lost) show the cost.
-- **Arterials at water fronts** — too many arterials simply end at a lake or sea shore (the prune accepts any wet end). Revisit: an arterial reaching water should turn and run along the shore (or merge into the nearest arterial) instead of stopping; a dead end at the water should be the exception, not the rule.
 - **Tributaries and confluences** — see Deferred.
 
 ## Cross-cutting

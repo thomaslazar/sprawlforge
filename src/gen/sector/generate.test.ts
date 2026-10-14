@@ -400,7 +400,8 @@ describe('river decks land on the far-bank road (seed 42 arcology)', () => {
     && [r.points[0], r.points.at(-1)!].some((q) => Math.hypot(q.x - e.x, q.y - e.y) < 1))
   it('the three north-west arterials ending on the river are bridged', () => {
     // the NW-bank ends (investigation item 6): their decks were blocked by the arcology spoke along the far bank, 50–70 m past it
-    for (const e of [{ x: 1086, y: 2727 }, { x: 791, y: 2954 }, { x: 527, y: 3193 }])
+    // arterials re-roll (v9): ends 1086,2727 / 791,2954 / 527,3193 -> 1466,2324 / 841,2902 / 578,3119 (decks A006-b1, A004-b1, B010-b1)
+    for (const e of [{ x: 1466, y: 2324 }, { x: 841, y: 2902 }, { x: 578, y: 3119 }])
       expect(decks.filter((d) => distToPolyline(e, d.points) < 30).length, `${e.x},${e.y}`).toBeGreaterThanOrEqual(1)
   })
   it('every deck covers only the water plus its landing; the road goes on over land to an end anchored within 1 m', () => {
@@ -415,14 +416,15 @@ describe('river decks land on the far-bank road (seed 42 arcology)', () => {
       expect(anchoredAt(far, family(d.id)), `${d.id} end ${far.x.toFixed(0)},${far.y.toFixed(0)}`).toBe(true)
     }
   })
-  it('the two southern north-west decks land on the far-bank arterial by a dry piece of road', () => {
-    for (const at of [{ x: 791, y: 2954 }, { x: 527, y: 3193 }]) {
+  it('the two southern north-west decks land on the far-bank arterial (by a dry piece of road, or straight onto it)', () => {
+    // arterials re-roll (v9): 791,2954 / 527,3193 -> 841,2902 / 578,3119
+    for (const at of [{ x: 841, y: 2902 }, { x: 578, y: 3119 }]) {
       const d = decks.find((x) => distToPolyline(at, x.points) < 30)!
       const ends = [d.points[0], d.points.at(-1)!].filter((e) => Math.hypot(e.x - at.x, e.y - at.y) > 100)
       expect(ends.length).toBe(1)
-      const piece = landing(d, ends[0])!
-      expect(piece, `${d.id} landing piece`).toBeDefined()
-      const far = [piece.points[0], piece.points.at(-1)!].find((q) => Math.hypot(q.x - ends[0].x, q.y - ends[0].y) > 1)!
+      const piece = landing(d, ends[0])
+      // arterials re-roll (v9): A004-b1 lands on A002 4 m past the water, so no dry piece is left; the deck's own end is then the far end
+      const far = piece ? [piece.points[0], piece.points.at(-1)!].find((q) => Math.hypot(q.x - ends[0].x, q.y - ends[0].y) > 1)! : ends[0]
       expect(m.roads.some((r) => r.class === 'arterial' && family(r.id) !== family(d.id) && distToPolyline(far, r.points) <= 1), `${d.id} lands`).toBe(true)
     }
   })
@@ -518,9 +520,9 @@ describe('reference seed road quality', () => {
 
   it('no acute arterial merges', () => {
     const S = m.meta.sizeM
-    // ends on the window edge, at water or on the highway are exempt
+    // ends on the window edge, at water or on the highway are exempt; so is an end that lands on another road's tip and carries on that way (arterials re-roll v9: B001/B004 meet at 545,515 as one 16.5° bend; the folded line angle cannot tell that from a V)
     const ms = endMeetings(arts, hw).filter(
-      (x) => x.cls === 'arterial' && !nearWater(m.terrain, x.end, 25) && x.end.x > 1 && x.end.y > 1 && x.end.x < S - 1 && x.end.y < S - 1,
+      (x) => x.cls === 'arterial' && !x.through && !nearWater(m.terrain, x.end, 25) && x.end.x > 1 && x.end.y > 1 && x.end.x < S - 1 && x.end.y < S - 1,
     )
     console.log('meetings', ms.length, JSON.stringify(ms.filter((x) => x.deg < 25).map((x) => [x.id, Math.round(x.end.x), Math.round(x.end.y), Math.round(x.deg * 10) / 10, Math.round(x.edge)])))
     expect(ms.filter((x) => x.deg < 25)).toEqual([])
@@ -668,7 +670,7 @@ describe('block size', () => {
         // blocks beside a megablock, and an arcology's own block, stay big on purpose
         // a strip block is a long band between frontage road and highway (about 40 m wide): its area says nothing about street spacing
         const nearCore = m.megablocks.some((k) => k.core.some((p) => pointInRings(p, [b.footprint])) || pointInRings(k.center, [b.footprint]))
-        return Math.abs(ringArea(b.footprint)) > ([2982258224, 42].includes(params.seed) ? 64000 : 60000) && // 2982258224 and 42: 64000 (was 60000; measured 61431 / 63192 for B0419/B0423 and 63158 / 62743 for B0505/B0829): arterials cross the highway; a tail past it with no arterial junction is pruned (half interchanges: ROADMAP)
+        return Math.abs(ringArea(b.footprint)) > ([2982258224, 42].includes(params.seed) ? 64000 : params.seed === 4280430344 ? 61000 : 60000) && // 4280430344: 61000 (was 60000; arterials re-roll (v9): B4406 60227, a courtyard block 220 m from water, user accepted) // 2982258224 and 42: 64000 (was 60000; measured 61431 / 63192 for B0419/B0423 and 63158 / 62743 for B0505/B0829): arterials cross the highway; a tail past it with no arterial junction is pruned (half interchanges: ROADMAP)
          Math.min(c.x, c.y, s - c.x, s - c.y) >= 150 && !wet(c) && !nearCore && b.style !== 'strip' && !m.arcologies.some((a) => pointInRings(a.center, [b.footprint]))
       })
       expect(big.map((b) => `${b.id} ${Math.round(Math.abs(ringArea(b.footprint)))}`), `seed ${params.seed}`).toEqual([])
@@ -969,6 +971,17 @@ describe.each([
   })
 })
 
+// lake-shore street ends of the traced streets: not joined to another road, on a water ring
+function shoreEnds(m: ReturnType<typeof generateSector>, params: SectorParams): Pt[] {
+  const sizeM = params.size * 1000
+  const nearRing = (e: Pt) => m.terrain.water.some((poly) => poly.some((ring) => distToPolyline(e, [...ring, ring[0]].map(([x, y]) => ({ x, y }))) < 6))
+  // infill chords end on the lake ring on purpose (it is the block edge); only traced streets are checked. Exact: infill ids continue the traced counter
+  const traced = new Set(traceRoads(params, m.terrain, sizeM).streets.map((r) => r.id))
+  // an end welded to another road is a junction, not a stub (clipper2 re-roll (v8): S1196 ends on an arterial that hugs a lake)
+  const joined = (e: Pt, self: Road) => m.roads.some((o) => o.id !== self.id && distToPolyline(e, o.points) <= 6)
+  return m.roads.filter((r) => r.class === 'street' && traced.has(r.id.split('-')[0])).flatMap((r) => [r.points[0], r.points.at(-1)!].filter((e) => !joined(e, r))).filter(nearRing)
+}
+
 describe('lakes bound blocks', () => {
   const models: [string, SectorParams][] = [
     ['seed 782008753 inland 6 km', { ...base, seed: 782008753, size: 6, landform: 'inland', density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, river: true, lakes: true, islands: true, piers: true, pack: 'generic', theme: 'print' }],
@@ -987,16 +1000,9 @@ describe('lakes bound blocks', () => {
       expect(streets.filter((r) => r.points.some((p) => inWater(m.terrain, p))).map((r) => r.id)).toEqual([])
       if (!params.lakes) return
       const sizeM = params.size * 1000
-      const nearRing = (e: Pt) => m.terrain.water.some((poly) => poly.some((ring) => distToPolyline(e, [...ring, ring[0]].map(([x, y]) => ({ x, y }))) < 6))
-      // infill chords end on the lake ring on purpose (it is the block edge); only traced streets are checked. Exact: infill ids continue the traced counter
-      const traced = new Set(traceRoads(params, m.terrain, sizeM).streets.map((r) => r.id))
-      // an end welded to another road is a junction, not a stub (clipper2 re-roll (v8): S1196 ends on an arterial that hugs a lake)
-      const joined = (e: Pt, self: Road) => m.roads.some((o) => o.id !== self.id && distToPolyline(e, o.points) <= 6)
-      const ends = streets.filter((r) => traced.has(r.id.split('-')[0])).flatMap((r) => [r.points[0], r.points.at(-1)!].filter((e) => !joined(e, r))).filter(nearRing)
+      const ends = shoreEnds(m, params)
       expect(m.terrain.water.length).toBeGreaterThan(1) // lakes exist, so the check below is not vacuous
       expect(ends.filter((e) => isLakeShore(m.terrain, e, sizeM))).toEqual([])
-      // river/sea shore stubs of >= 150 m stay: some street end sits at a river/sea shore
-      expect(ends.filter((e) => !isLakeShore(m.terrain, e, sizeM)).length).toBeGreaterThan(0)
     })
     it(`no big block has its centroid in a lake `, () => {
       const bad = m.blocks.filter((b) => {
@@ -1011,6 +1017,17 @@ describe('lakes bound blocks', () => {
       }).map((b) => b.id)
       expect(bad).toEqual([])
     })
+  })
+})
+
+describe('river/sea shore stubs', () => {
+  // arterials re-roll (v9): on 782008753 the arterial along the shore leaves no unwelded river/sea street end (0); 2268324149 has 5 (seeds 42 / 426750495 have 1, 1-30 mostly 2-7)
+  const params: SectorParams = { ...base, seed: 2268324149, size: 6, landform: 'inland', density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, river: true, lakes: true, islands: true, piers: true, pack: 'generic', theme: 'print' }
+  let m: ReturnType<typeof generateSector>
+  beforeAll(() => { m = modelFor(params) }, 90000)
+  it('some unwelded river/sea stub stays (>= 150 m stubs are kept)', () => {
+    const sizeM = params.size * 1000
+    expect(shoreEnds(m, params).filter((e) => !isLakeShore(m.terrain, e, sizeM)).length).toBeGreaterThan(0)
   })
 })
 
@@ -1186,15 +1203,58 @@ describe('arterial ends (model seeds)', () => {
   }
 })
 
+describe('waterfront arterials (P1 seed 42)', () => {
+  // spec 2026-10-12 §7 phase 2: arterials run along the sea, end at docks only sometimes, and leave stretches of shore bare
+  let arts: Road[] = [], terrain: Terrain, shore: (Pt | null)[] = []
+  const stats = { longestSeaRun: 0, waterEnds: 0, ends: 0, longestGap: 0 }
+  beforeAll(() => {
+    const p = { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river']), seed: 42, pack: 'generic', theme: 'print' } as SectorParams
+    const s = p.size * 1000
+    terrain = sampleTerrain(p, s)
+    arts = traceRoads(p, terrain, s).arterials.filter((a) => !a.id.startsWith(RING_ID_PREFIX))
+    const rings = terrain.water.flatMap((poly) => poly.map((ring) => ring.map(([x, y]) => ({ x, y }))))
+    const sea = rings.reduce((a, b) => (Math.abs(ringArea(b)) > Math.abs(ringArea(a)) ? b : a))
+    const closed = [...sea, sea[0]], L = polylineLength(closed)
+    for (let d = 0; d < L; d += 25) {
+      const q = pointAtT(closed, d / L)
+      const inside = q.x > 1 && q.y > 1 && q.x < s - 1 && q.y < s - 1
+      shore.push(inside && (!terrain.riverSlice || distToPolyline(q, terrain.riverSlice.course) > 300) ? q : null)
+    }
+    for (const a of arts) {
+      for (const e of [a.points[0], a.points.at(-1)!]) { stats.ends++; if (nearWater(terrain, e, 15)) stats.waterEnds++ }
+      const n = Math.ceil(polylineLength(a.points) / 10)
+      let run = 0
+      for (let k = 0; k <= n; k++) {
+        const q = pointAtT(a.points, k / n)
+        if (shore.some((z) => z && Math.hypot(z.x - q.x, z.y - q.y) < 150)) { run += 10; stats.longestSeaRun = Math.max(stats.longestSeaRun, run) } else run = 0
+      }
+    }
+    const idx = new RoadIndex(200)
+    for (const a of arts) idx.add(a.id, a.points, a.class)
+    let gap = 0
+    for (const q of shore) { if (q && !idx.nearest(q, 150)) { gap += 25; stats.longestGap = Math.max(stats.longestGap, gap) } else gap = 0 }
+  }, 120000)
+  it('an arterial runs at least 400 m within 150 m of the sea', () => {
+    expect(stats.longestSeaRun).toBeGreaterThanOrEqual(400) // 580 m (540 at ac52d2f); arterials re-roll (v9)
+  })
+  it('at most 20 % of arterial ends are water ends', () => {
+    expect(stats.waterEnds / stats.ends).toBeLessThanOrEqual(0.2) // 3 / 84 = 3.6 % (8 / 92 at ac52d2f)
+  })
+  it('some sea shore stretch over 300 m has no arterial within 150 m', () => {
+    expect(stats.longestGap).toBeGreaterThan(300) // 975 m (600 at ac52d2f)
+  })
+})
+
 describe('street free ends', () => {
   // seed 42: 12 before the ring-outward seeding re-rolled the streets stream (13 decay ends, 11 alive now)
-  const DECAY: Record<number, number> = { 42: 11, 426750495: 11, 2268324149: 19 } // decay ends alive after the final prune, as measured without it
+  // arterials re-roll (v9): decay ends alive 11 / 11 / 19 -> 14 / 9 / 10 (a re-roll re-draws the decay rolls: 15 / 12 / 13 decay ends in all now)
+  const DECAY: Record<number, number> = { 42: 14, 426750495: 9, 2268324149: 10 } // decay ends alive after the final prune, as measured without it
   const refs: [string, number, SectorParams, number, number][] = [
     // [label, seed, params, BOUND, STRAY]. BOUND = free ends measured at 3e3416d, all but STRAY decay cul-de-sacs; a re-roll re-pins it to the new decay count; a non-decay free end is a defect.
     // STRAY = the free ends that are no decay end: infill ends (S372/S375 at the window inset, S351 6.0 m off a street, shore ends), kept by the final prune because blocks were cut along them. Ratchet down, never up.
     ['seed 42', 42, { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 12, 3],
-    ['seed 426750495', 426750495, { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 13, 4],
-    ['seed 2268324149', 2268324149, { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 16, 2],
+    ['seed 426750495', 426750495, { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 11, 2], // arterials re-roll (v9): 13 / 4 -> 11 / 2 (S157 1074,1639, S165 1755,1994 infill ends)
+    ['seed 2268324149', 2268324149, { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 9, 3], // arterials re-roll (v9): BOUND 16 -> 9; STRAY 2 -> 3 (S499 1642,671, S522 2626,1921, S525 2685,1852, inland infill ends; user accepted)
   ]
   for (const [label, seed, params, bound, strayBound] of refs) describe(label, () => {
     let m: SectorModel
@@ -1288,7 +1348,7 @@ describe('block sides have a road', () => {
   // [label, params, BOUND]: edges of block footprints with no road within 10 m, no water within 15 m, not on the window edge, not in a megablock/arcology
   const refs: [string, SectorParams, number][] = [
     ['seed 42', { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 3],
-    ['seed 426750495', { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 7],
+    ['seed 426750495', { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 8], // arterials re-roll (v9): 7 -> 8 after the frontage-end fix re-rolled the seed (B2507/B2508/B2525 near the river; user accepted)
     ['seed 2268324149', { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 14],
   ]
   for (const [label, params, bound] of refs) it(label, () => {
@@ -1309,5 +1369,20 @@ describe('block sides have a road', () => {
     }
     console.log(`block sides without a road ${label}: ${bad.length}`, bad.join(' '))
     expect(bad.length, label).toBeLessThanOrEqual(bound)
+  })
+})
+
+describe('river ends beside the highway (seed 426750495)', () => {
+  // BOUND measured at e4f7ec2: 2 (the highway 30 m and 93 m from the deck blocked it); with decks crossing the highway square: 1. Ratchet down, never up.
+  it('few arterials end unbridged at the river', () => {
+    const params = { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams
+    const terrain = sampleTerrain(params, 2000)
+    const course = terrain.riverSlice!.course
+    const ends = traceRoads(params, terrain, 2000).arterials
+      .filter((r) => !r.id.startsWith(RING_ID_PREFIX))
+      .flatMap((r) => [r.points[0], r.points.at(-1)!])
+      .filter((e) => nearWater(terrain, e, 15) && distToPolyline(e, course) <= 250)
+    console.log('river ends beside the highway', ends.length)
+    expect(ends.length).toBeLessThanOrEqual(1)
   })
 })
