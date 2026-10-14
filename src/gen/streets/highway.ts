@@ -535,12 +535,13 @@ export function buildInterchanges(
       return others.some((o) => distToPolyline(end, o.points) <= 6)
     })
   }
+  /** a dry highway point clear of level transitions: the site rule shared by full and half interchanges */
+  const siteOk = (c: HighwayCrossing) =>
+    !inWater(terrain, pointAtT(hp, c.at)) && !starts.some((s) => Math.abs(c.at * len - s) < IC_TRANSITION_CLEAR_M)
   const ok = (c: HighwayCrossing) =>
-    arterials.has(c.roadId) && !c.tee && !chosen.includes(c) && squareEnough(c) && continues(c)
-    && !inWater(terrain, pointAtT(hp, c.at))
+    siteOk(c) && arterials.has(c.roadId) && !c.tee && !chosen.includes(c) && squareEnough(c) && continues(c)
     && Math.abs(c.at * len - target) <= IC_REACH_M
     && chosen.every((o) => Math.abs(o.at - c.at) * len >= IC_REACH_M)
-    && !starts.some((s) => Math.abs(c.at * len - s) < IC_TRANSITION_CLEAR_M)
     && rampTriples(c) !== null
   for (let s = IC_SPACING_M; s < len; s += IC_SPACING_M) {
     target = s
@@ -551,7 +552,7 @@ export function buildInterchanges(
   // tees in highway order: a half interchange on the arterial's own side, if it fits and keeps IC_REACH_M from every chosen one
   const halves: Array<[HighwayCrossing, Array<[Pt, Pt, Pt]>]> = []
   for (const c of out) {
-    if (!c.tee || !arterials.has(c.roadId)) continue
+    if (!c.tee || !arterials.has(c.roadId) || !siteOk(c)) continue
     const side = nearestT(pointAtT(hp, c.at), arterials.get(c.roadId)!.points).t > 0.5 ? -1 : 1
     const tr = rampTriples(c, [side])
     if (!tr || [...chosen, ...halves.map((h) => h[0])].some((o) => Math.abs(o.at - c.at) * len < IC_REACH_M)) continue

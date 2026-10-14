@@ -452,7 +452,20 @@ describe('half interchanges', () => {
     expect(crossings.filter((c) => c.half).map((c) => c.roadId)).toEqual(['T1']); expect(ramps).toHaveLength(2)
   })
   it('a T end whose ramps do not fit stays a plain T', () => {
-    expect(build([tee('T', 1000, 1950)]).ramps).toHaveLength(0)
-    expect(build([tee('T', 100)]).ramps).toHaveLength(0)
+    for (const arts of [[tee('T', 1000, 1950)], [tee('T', 100)]]) {
+      const { crossings, ramps } = build(arts)
+      expect(ramps).toHaveLength(0)
+      expect(crossings).toEqual([expect.objectContaining({ tee: true })]); expect(crossings[0].half).toBeFalsy()
+    }
+  })
+  it('a T end on water or within 200 m of a level transition stays a plain T', () => {
+    const arts = [tee('T', 1000)]
+    const wetB = buildInterchanges(hw, highwayCrossings(hw, arts, [seg(0, 1, 'elevated')], rng()), arts, [seg(0, 1, 'elevated')], wet(900, 1100), 4000)
+    const segs = [seg(0, 0.26, 'ground'), seg(0.26, 1, 'elevated', true)]
+    const trB = buildInterchanges(hw, highwayCrossings(hw, arts, segs, rng()), arts, segs, dry, 4000)
+    for (const { crossings, ramps } of [wetB, trB]) {
+      expect(ramps).toHaveLength(0)
+      expect(crossings).toEqual([expect.objectContaining({ tee: true })]); expect(crossings[0].half).toBeFalsy()
+    }
   })
 })

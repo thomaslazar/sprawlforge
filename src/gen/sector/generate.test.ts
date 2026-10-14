@@ -741,7 +741,7 @@ describe('streets at the highway', () => {
         const rs = m.roads.filter((r) => r.id === cr.roadId || r.id.startsWith(cr.roadId + '-'))
         expect(rs.length).toBeGreaterThan(0)
         const sides = new Set(rs.flatMap((r) => r.points.map(side)))
-        sides.delete(0)
+        if (cr.tee) sides.delete(0)
         if (cr.tee) expect(sides.has(-1) !== sides.has(1), cr.roadId).toBe(true)
         else expect(sides.has(-1) && sides.has(1)).toBe(true)
       }
