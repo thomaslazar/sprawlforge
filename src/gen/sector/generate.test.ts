@@ -971,10 +971,20 @@ describe.each([
   })
 })
 
+// lake-shore street ends of the traced streets: not joined to another road, on a water ring
+function shoreEnds(m: ReturnType<typeof generateSector>, params: SectorParams): Pt[] {
+  const sizeM = params.size * 1000
+  const nearRing = (e: Pt) => m.terrain.water.some((poly) => poly.some((ring) => distToPolyline(e, [...ring, ring[0]].map(([x, y]) => ({ x, y }))) < 6))
+  // infill chords end on the lake ring on purpose (it is the block edge); only traced streets are checked. Exact: infill ids continue the traced counter
+  const traced = new Set(traceRoads(params, m.terrain, sizeM).streets.map((r) => r.id))
+  // an end welded to another road is a junction, not a stub (clipper2 re-roll (v8): S1196 ends on an arterial that hugs a lake)
+  const joined = (e: Pt, self: Road) => m.roads.some((o) => o.id !== self.id && distToPolyline(e, o.points) <= 6)
+  return m.roads.filter((r) => r.class === 'street' && traced.has(r.id.split('-')[0])).flatMap((r) => [r.points[0], r.points.at(-1)!].filter((e) => !joined(e, r))).filter(nearRing)
+}
+
 describe('lakes bound blocks', () => {
   const models: [string, SectorParams][] = [
-    // arterials re-roll (v9): witness seed 782008753 -> 2268324149; on 782008753 the arterial along the shore leaves no unwelded river/sea street end (0), 2268324149 has 5 (seeds 42 / 426750495 have 1, 1-30 mostly 2-7)
-    ['seed 2268324149 inland 6 km', { ...base, seed: 2268324149, size: 6, landform: 'inland', density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, river: true, lakes: true, islands: true, piers: true, pack: 'generic', theme: 'print' }],
+    ['seed 782008753 inland 6 km', { ...base, seed: 782008753, size: 6, landform: 'inland', density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, river: true, lakes: true, islands: true, piers: true, pack: 'generic', theme: 'print' }],
     ['seed 42 inland corp 0.85', { ...base, corpDominance: 0.85 }],
     ['seed 7 bay corp 0.15', { ...base, seed: 7, landform: 'bay', corpDominance: 0.15 }],
   ]
@@ -990,16 +1000,9 @@ describe('lakes bound blocks', () => {
       expect(streets.filter((r) => r.points.some((p) => inWater(m.terrain, p))).map((r) => r.id)).toEqual([])
       if (!params.lakes) return
       const sizeM = params.size * 1000
-      const nearRing = (e: Pt) => m.terrain.water.some((poly) => poly.some((ring) => distToPolyline(e, [...ring, ring[0]].map(([x, y]) => ({ x, y }))) < 6))
-      // infill chords end on the lake ring on purpose (it is the block edge); only traced streets are checked. Exact: infill ids continue the traced counter
-      const traced = new Set(traceRoads(params, m.terrain, sizeM).streets.map((r) => r.id))
-      // an end welded to another road is a junction, not a stub (clipper2 re-roll (v8): S1196 ends on an arterial that hugs a lake)
-      const joined = (e: Pt, self: Road) => m.roads.some((o) => o.id !== self.id && distToPolyline(e, o.points) <= 6)
-      const ends = streets.filter((r) => traced.has(r.id.split('-')[0])).flatMap((r) => [r.points[0], r.points.at(-1)!].filter((e) => !joined(e, r))).filter(nearRing)
+      const ends = shoreEnds(m, params)
       expect(m.terrain.water.length).toBeGreaterThan(1) // lakes exist, so the check below is not vacuous
       expect(ends.filter((e) => isLakeShore(m.terrain, e, sizeM))).toEqual([])
-      // river/sea shore stubs of >= 150 m stay: some street end sits at a river/sea shore
-      expect(ends.filter((e) => !isLakeShore(m.terrain, e, sizeM)).length).toBeGreaterThan(0)
     })
     it(`no big block has its centroid in a lake `, () => {
       const bad = m.blocks.filter((b) => {
@@ -1014,6 +1017,17 @@ describe('lakes bound blocks', () => {
       }).map((b) => b.id)
       expect(bad).toEqual([])
     })
+  })
+})
+
+describe('river/sea shore stubs', () => {
+  // arterials re-roll (v9): on 782008753 the arterial along the shore leaves no unwelded river/sea street end (0); 2268324149 has 5 (seeds 42 / 426750495 have 1, 1-30 mostly 2-7)
+  const params: SectorParams = { ...base, seed: 2268324149, size: 6, landform: 'inland', density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, river: true, lakes: true, islands: true, piers: true, pack: 'generic', theme: 'print' }
+  let m: ReturnType<typeof generateSector>
+  beforeAll(() => { m = modelFor(params) }, 90000)
+  it('some unwelded river/sea stub stays (>= 150 m stubs are kept)', () => {
+    const sizeM = params.size * 1000
+    expect(shoreEnds(m, params).filter((e) => !isLakeShore(m.terrain, e, sizeM)).length).toBeGreaterThan(0)
   })
 })
 
