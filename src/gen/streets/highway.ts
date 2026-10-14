@@ -6,6 +6,7 @@ import { distToPolyline } from '../terrain/rivers'
 import type {
   District, HighwayCrossing, HighwayLevel, HighwaySegment, Road, SectorParams, Terrain, ZoneType,
 } from '../types'
+import { TEE_SNAP_M } from './join'
 import { buildRoadField, type BasisField, type RoadField } from './field'
 import { FRONTAGE_ID_PREFIX, MAJOR, courseTangentAt, RoadIndex, measureCorridorWidth, traceStreamline, type TraceOpts } from './trace'
 
@@ -359,6 +360,15 @@ export function highwayCrossings(highway: Road, roads: Road[], segments: Highway
       }
     }
   }
+  // an arterial ending on the highway is a tee: no rng, ground level goes under like an elevated one
+  for (const road of roads) {
+    if (road.class !== 'arterial') continue
+    for (const end of [road.points[0], road.points[road.points.length - 1]]) {
+      const n = nearestT(end, hp)
+      if (n.dist > TEE_SNAP_M) continue
+      out.push({ roadId: road.id, at: n.t, kind: levelAt(segments, n.t) === 'sunken' ? 'over' : 'under', interchange: false, tee: true })
+    }
+  }
   const seen = new Set<string>()
   return out.filter((c) => {
     const k = c.roadId + ':' + Math.round(c.at * 1e6)
@@ -481,14 +491,14 @@ export function buildInterchanges(
   const arterials = new Map(roads.filter((r) => r.class === 'arterial').map((r) => [r.id, r]))
   const starts = segments.filter((s) => s.transition).map((s) => s.from * len)
   let target = 0
-  /** the four ramps' [arterial end, control, highway end], or null unless all four fit */
-  const rampTriples = (c: HighwayCrossing): Array<[Pt, Pt, Pt]> | null => {
+  /** the ramps' (four, or two per side given) [arterial end, control, highway end], or null unless all four fit */
+  const rampTriples = (c: HighwayCrossing, sides: readonly number[] = [-1, 1]): Array<[Pt, Pt, Pt]> | null => {
     const art = arterials.get(c.roadId)!
     const at = pointAtT(hp, c.at)
     const artLen = polylineLength(art.points)
     const artT = nearestT(at, art.points).t
     const res: Array<[Pt, Pt, Pt]> = []
-    for (const side of [-1, 1]) {
+    for (const side of sides) {
       const ta = artT + (side * RAMP_ART_M) / artLen
       if (ta < 0 || ta > 1) return null
       const a = pointAtT(art.points, ta)
@@ -526,7 +536,7 @@ export function buildInterchanges(
     })
   }
   const ok = (c: HighwayCrossing) =>
-    arterials.has(c.roadId) && !chosen.includes(c) && squareEnough(c) && continues(c)
+    arterials.has(c.roadId) && !c.tee && !chosen.includes(c) && squareEnough(c) && continues(c)
     && !inWater(terrain, pointAtT(hp, c.at))
     && Math.abs(c.at * len - target) <= IC_REACH_M
     && chosen.every((o) => Math.abs(o.at - c.at) * len >= IC_REACH_M)
@@ -538,12 +548,22 @@ export function buildInterchanges(
     for (const c of out) if (ok(c) && (!best || Math.abs(c.at * len - s) < Math.abs(best.at * len - s))) best = c
     if (best) { best.interchange = true; chosen.push(best) }
   }
-  const ramps: Road[] = []
-  for (const c of chosen) {
-    for (const [a, ctrl, h] of rampTriples(c)!) {
-      ramps.push(ramp('R' + String(ramps.length + 1).padStart(3, '0'), a, ctrl, h))
-    }
+  // tees in highway order: a half interchange on the arterial's own side, if it fits and keeps IC_REACH_M from every chosen one
+  const halves: Array<[HighwayCrossing, Array<[Pt, Pt, Pt]>]> = []
+  for (const c of out) {
+    if (!c.tee || !arterials.has(c.roadId)) continue
+    const side = nearestT(pointAtT(hp, c.at), arterials.get(c.roadId)!.points).t > 0.5 ? -1 : 1
+    const tr = rampTriples(c, [side])
+    if (!tr || [...chosen, ...halves.map((h) => h[0])].some((o) => Math.abs(o.at - c.at) * len < IC_REACH_M)) continue
+    c.half = true
+    halves.push([c, tr])
   }
+  const ramps: Road[] = []
+  const lay = (tr: Array<[Pt, Pt, Pt]>) => {
+    for (const [a, ctrl, h] of tr) ramps.push(ramp('R' + String(ramps.length + 1).padStart(3, '0'), a, ctrl, h))
+  }
+  for (const c of chosen) lay(rampTriples(c)!)
+  for (const [, tr] of halves) lay(tr)
   return { crossings: out, ramps }
 }
 

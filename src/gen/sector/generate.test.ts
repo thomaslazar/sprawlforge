@@ -305,13 +305,14 @@ describe('generateSector invariants', () => {
     }
   })
 
-  it('ramp count is four times the interchange count', () => {
+  it('ramp count is four per interchange plus two per half interchange', () => {
     for (const p of sweep) {
       const m = generateSector(p)
       const hw = m.roads.find((r) => r.class === 'highway')
       if (!hw) continue
-      const ics = (hw.crossings ?? []).filter((c) => c.interchange).length
-      expect(m.roads.filter((r) => r.class === 'ramp'), `${p.seed}/${p.landform}`).toHaveLength(4 * ics)
+      const cs = hw.crossings ?? []
+      const ramps = 4 * cs.filter((c) => c.interchange).length + 2 * cs.filter((c) => c.half).length
+      expect(m.roads.filter((r) => r.class === 'ramp'), `${p.seed}/${p.landform}`).toHaveLength(ramps)
     }
   })
 
@@ -477,7 +478,7 @@ describe('river bridges (seed 42)', () => {
     for (const r of arts) for (const e of [r.points[0], r.points.at(-1)!]) {
       if (e.x < 1 || e.y < 1 || e.x > S - 1 || e.y > S - 1) continue
       if (idx.nearestMatching(e, 6, (h) => h.id !== r.id)) continue
-      for (const h of hw) { const d = distToPolyline(e, h.points); if (d <= 30) expect(d, r.id).toBeLessThanOrEqual(TEE_SNAP_M) }
+      for (const h of hw) { const d = distToPolyline(e, h.points); if (d <= 30) expect(d, r.id).toBeLessThanOrEqual(1) }
     }
   })
   it('every arterial bridge is shorter than 600 m', () => {
@@ -740,7 +741,9 @@ describe('streets at the highway', () => {
         const rs = m.roads.filter((r) => r.id === cr.roadId || r.id.startsWith(cr.roadId + '-'))
         expect(rs.length).toBeGreaterThan(0)
         const sides = new Set(rs.flatMap((r) => r.points.map(side)))
-        expect(sides.has(-1) && sides.has(1)).toBe(true)
+        sides.delete(0)
+        if (cr.tee) expect(sides.has(-1) !== sides.has(1), cr.roadId).toBe(true)
+        else expect(sides.has(-1) && sides.has(1)).toBe(true)
       }
     })
   }
@@ -1187,7 +1190,6 @@ describe('arterial ends (model seeds)', () => {
       const sizeM = p.size * 1000
       const terrain = sampleTerrain(p, sizeM)
       const t = traceRoads(p, terrain, sizeM)
-      console.log('PRUNED', name, t.pruned)
       expect(t.pruned, 'prune fired').toBeLessThanOrEqual(20)
       const idx = new RoadIndex(200)
       for (const r of t.arterials) idx.add(r.id, r.points, r.class)

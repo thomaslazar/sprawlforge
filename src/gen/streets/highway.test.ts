@@ -423,3 +423,36 @@ describe('highway coast and mouth', () => {
     expect(inside).toBeLessThanOrEqual(18)   // 38 at ac52d2f (end inside only) → 18 with an end on the entry edge counted
   })
 })
+
+describe('half interchanges', () => {
+  const tee = (id: string, y: number, x0 = 0) => line(id, 'arterial', { x: x0, y }, { x: 2000, y })
+  const build = (arts: Road[], level: HighwaySegment['level'] = 'elevated') => {
+    const segs = [seg(0, 1, level)]
+    return buildInterchanges(hw, highwayCrossings(hw, arts, segs, rng()), arts, segs, dry, 4000)
+  }
+  it('reports a T end as a tee crossing, kind by level, drawing no rng', () => {
+    const r = rng(), cr = highwayCrossings(hw, [tee('T', 1000)], [seg(0, 1, 'ground')], r)
+    expect(cr).toEqual([expect.objectContaining({ roadId: 'T', tee: true, kind: 'under', interchange: false })])
+    expect(r.next()).toBe(rng().next())
+    expect(highwayCrossings(hw, [tee('T', 1000)], [seg(0, 1, 'sunken')], rng())[0].kind).toBe('over')
+    expect(highwayCrossings(hw, [tee('T', 1000)], [seg(0, 1, 'elevated')], rng())[0].kind).toBe('under')
+  })
+  it('a T end on the highway gets two ramps on its own side, never a full interchange', () => {
+    const { crossings, ramps } = build([tee('T', 1000)])
+    expect(crossings[0]).toMatchObject({ tee: true, half: true, interchange: false })
+    expect(ramps.map((r) => r.id)).toEqual(['R001', 'R002'])
+    for (const r of ramps) for (const p of r.points) expect(p.x).toBeLessThanOrEqual(2000 + 1e-6)
+  })
+  it('a T end within 500 m of a full interchange stays a plain T', () => {
+    const { crossings, ramps } = build([line('A', 'arterial', { x: 0, y: 1000 }, { x: 4000, y: 1000 }), tee('T', 1300)])
+    expect(crossings.find((c) => c.tee)!.half).toBeFalsy(); expect(ramps).toHaveLength(4)
+  })
+  it('two T ends 300 m apart: only the first in highway order gets ramps', () => {
+    const { crossings, ramps } = build([tee('T2', 1300), tee('T1', 1000)])
+    expect(crossings.filter((c) => c.half).map((c) => c.roadId)).toEqual(['T1']); expect(ramps).toHaveLength(2)
+  })
+  it('a T end whose ramps do not fit stays a plain T', () => {
+    expect(build([tee('T', 1000, 1950)]).ramps).toHaveLength(0)
+    expect(build([tee('T', 100)]).ramps).toHaveLength(0)
+  })
+})
