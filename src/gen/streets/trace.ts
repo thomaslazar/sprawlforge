@@ -302,8 +302,52 @@ function inRiverBand(terrain: Terrain, p: Pt, margin: number, corridorWidth?: nu
 }
 
 /** water at q is a river the walker may bridge, so it is not steered around */
-function riverAhead(terrain: Terrain, q: Pt, _deckMax: number | undefined): boolean {
-  return inRiverBand(terrain, q, RIVER_STEER_SLACK)
+function riverAhead(terrain: Terrain, q: Pt, deckMax: number | undefined): boolean {
+  return inRiverBand(terrain, q, RIVER_STEER_SLACK) && (deckMax === undefined || riverSpanAt(terrain, q) <= deckMax)
+}
+
+/** the first wet point along p + v*d (d in steps, up to reach), or null: the window edge ends the ray */
+function firstWet(terrain: Terrain, p: Pt, v: Pt, reach: number, step: number, sizeM: number): Pt | null {
+  for (let d = step; d <= reach; d += step) {
+    const q = { x: p.x + v.x * d, y: p.y + v.y * d }
+    if (!inWindow(q, sizeM)) return null
+    if (inWater(terrain, q)) return q
+  }
+  return null
+}
+
+/** unit tangent of the polyline segment nearest to p */
+export function courseTangentAt(line: Pt[], p: Pt): Pt {
+  let best = Infinity
+  let tangent: Pt = { x: 0, y: 1 }
+  for (let i = 0; i < line.length - 1; i++) {
+    const a = line[i]
+    const b = line[i + 1]
+    const abx = b.x - a.x
+    const aby = b.y - a.y
+    const len2 = abx * abx + aby * aby || 1
+    const f = clamp(0, 1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / len2)
+    const d = Math.hypot(p.x - (a.x + f * abx), p.y - (a.y + f * aby))
+    if (d < best) { best = d; const l = Math.hypot(abx, aby) || 1; tangent = { x: abx / l, y: aby / l } }
+  }
+  return tangent
+}
+
+/** wet length through q along the course normal at q, both ways; Infinity with no river or when a side is still wet at the full reach */
+export function riverSpanAt(terrain: Terrain, q: Pt): number {
+  const river = terrain.riverSlice
+  if (!river) return Infinity
+  const t = courseTangentAt(river.course, q)
+  let span = 0
+  for (const sign of [1, -1]) {
+    let d = CROSSING_SAMPLE_STEP
+    for (; d <= CROSSING_MAX_REACH; d += CROSSING_SAMPLE_STEP) {
+      if (!inWater(terrain, { x: q.x - sign * t.y * d, y: q.y + sign * t.x * d })) break
+    }
+    if (d > CROSSING_MAX_REACH) return Infinity
+    span += d - CROSSING_SAMPLE_STEP
+  }
+  return span
 }
 
 function clampToWindow(p: Pt, sizeM: number): Pt {
@@ -364,10 +408,13 @@ function traceHalf(
     let want = rawDir
     if (opts.shoreLookahead && !dock && Math.abs(turned) < SHORE_MAX_TURN) {
       // water along the heading, or along the field's own heading (a walker hugging the bank would otherwise drift into it between steers)
-      const wet = [dir, rawDir].map((v) => ({ x: p.x + v.x * opts.shoreLookahead!, y: p.y + v.y * opts.shoreLookahead! })).find((q) => inWater(terrain, q))
+      // the highway (deckMax set) marches the ray: the walker meets the FIRST wet point, and its turning radius needs that coast's tangent, not the far probe's
+      const wet = [dir, rawDir].map((v) => opts.deckMax === undefined
+        ? { x: p.x + v.x * opts.shoreLookahead!, y: p.y + v.y * opts.shoreLookahead! }
+        : firstWet(terrain, p, v, opts.shoreLookahead!, opts.step, sizeM)).find((q) => q && inWater(terrain, q))
       if (wet && !riverAhead(terrain, wet, opts.deckMax)) {
-      if (opts.bridgeRivers && !dockDecided) { dockDecided = true; dock = rng.chance(DOCK_CHANCE) }
-        const t = dock ? null : shoreTangent(terrain, p, opts.shoreLookahead)
+        if (opts.bridgeRivers && !dockDecided) { dockDecided = true; dock = rng.chance(DOCK_CHANCE) }
+        const t = dock ? null : shoreTangent(terrain, opts.deckMax === undefined ? p : wet, opts.shoreLookahead)
         if (t) want = towards({ x: Math.cos(t.angle), y: Math.sin(t.angle) }, dir)
       }
     }

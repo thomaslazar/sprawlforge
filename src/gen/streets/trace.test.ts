@@ -782,4 +782,14 @@ describe('shore steer', () => {
     expect(Math.max(...r.map((q) => Math.abs(q.x - 2000)))).toBeLessThan(1)   // never steered
     expect(rolls).toBe(0)                                                      // no dock roll drawn
   })
+  it('deckMax 0 steers along a river instead of stopping at it', () => {
+    const river = { water: [[[[-10, 1000], [4010, 1000], [4010, 1080], [-10, 1080], [-10, 1000]]]], riverSlice: { course: [{ x: -10, y: 1040 }, { x: 4010, y: 1040 }], width: 60 } } as unknown as Terrain
+    const d = { x: 0, y: 1 }
+    const f: RoadField = { sizeM: 4000, patches: [], sample: () => ({ major: d, minor: { x: -d.y, y: d.x } }) }
+    const go = (deckMax: number | undefined) => traceLayer(f, 'major', [{ at: { x: 2000, y: 400 }, dir: d, oneWay: true }], river, 4000, new RoadIndex(200), { ...MAJOR, bridgeRivers: false, deckMax }, noDock, () => 0.2, 'A', 'arterial')[0].points
+    const steered = go(0)
+    expect(steered.some((q) => inWater(river, q))).toBe(false)
+    expect(arcWhere(steered, (q) => q.y > 1000 - 150)).toBeGreaterThanOrEqual(300)
+    expect(go(undefined).at(-1)!.y).toBeGreaterThan(1000 - 15)   // control: ends at the bank
+  })
 })
