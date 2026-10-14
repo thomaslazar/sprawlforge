@@ -220,7 +220,7 @@ statement).
   Measure on a laptop and profile before optimizing.
 - **Shore steer disagrees with the prune** — the arterial shore steer, the
   singularity stop and the 15 m water anchor disagree: a steered walker
-  parked 20-25 m short of the bank is pruned (P3 seed 42 6 km: prune 27 > 20,
+  parked 20-25 m short of the bank is pruned (P3 seed 42 6 km: prune 26 > 20 after phase 3, 27 before,
   5 of 6 singularity stops are such walkers; arterial A006 lost 790 m).
 - **Steer-outrun highway dead ends** — 16 of 200 swept coastal 2 km cases
   (of the 18 that still stop inside the window) end on concave coasts
@@ -244,7 +244,6 @@ statement).
 - **Highway v2** — a second highway, highway-to-highway junctions and
   cloverleafs; a tag to force one highway level; ground-level noise walls
   as geometry (render-only today).
-- **Half interchanges** — an arterial that cannot continue past the highway (water/edge/obstacle beyond it) could keep a T-end there with two ramps instead of being cut back; needs T ramp geometry and spacing against full interchanges. Today such an arterial is cut back to its last arterial junction; seeds 2982258224 (one arterial fewer, blocks B0419/B0423 ≈ 61 431 and 63 192 m²) and 11 (ring spoke lost) show the cost.
 - **Tributaries and confluences** — see Deferred.
 
 ## Cross-cutting
