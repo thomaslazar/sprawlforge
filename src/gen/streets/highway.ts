@@ -463,6 +463,7 @@ export function cutStreetsAtGround(streets: Road[], highway: Road, segments: Hig
 
 const IC_SPACING_M = 1000
 const IC_REACH_M = 500
+export const HALF_CHANCE = 0.25
 const IC_CONTINUE_M = 300
 const IC_TRANSITION_CLEAR_M = 200
 const RAMP_ART_M = 120
@@ -482,7 +483,7 @@ function ramp(id: string, a: Pt, c: Pt, h: Pt): Road {
 
 export function buildInterchanges(
   highway: Road, crossings: HighwayCrossing[], roads: Road[], segments: HighwaySegment[],
-  terrain: Terrain, sizeM: number,
+  terrain: Terrain, sizeM: number, halfRng: Rng,
 ): { crossings: HighwayCrossing[]; ramps: Road[] } {
   const hp = highway.points
   const len = polylineLength(hp)
@@ -556,6 +557,16 @@ export function buildInterchanges(
     const side = nearestT(pointAtT(hp, c.at), arterials.get(c.roadId)!.points).t > 0.5 ? -1 : 1
     const tr = rampTriples(c, [side])
     if (!tr || [...chosen, ...halves.map((h) => h[0])].some((o) => Math.abs(o.at - c.at) * len < IC_REACH_M)) continue
+    c.half = true
+    halves.push([c, tr])
+  }
+  // chance half interchanges, highway order: one chance draw per eligible crossing, one side draw per success
+  for (const c of out) {
+    if (c.tee || c.interchange || !arterials.has(c.roadId) || !siteOk(c) || !squareEnough(c) || !continues(c)) continue
+    if ([...chosen, ...halves.map((h) => h[0])].some((o) => Math.abs(o.at - c.at) * len < IC_REACH_M)) continue
+    if (!halfRng.chance(HALF_CHANCE)) continue
+    const tr = rampTriples(c, [halfRng.chance(0.5) ? -1 : 1])
+    if (!tr) continue
     c.half = true
     halves.push([c, tr])
   }

@@ -410,7 +410,7 @@ export function generateSector(params: SectorParams): SectorModel {
   const minorAll = highway ? pruneCutStreets(cutStreetsAtGround(streets, highway, segments), arterials, highway, terrain, sizeM) : streets
   const crossings = highway ? highwayCrossings(highway, [...arterials, ...minorAll], segments, levelRng) : []
   const { crossings: finalCrossings, ramps } = highway
-    ? buildInterchanges(highway, crossings, arterials, segments, terrain, sizeM)
+    ? buildInterchanges(highway, crossings, arterials, segments, terrain, sizeM, mulberry32(hashSeed(params.seed, 'half-interchanges')))
     : { crossings, ramps: [] as Road[] }
   const hw = highway ? [{ ...highway, segments, crossings: finalCrossings }] : []
 

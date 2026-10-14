@@ -7,7 +7,7 @@ import { sampleTerrain } from '../terrain'
 import { distToPolyline } from '../terrain/rivers'
 import type { District, HighwaySegment, Road, SectorParams, Terrain, ZoneType } from '../types'
 import {
-  FRONTAGE_ID_PREFIX, HIGHWAY_OPTS, HIGHWAY_WIDTH, FRONTAGE_OFF, HIGHWAY_DECK_MAX, assignHighwayLevels, buildInterchanges, cutStreetsAtGround, highwayCrossings, levelAt, noBuildStrips, traceHighway, frontageRoads, trimFrontage,
+  FRONTAGE_ID_PREFIX, HIGHWAY_OPTS, HIGHWAY_WIDTH, FRONTAGE_OFF, HIGHWAY_DECK_MAX, assignHighwayLevels, buildInterchanges, HALF_CHANCE, cutStreetsAtGround, highwayCrossings, levelAt, noBuildStrips, traceHighway, frontageRoads, trimFrontage,
 } from './highway'
 import { MAJOR } from './trace'
 
@@ -225,6 +225,7 @@ const seg = (from: number, to: number, level: HighwaySegment['level'], transitio
   from, to, level, districtId: 'd', transition,
 })
 const rng = () => mulberry32(hashSeed(42, 'highway-levels'))
+const never = { ...mulberry32(1), chance: () => false }
 const mixed = [
   district('a', 'corp', 0, 800), district('b', 'industrial', 800, 1600), district('c', 'residential', 1600, 2400),
   district('d', 'corp', 2400, 3200), district('e', 'industrial', 3200, 4000),
@@ -288,7 +289,7 @@ describe('highway levels', () => {
     const arts = [400, 1050, 2100, 2950, 3500].map((y, i) => line('A' + i, 'arterial', { x: 0, y }, { x: 4000, y }))
     const segs = [seg(0, 1, 'elevated')]
     const cr = highwayCrossings(hw, arts, segs, rng())
-    const { crossings, ramps } = buildInterchanges(hw, cr, arts, segs, dry, 4000)
+    const { crossings, ramps } = buildInterchanges(hw, cr, arts, segs, dry, 4000, never)
     const n = crossings.filter((c) => c.interchange).length
     expect(n).toBeGreaterThanOrEqual(3)
     expect(n).toBeLessThanOrEqual(4)
@@ -303,7 +304,7 @@ describe('highway levels', () => {
     const arts = [1300, 1050, 2050, 2500, 3000].map((y, i) => line('A' + i, 'arterial', { x: 0, y }, { x: 4000, y }))
     const segs = [seg(0, 0.5, 'elevated'), seg(0.5, 1, 'sunken', true)]
     const cr = highwayCrossings(hw, arts, segs, rng())
-    const { crossings } = buildInterchanges(hw, cr, arts, segs, wet(1000, 1100), 4000)
+    const { crossings } = buildInterchanges(hw, cr, arts, segs, wet(1000, 1100), 4000, never)
     const chosen = crossings.filter((c) => c.interchange)
     expect(chosen.length).toBeGreaterThan(0)
     for (const c of chosen) {
@@ -332,7 +333,7 @@ describe('highway levels', () => {
     const arts = [line('A0', 'arterial', { x: 0, y: 1100 }, { x: 4000, y: 1100 })]
     const segs = [seg(0, 1, 'elevated')]
     const cr = highwayCrossings(h2, arts, segs, rng())
-    const { crossings, ramps } = buildInterchanges(h2, cr, arts, segs, dry, 4000)
+    const { crossings, ramps } = buildInterchanges(h2, cr, arts, segs, dry, 4000, never)
     expect(crossings.some((c) => c.interchange)).toBe(false)
     expect(ramps).toHaveLength(0)
   })
@@ -342,19 +343,19 @@ describe('highway levels', () => {
     const segs = [seg(0, 1, 'elevated')]
     const cr = highwayCrossings(hw, arts, segs, rng())
     expect(cr).toHaveLength(1)
-    const { crossings, ramps } = buildInterchanges(hw, cr, arts, segs, dry, 4000)
+    const { crossings, ramps } = buildInterchanges(hw, cr, arts, segs, dry, 4000, never)
     expect(crossings.some((c) => c.interchange)).toBe(false)
     expect(ramps).toHaveLength(0)
     const long = [line('A0', 'arterial', { x: 0, y: 1000 }, { x: 2350, y: 1000 })]
     const cr2 = highwayCrossings(hw, long, segs, rng())
-    expect(buildInterchanges(hw, cr2, long, segs, dry, 4000).crossings.some((c) => c.interchange)).toBe(true)
+    expect(buildInterchanges(hw, cr2, long, segs, dry, 4000, never).crossings.some((c) => c.interchange)).toBe(true)
   })
 
   it('interchanges keep 500 m apart', () => {
     const arts = [1050, 1100].map((y, i) => line('A' + i, 'arterial', { x: 0, y }, { x: 4000, y }))
     const segs = [seg(0, 1, 'elevated')]
     const cr = highwayCrossings(hw, arts, segs, rng())
-    expect(buildInterchanges(hw, cr, arts, segs, dry, 4000).crossings.filter((c) => c.interchange)).toHaveLength(1)
+    expect(buildInterchanges(hw, cr, arts, segs, dry, 4000, never).crossings.filter((c) => c.interchange)).toHaveLength(1)
   })
 
   it('no-build strips exist for elevated and ground, not sunken', () => {
@@ -428,7 +429,7 @@ describe('half interchanges', () => {
   const tee = (id: string, y: number, x0 = 0) => line(id, 'arterial', { x: x0, y }, { x: 2000, y })
   const build = (arts: Road[], level: HighwaySegment['level'] = 'elevated') => {
     const segs = [seg(0, 1, level)]
-    return buildInterchanges(hw, highwayCrossings(hw, arts, segs, rng()), arts, segs, dry, 4000)
+    return buildInterchanges(hw, highwayCrossings(hw, arts, segs, rng()), arts, segs, dry, 4000, never)
   }
   it('reports a T end as a tee crossing, kind by level, drawing no rng', () => {
     const r = rng(), cr = highwayCrossings(hw, [tee('T', 1000)], [seg(0, 1, 'ground')], r)
@@ -460,12 +461,30 @@ describe('half interchanges', () => {
   })
   it('a T end on water or within 200 m of a level transition stays a plain T', () => {
     const arts = [tee('T', 1000)]
-    const wetB = buildInterchanges(hw, highwayCrossings(hw, arts, [seg(0, 1, 'elevated')], rng()), arts, [seg(0, 1, 'elevated')], { ...dry, water: [[[[1980, 980], [2020, 980], [2020, 1020], [1980, 1020]]]] }, 4000)  // water only at the tee point: ramps and their ends stay dry
+    const wetB = buildInterchanges(hw, highwayCrossings(hw, arts, [seg(0, 1, 'elevated')], rng()), arts, [seg(0, 1, 'elevated')], { ...dry, water: [[[[1980, 980], [2020, 980], [2020, 1020], [1980, 1020]]]] }, 4000, never)  // water only at the tee point: ramps and their ends stay dry
     const segs = [seg(0, 0.26, 'ground'), seg(0.26, 1, 'elevated', true)]
-    const trB = buildInterchanges(hw, highwayCrossings(hw, arts, segs, rng()), arts, segs, dry, 4000)
+    const trB = buildInterchanges(hw, highwayCrossings(hw, arts, segs, rng()), arts, segs, dry, 4000, never)
     for (const { crossings, ramps } of [wetB, trB]) {
       expect(ramps).toHaveLength(0)
       expect(crossings).toEqual([expect.objectContaining({ tee: true })]); expect(crossings[0].half).toBeFalsy()
     }
+  })
+})
+
+describe('chance half interchanges', () => {
+  const pick = { ...mulberry32(1), chance: (p: number) => p === HALF_CHANCE }   // every roll hits; the side roll (0.5) gives +1
+  const cross = (id: string, y: number) => line(id, 'arterial', { x: 0, y }, { x: 4000, y })
+  it('a plain square crossing away from interchanges may get a half interchange on the drawn side', () => {
+    const segs = [seg(0, 1, 'elevated')], arts = [cross('A', 300)]
+    const cr = highwayCrossings(hw, arts, segs, rng())
+    expect(buildInterchanges(hw, cr, arts, segs, dry, 4000, never).ramps).toHaveLength(0)
+    const { crossings, ramps } = buildInterchanges(hw, cr, arts, segs, dry, 4000, pick)
+    expect(crossings[0]).toMatchObject({ half: true, interchange: false }); expect(ramps).toHaveLength(2)
+    for (const r of ramps) expect(r.points[0].x).toBeGreaterThan(2000)
+  })
+  it('no chance half within 500 m of a full interchange', () => {
+    const segs = [seg(0, 1, 'elevated')], arts = [cross('A', 1000), cross('B', 1400)]
+    const out = buildInterchanges(hw, highwayCrossings(hw, arts, segs, rng()), arts, segs, dry, 4000, pick)
+    expect(out.crossings.filter((c) => c.half)).toHaveLength(0); expect(out.ramps).toHaveLength(4)
   })
 })

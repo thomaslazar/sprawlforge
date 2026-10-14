@@ -4,7 +4,7 @@ import { ISLET_MOAT_OUTER_FACTOR, ISLET_RADIUS_MAX } from '../terrain/field'
 import { GENERATOR_VERSION, type SectorModel, type Block, type District, type Road, type SectorParams, type Terrain } from '../types'
 import { hashSeed, mulberry32 } from '../rng'
 import { distToPolyline } from '../terrain/rivers'
-import { RoadIndex, riverCrossingSeeds } from '../streets/trace'
+import { RoadIndex, courseTangentAt, riverCrossingSeeds } from '../streets/trace'
 import { TEE_SNAP_M } from '../streets/join'
 import { traceRoads } from './streets'
 import { sampleTerrain } from '../terrain'
@@ -305,15 +305,28 @@ describe('generateSector invariants', () => {
     }
   })
 
-  it('ramp count is four per interchange plus two per half interchange', () => {
+  it('ramp count is 4 × full + 2 × half', () => {
     for (const p of sweep) {
-      const m = generateSector(p)
-      const hw = m.roads.find((r) => r.class === 'highway')
+      const m = generateSector(p), hw = m.roads.find((r) => r.class === 'highway')
       if (!hw) continue
-      const cs = hw.crossings ?? []
-      const ramps = 4 * cs.filter((c) => c.interchange).length + 2 * cs.filter((c) => c.half).length
-      expect(m.roads.filter((r) => r.class === 'ramp'), `${p.seed}/${p.landform}`).toHaveLength(ramps)
+      const c = hw.crossings ?? []
+      expect(m.roads.filter((r) => r.class === 'ramp'), `${p.seed}/${p.landform}`).toHaveLength(4 * c.filter((x) => x.interchange).length + 2 * c.filter((x) => x.half).length)
     }
+  })
+  it('every tee crossing is at 45° or more', { timeout: 300000 }, () => {
+    let tees = 0
+    const p1 = { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river']), seed: 42, pack: 'generic', theme: 'print' } as any
+    for (const p of [...sweep, p1]) {
+      const m = generateSector(p), hw = m.roads.find((r) => r.class === 'highway')
+      for (const c of (hw?.crossings ?? []).filter((x) => x.tee)) {
+        tees++
+        const at = pointAtT(hw!.points, c.at)
+        const art = m.roads.filter((r) => r.id === c.roadId || r.id.startsWith(c.roadId + '-')).sort((a, b) => distToPolyline(at, a.points) - distToPolyline(at, b.points))[0]
+        const h = courseTangentAt(hw!.points, at), a = courseTangentAt(art.points, at)
+        expect(Math.abs(h.x * a.x + h.y * a.y), `${p.seed} ${c.roadId}`).toBeLessThanOrEqual(Math.cos(Math.PI / 4) + 1e-6)
+      }
+    }
+    expect(tees).toBeGreaterThan(0)
   })
 
   it('pieces of one arterial share a name', () => {
