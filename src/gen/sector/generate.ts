@@ -389,10 +389,10 @@ function finalStreetPrune(streets: Road[], others: Road[], terrain: Terrain, siz
 }
 
 /** converge-and-weld on the final street set against every road (the index is rebuilt by the prune after) */
-function weldAll(streets: Road[], others: Road[]): Road[] {
+function weldAll(streets: Road[], others: Road[], infillIds: Set<string>): Road[] {
   const index = new RoadIndex(200)
   for (const r of [...others, ...streets]) index.add(r.id, r.points, r.class)
-  return weldConverging(streets, index)
+  return weldConverging(streets, index, { keepShort: (id) => infillIds.has(id.split('-')[0]) })
 }
 
 export function generateSector(params: SectorParams): SectorModel {
@@ -422,7 +422,7 @@ export function generateSector(params: SectorParams): SectorModel {
 
   const { faces, infill, dropped } = infillFaces(facesFor([...hw, ...arterials, ...minorAll], boundaries, terrain), minorAll, arterials, highway, terrain, sizeM, [...arcologies.filter((a) => a.access === 'ring'), ...megablocks].map((l) => l.center), [...megablocks.map((k) => k.core), ...arcologies.filter((a) => a.access !== 'ring').map((a) => a.plaza)])
   const infillIds = new Set(infill.map((r) => r.id))
-  const welded = weldAll([...minorAll.filter((r) => !dropped.has(r.id)), ...infill], [...hw, ...arterials, ...ramps])
+  const welded = weldAll([...minorAll.filter((r) => !dropped.has(r.id)), ...infill], [...hw, ...arterials, ...ramps], infillIds)
   const prunedStreets = finalStreetPrune(welded, [...hw, ...arterials, ...ramps], terrain, sizeM, decayEnds, infillIds)
   const minor = prunedStreets.filter((r) => !infillIds.has(r.id.split('-')[0]))
   const infillKept = prunedStreets.filter((r) => infillIds.has(r.id.split('-')[0]))

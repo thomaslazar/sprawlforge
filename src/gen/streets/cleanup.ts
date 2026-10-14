@@ -76,9 +76,9 @@ function cutOnce(pts: Pt[], index: RoadIndex, near: number, run: number, selfId:
  * run's first sample, welded onto that road; a run from the street's own start keeps the part after it instead, a run
  * in the middle keeps both parts (ids `${id}-1`, `${id}-2`: they bounded blocks, so neither is dropped for its length).
  * Highways and ramps are never a target (a street does not end on a ramp). Frontage and ring roads are never cut.
- * A remainder of a start or end cut under `minLength` is dropped. `index` holds every road and follows the cuts.
+ * A remainder of a start or end cut under `minLength` is dropped, unless `keepShort(id)` (infill pieces bound blocks). `index` holds every road and follows the cuts.
  */
-export function weldConverging(streets: Road[], index: RoadIndex, opts: { near?: number; run?: number; minLength?: number } = {}): Road[] {
+export function weldConverging(streets: Road[], index: RoadIndex, opts: { near?: number; run?: number; minLength?: number; keepShort?: (id: string) => boolean } = {}): Road[] {
   const { near = 8, run = 20, minLength = 60 } = opts
   const out: Road[] = []
   for (const r of streets) {
@@ -100,7 +100,7 @@ export function weldConverging(streets: Road[], index: RoadIndex, opts: { near?:
     if (!changed) { out.push(r); continue }
     index.remove(r.id)
     for (const t of [...done, ...todo]) {
-      if (!t.kept && polylineLength(t.road.points) < minLength) continue
+      if (!t.kept && polylineLength(t.road.points) < minLength && !opts.keepShort?.(r.id)) continue
       index.add(t.road.id, t.road.points, t.road.class)
       out.push(t.road)
     }
