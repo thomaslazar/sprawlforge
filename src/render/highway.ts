@@ -3,7 +3,7 @@ import { pointAtT, polylineLength, slicePolyline } from '../gen/geometry'
 import { nearestOnPolyline } from '../gen/terrain/rivers'
 import { buildPlanarGraph, degree4Vertices } from '../gen/streets/graph'
 import { HIGHWAY_WIDTH } from '../gen/streets/highway'
-import type { Road, SectorModel } from '../gen/types'
+import type { HighwaySegment, Road, SectorModel } from '../gen/types'
 import type { Theme } from './theme'
 
 const n = (v: number) => String(Math.round(v * 100) / 100)
@@ -88,10 +88,18 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
     out.push(
       `<path data-halo="highway" d="${segs.map((s) => `M${pts(slice(s)).replace(/ /g, 'L')}`).join(' ')}" fill="none" stroke="${theme.road.highway}" stroke-width="${n(W * 1.6)}" stroke-opacity="0.35" stroke-linecap="round" stroke-linejoin="round"/>`,
     )
+  // one stroke per run of same-level segments: the level assignment chops the highway into ~10 m
+  // pieces, and a stroke per piece showed a wedge of background at every bend (caps meet flat)
+  const runs: HighwaySegment[] = []
   for (const s of segs) {
+    const last = runs[runs.length - 1]
+    if (last && last.level === s.level) last.to = s.to
+    else runs.push({ ...s })
+  }
+  for (const s of runs) {
     const p = slice(s)
     out.push(`<g data-level="${s.level}">`)
-    out.push(poly(p, theme.highway.level[s.level], W, ' stroke-linecap="round"' + glowAttr))
+    out.push(poly(p, theme.highway.level[s.level], W, ' stroke-linejoin="round"' + glowAttr))
     if (s.level === 'ground')
       for (const d of [W / 2 + 3, -(W / 2 + 3)]) out.push(poly(offset(p, d), theme.highway.trench, 1))
     if (s.level === 'elevated') {
