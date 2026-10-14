@@ -5,6 +5,7 @@ import { GENERATOR_VERSION, type SectorModel, type Block, type District, type Ro
 import { hashSeed, mulberry32 } from '../rng'
 import { distToPolyline } from '../terrain/rivers'
 import { RoadIndex, riverCrossingSeeds } from '../streets/trace'
+import { TEE_SNAP_M } from '../streets/join'
 import { traceRoads } from './streets'
 import { sampleTerrain } from '../terrain'
 import { RING_ID_PREFIX, ringRoad } from '../landmarks/place'
@@ -465,7 +466,7 @@ describe('river bridges (seed 42)', () => {
       expect(idx.nearestMatching(e, 1, (h) => family(h.id) !== family(b.id) && (h.cls === 'arterial' || h.cls === 'highway')), b.id).not.toBeNull()
     }
   })
-  it('no arterial ends on the highway', () => {
+  it('an arterial ends near the highway only as a T end', () => {
     const hw = m.roads.filter((r) => r.class === 'highway')
     expect(hw.length).toBeGreaterThan(0)
     const S = m.meta.sizeM
@@ -476,7 +477,7 @@ describe('river bridges (seed 42)', () => {
     for (const r of arts) for (const e of [r.points[0], r.points.at(-1)!]) {
       if (e.x < 1 || e.y < 1 || e.x > S - 1 || e.y > S - 1) continue
       if (idx.nearestMatching(e, 6, (h) => h.id !== r.id)) continue
-      for (const h of hw) expect(distToPolyline(e, h.points), r.id).toBeGreaterThan(30)
+      for (const h of hw) { const d = distToPolyline(e, h.points); if (d <= 30) expect(d, r.id).toBeLessThanOrEqual(TEE_SNAP_M) }
     }
   })
   it('every arterial bridge is shorter than 600 m', () => {
@@ -1180,11 +1181,13 @@ describe('arterial ends (model seeds)', () => {
     return worst
   }
   // last-resort prune: ideal 0; measured at rule C1 with crossing joins ending as Ts: P1: 3, P2: 6, P3: 17, S7: 5, S3017268931: 3, S2982258224: 0, S4280430344: 6, S11: 11, S782008753: 4, R1: 1, R2: 3, R3: 2 — bound raised 10 → 20 by user ruling 2026-10-13 (the 90° connector rule prunes more ends instead of curving them; the user prefers that)
+  // phase 3 (T ends on the highway): P3 27 → 26, P1 6 → 5, P2 6 → 5, S7 6 → 5, R1 6 → 0, R3 1 → 0, the rest unchanged
   for (const [name, p] of Object.entries(MODEL_SETS)) {
     it(`${name}: every arterial end is anchored and at most 20 were pruned`, { timeout: 120000 }, () => {
       const sizeM = p.size * 1000
       const terrain = sampleTerrain(p, sizeM)
       const t = traceRoads(p, terrain, sizeM)
+      console.log('PRUNED', name, t.pruned)
       expect(t.pruned, 'prune fired').toBeLessThanOrEqual(20)
       const idx = new RoadIndex(200)
       for (const r of t.arterials) idx.add(r.id, r.points, r.class)
@@ -1193,7 +1196,7 @@ describe('arterial ends (model seeds)', () => {
         if (r.id.startsWith(RING_ID_PREFIX) && Math.hypot(first.x - last.x, first.y - last.y) < 1) continue
         for (const e of [first, last]) {
           const near = idx.nearestMatching(e, 6, (h) => h.id !== r.id && h.cls === 'arterial')
-          const ok = onEdge(e, sizeM) || near || nearWater(terrain, e, 15)
+          const ok = onEdge(e, sizeM) || near || nearWater(terrain, e, 15) || (t.highway !== undefined && distToPolyline(e, t.highway.points) <= TEE_SNAP_M)
           expect(ok, `${name} ${r.id} end ${e.x.toFixed(0)},${e.y.toFixed(0)}`).toBeTruthy()
         }
       }

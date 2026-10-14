@@ -142,3 +142,37 @@ describe('joinFreeEnds', () => {
     expect(distToPolyline(C.points[0], r.roads[0].points)).toBeLessThan(6)
   })
 })
+
+describe('T ends on the highway', () => {
+  const H = { id: 'H', class: 'highway', points: line(1000, 0, 1000, 2000), width: 32, name: null } as Road
+  const runH = (rs: Road[]) => { const i = idx(rs); i.add(H.id, H.points, 'highway'); return joinFreeEnds(rs, dry, 2000, i, [], MAJOR.separation) }
+  it('a free end past a square crossing is cut at the highway', () => {
+    const r = runH([road('A', line(100, 500, 1150, 500))]).roads[0].points // starts 100 m inside the window: the start end is free too, but has no crossing
+    expect(r.at(-1)!.x).toBeCloseTo(1000, 6); expect(r[0]).toEqual({ x: 100, y: 500 })
+  })
+  it('the cut works from the start end too', () => {
+    expect(runH([road('A', line(1150, 500, 100, 500))]).roads[0].points[0].x).toBeCloseTo(1000, 6)
+  })
+  it('a crossing under 45° is not cut', () => {
+    const r = runH([road('A', line(500, 100, 1150, 1028))]).roads[0] // 35° to the (vertical) highway; kept part 872 m
+    expect(r.points.at(-1)).toEqual({ x: 1150, y: 1028 })
+  })
+  it('a kept road under 300 m is not cut', () => {
+    expect(runH([road('A', line(750, 500, 1150, 500))]).roads[0].points.at(-1)!.x).toBe(1150)
+  })
+  it('cut at the crossing nearest the end', () => {
+    // crosses at y 200 heading east, U-turns east of the highway, crosses back west at y 600, ends at x 850
+    const u = road('A', [...line(100, 200, 1300, 200), ...line(1300, 200, 1300, 600).slice(1), ...line(1300, 600, 850, 600).slice(1)])
+    const r = runH([u]).roads[0].points
+    expect(r.at(-1)!).toMatchObject({ y: 600 }); expect(r.at(-1)!.x).toBeCloseTo(1000, 6)
+  })
+  it('a tail that meets another arterial is not cut', () => {
+    const A = road('A', line(100, 500, 1400, 500)), B = road('B', line(1300, 300, 1300, 700)) // B crosses A's tail past the highway
+    expect(runH([A, B]).roads[0].points.at(-1)!.x).toBe(1400)
+  })
+  it('an end that can join does not become a T', () => {
+    const A = road('A', line(100, 500, 1150, 500)), B = road('B', line(1400, 100, 1400, 1900))
+    const r = runH([A, B])
+    expect(r.joined).toBeGreaterThanOrEqual(1); expect(near(r.roads[0].points.at(-1)!, B.points)).toBeLessThan(1)
+  })
+})
