@@ -460,7 +460,7 @@ describe('half interchanges', () => {
   })
   it('a T end on water or within 200 m of a level transition stays a plain T', () => {
     const arts = [tee('T', 1000)]
-    const wetB = buildInterchanges(hw, highwayCrossings(hw, arts, [seg(0, 1, 'elevated')], rng()), arts, [seg(0, 1, 'elevated')], wet(900, 1100), 4000)
+    const wetB = buildInterchanges(hw, highwayCrossings(hw, arts, [seg(0, 1, 'elevated')], rng()), arts, [seg(0, 1, 'elevated')], { ...dry, water: [[[[1980, 980], [2020, 980], [2020, 1020], [1980, 1020]]]] }, 4000)  // water only at the tee point: ramps and their ends stay dry
     const segs = [seg(0, 0.26, 'ground'), seg(0.26, 1, 'elevated', true)]
     const trB = buildInterchanges(hw, highwayCrossings(hw, arts, segs, rng()), arts, segs, dry, 4000)
     for (const { crossings, ramps } of [wetB, trB]) {
