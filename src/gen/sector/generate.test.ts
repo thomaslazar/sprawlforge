@@ -491,7 +491,15 @@ describe('river bridges (seed 42)', () => {
     for (const r of arts) for (const e of [r.points[0], r.points.at(-1)!]) {
       if (e.x < 1 || e.y < 1 || e.x > S - 1 || e.y > S - 1) continue
       if (idx.nearestMatching(e, 6, (h) => h.id !== r.id)) continue
-      for (const h of hw) { const d = distToPolyline(e, h.points); if (d <= 30) expect(d, r.id).toBeLessThanOrEqual(1) }
+      for (const h of hw) {
+        const d = distToPolyline(e, h.points)
+        if (d > 30) continue
+        expect(d, r.id).toBeLessThanOrEqual(1)
+        // the end on the highway is reported as a tee crossing of that arterial
+        // (`at` runs along the whole highway; a bridge splits it into pieces that all carry the same crossings)
+        const whole = hw.flatMap((x) => x.points)
+        expect((h.crossings ?? []).some((c) => c.roadId === r.id && c.tee && Math.hypot(pointAtT(whole, c.at).x - e.x, pointAtT(whole, c.at).y - e.y) < 2), r.id).toBe(true)
+      }
     }
   })
   it('every arterial bridge is shorter than 600 m', () => {
