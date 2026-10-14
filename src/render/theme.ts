@@ -79,7 +79,7 @@ const print: Theme = {
   compound: { fence: '#444444', ground: '#d4d8cf' },
   poi: { marker: '#b03030', label: '#222222' },
   bridge: { deck: '#e8e8e2', shadow: '#b5b5b0' },
-  highway: { trench: '#d9d9d9', column: '#b5b5b0', hatch: '#e8e8e2', level: { sunken: '#1a1a1a', ground: '#4a4a4a', elevated: '#8c8c8c' } },
+  highway: { trench: '#d9d9d9', column: '#4a4a4a', hatch: '#e8e8e2', level: { sunken: '#1a1a1a', ground: '#4a4a4a', elevated: '#8c8c8c' } },
   arcology: { fill: '#d5dbe8', stroke: '#555555', ring: '#9a9a9a' },
   megablock: { fill: '#8c8c88', alley: '#2a2a2a' },
   scaleBar: '#222222',
