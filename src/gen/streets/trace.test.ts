@@ -765,14 +765,21 @@ describe('shore steer', () => {
     expect(r.at(-1)!.y).toBeGreaterThan(1000 - 15); expect(r.some((q) => inWater(coast, q))).toBe(false)
     expect(Math.max(...r.map((q) => Math.abs(q.x - 2000)))).toBeLessThan(1)
   })
-  it('the steer gives up after 180°: a walker on a peninsula tip stops at the bank', () => {
+  // SHORE_MAX_TURN (180°) is not reachable in a synthetic field: the sign flip of the line field past 90° ends the walker first, so only the steer and the dry stop are pinned here
+  it('a walker on a peninsula tip steers along the bank and stops dry at the wall', () => {
     const tip = { water: [[[[-10, -10], [1900, -10], [1900, 4010], [-10, 4010], [-10, -10]]], [[[2100, -10], [4010, -10], [4010, 4010], [2100, 4010], [2100, -10]]], [[[1900, 1000], [2100, 1000], [2100, 4010], [1900, 4010], [1900, 1000]]]], riverSlice: null } as unknown as Terrain
     const r = runShore(tip, noDock)[0].points
     expect(r.some((q) => inWater(tip, q))).toBe(false)
     expect(polylineLength(r)).toBeLessThan(1500)
+    expect(Math.max(...r.map((q) => q.x))).toBeGreaterThan(2060)   // steered east along the bank
+    expect(r.at(-1)!.y).toBeGreaterThan(1000 - 60)                 // and ended at the tip, not up the strip
   })
   it('a river the walker may bridge is not steered around', () => {
     const river = { water: [[[[-10, 1000], [4010, 1000], [4010, 1080], [-10, 1080], [-10, 1000]]]], riverSlice: { course: [{ x: -10, y: 1040 }, { x: 4010, y: 1040 }], width: 60 } } as unknown as Terrain
-    expect(Math.max(...runShore(river, noDock)[0].points.map((q) => q.y))).toBeGreaterThan(1080)
+    let rolls = 0
+    const r = runShore(river, { ...noDock, chance: () => { rolls++; return false } })[0].points
+    expect(Math.max(...r.map((q) => q.y))).toBeGreaterThan(1080)
+    expect(Math.max(...r.map((q) => Math.abs(q.x - 2000)))).toBeLessThan(1)   // never steered
+    expect(rolls).toBe(0)                                                      // no dock roll drawn
   })
 })
