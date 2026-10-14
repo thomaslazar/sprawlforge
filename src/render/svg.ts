@@ -275,7 +275,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     )
     // Deck (square caps)
     out.push(
-      `<polyline data-bridge="" points="${pts}" fill="none" stroke="${theme.bridge.deck}" stroke-width="${road.width}" stroke-linecap="square"/>`,
+      `<polyline data-bridge="" points="${pts}" fill="none" stroke="${road.class === 'highway' ? theme.highway.level.elevated : theme.bridge.deck}" stroke-width="${road.width}" stroke-linecap="square"/>`,
     )
   }
 

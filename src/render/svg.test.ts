@@ -141,7 +141,7 @@ describe('renderSector', () => {
     }
     const svg = renderSector(glowModel, theme)
     // highway and arterial polylines carry the glow filter
-    expect(svg).toMatch(new RegExp(`stroke="${theme.road.highway}"[^/]*filter="url\\(#glow\\)"`))
+    expect(svg).toMatch(new RegExp(`stroke="${theme.highway.level.ground}"[^/]*filter="url\\(#glow\\)"`))
     expect(svg).toMatch(new RegExp(`stroke="${theme.road.arterial}"[^/]*filter="url\\(#glow\\)"`))
     // street never does
     expect(svg).not.toMatch(new RegExp(`stroke="${theme.road.street}"[^/]*filter="url\\(#glow\\)"`))
@@ -165,6 +165,8 @@ describe('renderSector', () => {
     expect(group('elevated')).toContain(`stroke="${theme.highway.column}" stroke-width="1.5"`)
     expect(group('elevated')).toContain(`stroke="${theme.highway.column}" stroke-width="1" opacity="0.5"`)
     expect(group('ground')).not.toContain(theme.highway.column)
+    const band = (l: string) => group(l).match(/<polyline[^>]*stroke="(#\w+)" stroke-width="\d+" stroke-linecap="round"/)![1]
+    expect(new Set(['sunken', 'ground', 'elevated'].map(band)).size).toBe(3)
     expect(svg).toContain(`stroke="${theme.highway.hatch}" stroke-width="1" opacity="0.8"`)
   })
 

@@ -91,7 +91,7 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
   for (const s of segs) {
     const p = slice(s)
     out.push(`<g data-level="${s.level}">`)
-    out.push(poly(p, theme.road.highway, W, ' stroke-linecap="round"' + glowAttr))
+    out.push(poly(p, theme.highway.level[s.level], W, ' stroke-linecap="round"' + glowAttr))
     if (s.level === 'ground')
       for (const d of [W / 2 + 3, -(W / 2 + 3)]) out.push(poly(offset(p, d), theme.highway.trench, 1))
     if (s.level === 'elevated') {
