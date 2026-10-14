@@ -622,7 +622,8 @@ export function frontageRoads(highway: Road, terrain: Terrain, sizeM: number, ob
     const u = normalize({ x: b.x - a.x, y: b.y - a.y })
     return Array.from({ length: EXTEND_N }, (_, k) => ({ x: b.x + u.x * SAMPLE_M * (k + 1), y: b.y + u.y * SAMPLE_M * (k + 1) }))
   }
-  const samples = [...ext(core[1], core[0]).reverse(), ...core, ...ext(core[n0 - 1] ?? core[0], core[n0])]
+  // the tangent comes from a 30 m chord: the last 10 m step of a coast exit kinks at the window clamp and would swing the extension (seed 42: F2R stopped 37 m short of the edge)
+  const samples = [...ext(core[Math.min(3, n0)], core[0]).reverse(), ...core, ...ext(core[Math.max(0, n0 - 3)], core[n0])]
   const n = samples.length - 1
   // distToPolyline: an offset point folded in on the inside of a sharp highway bend sits closer than FRONTAGE_OFF
   const ok = (p: Pt) => inWindow(p, sizeM) && !inWater(terrain, p) && !pointInRings(p, obstacles)
