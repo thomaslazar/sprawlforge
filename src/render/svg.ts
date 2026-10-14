@@ -130,6 +130,9 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
       '</filter>',
     )
   }
+  // highway hachures: elevated +45deg, sunken -45deg
+  for (const [id, deg] of [['elevated', 45], ['sunken', -45]] as const)
+    out.push(`<pattern id="hachure-${id}" patternUnits="userSpaceOnUse" width="12" height="12" patternTransform="rotate(${deg})"><line x1="6" y1="0" x2="6" y2="12" stroke="${theme.highway.hatch}" stroke-width="1"/></pattern>`)
   out.push('</defs>')
 
   // glow is a hero accent for highway/arterial road strokes only — never on

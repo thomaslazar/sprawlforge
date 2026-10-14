@@ -150,6 +150,25 @@ describe('renderSector', () => {
     expect(svg.match(/<circle[^>]*filter="url\(#glow\)"/)).toBeNull()
   })
 
+  it('draws elevated and sunken highways with hachures over one colour', () => {
+    const theme = getTheme('neon')
+    const seg = (from: number, to: number, level: 'elevated' | 'sunken' | 'ground') => ({ from, to, level, districtId: 'D01', transition: false })
+    const m: SectorModel = {
+      meta: { seed: 1, generatorVersion: GENERATOR_VERSION, params: base, sizeM: 1000, metroSeed: 1 },
+      terrain: { landform: 'inland', river: false, lakes: false, islands: false, metroSeed: 1, water: [], land: [[[[0, 0], [1000, 0], [1000, 1000], [0, 1000]]]], riverSlice: null },
+      roads: [{ id: 'RH', class: 'highway', points: [{ x: 0, y: 500 }, { x: 900, y: 500 }], width: 20, name: 'Highway', bridge: false, segments: [seg(0, 0.34, 'ground'), seg(0.34, 0.67, 'elevated'), seg(0.67, 1, 'sunken')] }],
+      districts: [], blocks: [], buildings: [], pois: [], piers: [], arcologies: [], megablocks: [], compounds: [],
+    }
+    const svg = renderSector(m, theme)
+    const group = (l: string) => svg.match(new RegExp(`<g data-level="${l}">[\\s\\S]*?</g>`))![0]
+    expect(group('elevated')).toContain('stroke="url(#hachure-elevated)"')
+    expect(group('sunken')).toContain('stroke="url(#hachure-sunken)"')
+    expect(group('ground')).not.toContain('url(#hachure')
+    for (const l of ['sunken', 'ground', 'elevated']) expect(group(l)).toContain(`stroke="${theme.road.highway}" stroke-width="32"`)
+    expect(svg).toContain('<pattern id="hachure-elevated"')
+    expect(svg).toContain('<pattern id="hachure-sunken"')
+  })
+
   it('renders shallow band and shore glow via clip paths', () => {
     const svg = renderSector(wetModel, getTheme('neon'))
     expect(svg).toContain('id="water-clip"')

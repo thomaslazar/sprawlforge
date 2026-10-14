@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
-import { pointAtT, pointInRings, polylineLength, ringArea, ringCentroid, segmentsIntersect, type Pt } from '../geometry'
+import { onWindowEdge, pointAtT, pointInRings, polylineLength, ringArea, ringCentroid, segmentsIntersect, type Pt } from '../geometry'
 import { ISLET_MOAT_OUTER_FACTOR, ISLET_RADIUS_MAX } from '../terrain/field'
-import { GENERATOR_VERSION, type Block, type District, type Road, type SectorParams, type Terrain } from '../types'
+import { GENERATOR_VERSION, type SectorModel, type Block, type District, type Road, type SectorParams, type Terrain } from '../types'
 import { hashSeed, mulberry32 } from '../rng'
 import { distToPolyline } from '../terrain/rivers'
 import { RoadIndex, riverCrossingSeeds } from '../streets/trace'
@@ -13,7 +13,8 @@ import { inWater, isLakeShore } from './bridges'
 import { buildPlanarGraph, degree4Vertices, windowRing } from '../streets/graph'
 import { bboxesFar, endMeetings, maxCloseRun } from '../streets/testutil'
 import { materializeTags, resolveTags } from '../../app/tags'
-import { deriveDistricts, footprintTouchPoints, generateSector, toBlocks } from './generate'
+import { closeRuns } from '../streets/cleanup'
+import { deriveDistricts, footprintTouchPoints, frontageOf, generateSector, toBlocks } from './generate'
 
 // full pipeline is ~3-10 s per 4 km generation (tracing + land clipping dominate)
 vi.setConfig({ testTimeout: 90000 })
@@ -918,6 +919,56 @@ describe('no hairpin spokes', () => {
   }
 })
 
+describe.each([
+  // inland seed 500 had 3 same-ring hairpin ends before c23a41d (seed 42 had none: regression guard only)
+  ['inland seed 500', 'inland,medium,dense,balanced,lively,mixed,arcology', 500],
+  ['seed 42 (street free ends seed)', 'coastal,medium,dense,fringe,lively,mixed,river,arcology', 42],
+] as const)('ring streets run outward: %s', (_label, tags, seed) => {
+  const params = { ...resolveTags(tags.split(',')), seed, size: 4, pack: 'generic', theme: 'print' } as SectorParams
+  let m: SectorModel
+  beforeAll(() => { m = generateSector(params) }, 120000)
+  const rings = () => m.roads.filter((r) => r.id.startsWith(RING_ID_PREFIX) && r.points.length > 1)
+  it('has a K road', () => { expect(rings().length).toBeGreaterThan(0) })
+  it('no street has both ends on the same K road', () => {
+    const bad: string[] = []
+    for (const r of m.roads.filter((x) => x.class === 'street')) for (const k of rings()) {
+      const a = r.points[0], z = r.points[r.points.length - 1]
+      // the rule's own filter: short hooks only (a long crescent on one ring is legitimate)
+      if (distToPolyline(a, k.points) <= 6 && distToPolyline(z, k.points) <= 6 && Math.hypot(a.x - z.x, a.y - z.y) < 40 && polylineLength(r.points) < 80) bad.push(`${r.id} ${k.id}`)
+    }
+    expect(bad).toEqual([])
+  })
+  it('no street enters the ring band (inside the ring, outside the plaza) unless it crosses the ring', () => {
+    const bad: string[] = []
+    for (const a of m.arcologies) {
+      const ring = rings().find((r) => r.id === a.ringRoadId)
+      if (!ring) continue
+      const poly = ring.points
+      for (const r of m.roads.filter((x) => x.class === 'street')) {
+        let inBand = false, inside = false, outside = false
+        for (let i = 1; i < r.points.length; i++) {
+          const p0 = r.points[i - 1], p1 = r.points[i], n = Math.max(1, Math.ceil(Math.hypot(p1.x - p0.x, p1.y - p0.y) / 10))
+          for (let k = 0; k <= n; k++) {
+            const q = { x: p0.x + ((p1.x - p0.x) * k) / n, y: p0.y + ((p1.y - p0.y) * k) / n }
+            const inRing = pointInRings(q, [poly])
+            if (inRing) inside = true; else outside = true
+            if (inRing && !pointInRings(q, [a.plaza])) inBand = true
+          }
+        }
+        if (inBand && !(inside && outside)) bad.push(`${r.id} ${ring.id}`)
+      }
+    }
+    expect(bad).toEqual([])
+  })
+  it('each K road keeps at least 4 roads ending on it', () => {
+    const counts = rings().map((k) => {
+      const n = m.roads.filter((r) => r.id !== k.id && r.points.length > 1 && [r.points[0], r.points[r.points.length - 1]].some((e) => distToPolyline(e, k.points) <= 6)).length
+      return `${k.id}:${n}`
+    })
+    for (const c of counts) expect(Number(c.split(':')[1]), c).toBeGreaterThanOrEqual(4)
+  })
+})
+
 describe('lakes bound blocks', () => {
   const models: [string, SectorParams][] = [
     ['seed 782008753 inland 6 km', { ...base, seed: 782008753, size: 6, landform: 'inland', density: 0.6, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5, river: true, lakes: true, islands: true, piers: true, pack: 'generic', theme: 'print' }],
@@ -1133,4 +1184,130 @@ describe('arterial ends (model seeds)', () => {
       for (const r of t.arterials) if (!r.id.startsWith(RING_ID_PREFIX)) expect(bendViolation(r.points, 15), `${name} ${r.id} bend`).toBeLessThan(1e-6)
     })
   }
+})
+
+describe('street free ends', () => {
+  // seed 42: 12 before the ring-outward seeding re-rolled the streets stream (13 decay ends, 11 alive now)
+  const DECAY: Record<number, number> = { 42: 11, 426750495: 11, 2268324149: 19 } // decay ends alive after the final prune, as measured without it
+  const refs: [string, number, SectorParams, number, number][] = [
+    // [label, seed, params, BOUND, STRAY]. BOUND = free ends measured at 3e3416d, all but STRAY decay cul-de-sacs; a re-roll re-pins it to the new decay count; a non-decay free end is a defect.
+    // STRAY = the free ends that are no decay end: infill ends (S372/S375 at the window inset, S351 6.0 m off a street, shore ends), kept by the final prune because blocks were cut along them. Ratchet down, never up.
+    ['seed 42', 42, { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 12, 3],
+    ['seed 426750495', 426750495, { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 13, 4],
+    ['seed 2268324149', 2268324149, { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 16, 2],
+  ]
+  for (const [label, seed, params, bound, strayBound] of refs) describe(label, () => {
+    let m: SectorModel
+    beforeAll(() => { m = generateSector(params) }, 120000)
+    it('has few free street ends', () => {
+      const sizeM = m.meta.sizeM
+      const idx = new RoadIndex(200)
+      for (const r of m.roads) idx.add(r.id, r.points, r.class)
+      const lands = [...m.arcologies.map((a) => a.plaza), ...m.megablocks.map((k) => k.core)]
+      const wet = (p: Pt) => inWater(m.terrain, p) || [0, 1, 2, 3, 4, 5, 6, 7].some((k) => inWater(m.terrain, { x: p.x + 15 * Math.cos((k * Math.PI) / 4), y: p.y + 15 * Math.sin((k * Math.PI) / 4) }))
+      const decayEnds = traceRoads(params, sampleTerrain(params, sizeM), sizeM).decayEnds
+      const free: string[] = []
+      const stray: string[] = []
+      for (const r of m.roads.filter((x) => x.class === 'street')) {
+        for (const [i, p] of [r.points[0], r.points[r.points.length - 1]].entries()) {
+          if (onWindowEdge(p, sizeM, 1) || wet(p) || lands.some((poly) => pointInRings(p, [poly]))) continue
+          if (idx.nearestMatching(p, 6, (h) => h.id !== r.id)) continue
+          const tag = `${r.id}${i ? '>' : '<'}@${Math.round(p.x)},${Math.round(p.y)}`
+          free.push(tag)
+          if (!decayEnds.some((d) => Math.hypot(p.x - d.x, p.y - d.y) <= 1)) stray.push(tag)
+        }
+      }
+      console.log(`free street ends ${label}: ${free.length}`, free.join(' '), `| not decay: ${stray.join(' ') || '-'}`)
+      expect(stray.length, `${seed} free ends that are no decay cul-de-sac: ${stray.join(' ')}`).toBeLessThanOrEqual(strayBound)
+      expect(free.length, `seed ${seed}`).toBeLessThanOrEqual(bound)
+    })
+    it('keeps the decay cul-de-sacs', () => {
+      const sizeM = m.meta.sizeM
+      const t = traceRoads(params, sampleTerrain(params, sizeM), sizeM)
+      const ends = m.roads.filter((x) => x.class === 'street').flatMap((r) => [r.points[0], r.points[r.points.length - 1]])
+      const alive = t.decayEnds.filter((d) => ends.some((e) => Math.hypot(e.x - d.x, e.y - d.y) < 1)).length
+      console.log(`decay ends ${label}: ${alive} of ${t.decayEnds.length} still street ends`)
+      expect(alive).toBeGreaterThanOrEqual(DECAY[seed])
+    })
+  })
+})
+
+describe('frontageOf', () => {
+  const inOrOn = (p: Pt, ring: Pt[]) => pointInRings(p, [ring]) || distToPolyline(p, [...ring, ring[0]]) < 0.5
+  const HW: Road = { id: 'H1', class: 'highway', points: [], width: 20, name: null }
+  // the highway runs along y = 0 and curves: the face lies south of it (y > 0)
+  it('one polyline per face side along a curved highway', () => {
+    const hw: Pt[] = []
+    let a = 0, x = 0, y = 0
+    for (let i = 0; i <= 3; i++) { hw.push({ x, y }); x += 80 * Math.cos(a); y += 80 * Math.sin(a); a += (20 * Math.PI) / 180 }
+    // face ring: the highway chain along the top, then closed far to the south
+    const ring: Pt[] = [...hw, { x: hw[3].x, y: hw[3].y + 400 }, { x: hw[0].x, y: hw[0].y + 400 }]
+    const out = frontageOf({ footprint: ring }, { ...HW, points: hw })
+    expect(out.length).toBe(1)
+    const line = out[0]
+    for (const p of line) {
+      expect(inOrOn(p, ring)).toBe(true)
+      expect(distToPolyline(p, hw)).toBeGreaterThanOrEqual(20)
+    }
+    // strictly advancing along the highway: no overlapping chords
+    for (let i = 1; i < line.length; i++) expect(line[i].x - line[i - 1].x).toBeGreaterThan(0)
+  })
+  it('a 60 degree corner between two highway-side edges stays inside the ring', () => {
+    const hw: Pt[] = [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 300, y: 173 }]
+    const ring: Pt[] = [...hw, { x: 150, y: 400 }, { x: -50, y: 300 }]
+    const out = frontageOf({ footprint: ring }, { ...HW, points: hw })
+    expect(out.length).toBeGreaterThan(0)
+    for (const line of out) for (const p of line) expect(inOrOn(p, ring)).toBe(true)
+  })
+})
+
+describe('no doubled streets', () => {
+  const refs: [string, SectorParams][] = [
+    ['seed 42', { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams],
+    ['seed 426750495', { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams],
+    ['seed 2268324149', { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams],
+  ]
+  for (const [label, params] of refs) it(label, () => {
+    const roads = generateSector(params).roads
+    const streets = roads.filter((r) => r.class === 'street')
+    const ids = new Set(streets.map((r) => r.id))
+    const idx = new RoadIndex(200)
+    for (const r of roads) idx.add(r.id, r.points, r.class)
+    const bad: string[] = []
+    // the weld's own run finder: a crossing is not a double
+    for (const r of streets) for (const c of closeRuns(r.points, idx, 6, r.id).runs) {
+      if (ids.has(c.id) && c.arc > 20 && !c.crosses) bad.push(`${r.id}~${c.id} ${Math.round(c.arc)}m`)
+    }
+    console.log(`doubled pairs ${label}: ${bad.length}`, bad.join(' '))
+    expect(bad).toEqual([])
+  })
+})
+
+describe('block sides have a road', () => {
+  // BOUND measured at 3e3416d: 3 / 7 / 4. Before this round 66 / 31 / 14 (main 57 / 28 / 134; 201 / 90 / 103 at BASE 0f45e0a). Ratchet down, never up.
+  // [label, params, BOUND]: edges of block footprints with no road within 10 m, no water within 15 m, not on the window edge, not in a megablock/arcology
+  const refs: [string, SectorParams, number][] = [
+    ['seed 42', { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 3],
+    ['seed 426750495', { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 7],
+    ['seed 2268324149', { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 14],
+  ]
+  for (const [label, params, bound] of refs) it(label, () => {
+    const m = generateSector(params)
+    const idx = new RoadIndex(200)
+    for (const r of m.roads) idx.add(r.id, r.points, r.class)
+    const sizeM = m.meta.sizeM
+    const wet = (p: Pt) => inWater(m.terrain, p) || [0, 1, 2, 3, 4, 5, 6, 7].some((k) => inWater(m.terrain, { x: p.x + 15 * Math.cos((k * Math.PI) / 4), y: p.y + 15 * Math.sin((k * Math.PI) / 4) }))
+    const bad: string[] = []
+    for (const b of m.blocks) {
+      const c = ringCentroid(b.footprint)
+      if (m.megablocks.some((k) => pointInRings(c, [k.footprint])) || m.arcologies.some((a) => pointInRings(c, [a.footprint]) || Math.hypot(c.x - a.center.x, c.y - a.center.y) <= a.radius)) continue
+      for (let i = 0; i < b.footprint.length; i++) {
+        const p = b.footprint[i], q = b.footprint[(i + 1) % b.footprint.length], mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 }
+        if (onWindowEdge(mid, sizeM, 1) || wet(mid) || idx.nearestMatching(mid, 10, () => true)) continue
+        bad.push(`${b.id}#${i}@${Math.round(mid.x)},${Math.round(mid.y)}`)
+      }
+    }
+    console.log(`block sides without a road ${label}: ${bad.length}`, bad.join(' '))
+    expect(bad.length, label).toBeLessThanOrEqual(bound)
+  })
 })

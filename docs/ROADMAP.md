@@ -141,6 +141,76 @@ core (clipping, insetting, filling non-rectangular shapes).
   ignores footprint size, so e.g. bars can land in enormous buildings.
   Size/shape-aware building semantics is the follow-up spec's core question.
 
+## POI and label rework (needs a brainstorm run — user, 2026-10-13)
+
+A dedicated system, not a fix inside the current layers. Observed on
+print-theme maps: far too many POIs per map, POIs clustered so close that
+their labels write over each other, district labels "all over the place",
+and both name pools repeating quickly.
+
+- **Fewer, more distinct POIs** — a map should carry a handful of POIs that
+  matter, each recognisably different, instead of a sprinkle of similar ones.
+  Candidate: tags that say which POI types a map should hold (nightlife,
+  corp, medical, underworld, …) so the mix is a user choice, not a draw.
+  Ties in with "POI category filters" (display) above but is a generation
+  change.
+- **POI rendering with text** — zoom-dependent visibility: hide POI labels
+  (or whole POIs) when zoomed out, reveal them as the viewer zooms in;
+  de-cluster labels so none overlap; the semantic-zoom label logic in the
+  map view is the hook (`labelsZoomed` in uicheck shows the mechanism).
+- **District label placement** — labels land anywhere inside the district
+  bounds; needs a real placement rule (largest inscribed area, away from
+  arterials and other labels, consistent size per zoom level). Supersedes
+  "Better label placement" above for districts.
+- **More names, less repetition** — POI and district name pools are too small
+  and the patterns repeat; see "Massively extend flavor-pack name tables"
+  and "Name uniqueness check" above, which this rework should absorb.
+
+Order: brainstorm the POI system first (what a POI is, how many, which
+tags), then labels/rendering, then the name tables.
+
+## Outskirts — the city has to end somewhere (user, 2026-10-13)
+
+Today every sector is wall-to-wall city: streets and blocks run to the
+window edge on all four sides, so no map ever says "this is where the
+sprawl stops". A sector on the edge of the metro needs an outskirts form:
+the fabric thins out, arterials become country roads, blocks give way to
+fields, wasteland, scrap, industrial fringe or whatever the pack says, and
+the reader sees the end of the city.
+
+- **Ties into the metroplex level** (build order step 3): the metroplex
+  decides which sectors are core, ring, edge or beyond, and a sector's
+  position in the metro sets which of its sides are outskirts. Until the
+  metroplex exists, a sector tag (`outskirts` with a side, or a density
+  gradient) can stand in.
+- **Sector-level mechanics to work out**: a density falloff across the
+  window instead of one density per map (the field/seeding already takes a
+  per-point irregularity, so a per-point density is the natural hook);
+  what fills the thinned-out land (zoning gets a non-urban zone); how the
+  highway and arterials behave there (fewer, straighter, leaving the
+  window); the `fringe` density tag today is a uniform low density, not an
+  edge.
+- Needs a brainstorm run together with the metroplex generator design.
+
+## Parks and greenery (user, 2026-10-13)
+
+A map today gives no way to tell whether a district has any green at all:
+zoning has no park or green zone, and the only open space is the `plaza`
+block style, which reads as paving. A reader should see at a glance where
+the parks, green strips, cemeteries, allotments and derelict green lots are,
+and where there are none (a packed corp core with no green is itself a
+statement).
+
+- **Generation**: a park zone or a per-block `park`/`green` style, drawn by
+  density and zone (residential more, industrial less, corp as manicured
+  campus green), plus linear green along rivers and shores (ties into the
+  arterials phase 2 waterfront work) and leftover slivers as pocket green.
+- **Rendering**: a distinct fill in every theme (print included), tree or
+  hatch texture, and labels for the larger ones (ties into the POI and
+  label rework: a park is a POI type).
+- **Tags**: a `green` axis (barren / some / leafy) so the user can ask for it,
+  the way density and corp dominance are asked for today.
+
 ## Street generator follow-ups (from tensor-streets, §14)
 
 - **Perf budget unverified** — target 4 km ≤ 1.5 s, 6 km ≤ 4 s on a laptop

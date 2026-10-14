@@ -3,7 +3,7 @@ import { pointAtT, polylineLength, slicePolyline } from '../gen/geometry'
 import { nearestOnPolyline } from '../gen/terrain/rivers'
 import { buildPlanarGraph, degree4Vertices } from '../gen/streets/graph'
 import { HIGHWAY_WIDTH } from '../gen/streets/highway'
-import type { Road, SectorModel } from '../gen/types'
+import type { HighwaySegment, Road, SectorModel } from '../gen/types'
 import type { Theme } from './theme'
 
 const n = (v: number) => String(Math.round(v * 100) / 100)
@@ -64,6 +64,7 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
   const W = HIGHWAY_WIDTH
   const poly = (p: Pt[], stroke: string, w: number | string, extra = '') =>
     `<polyline points="${pts(p)}" fill="none" stroke="${stroke}" stroke-width="${w}"${extra}/>`
+  const total = polylineLength(line) || 1
   const slice = (s: { from: number; to: number }) => slicePolyline(line, s.from, s.to)
 
   for (const s of segs) {
@@ -81,18 +82,23 @@ export function renderHighway(model: SectorModel, theme: Theme, out: string[], g
     out.push(
       `<path data-halo="highway" d="${segs.map((s) => `M${pts(slice(s)).replace(/ /g, 'L')}`).join(' ')}" fill="none" stroke="${theme.road.highway}" stroke-width="${n(W * 1.6)}" stroke-opacity="0.35" stroke-linecap="round" stroke-linejoin="round"/>`,
     )
-  const total = polylineLength(line) || 1
+  // one stroke per run of same-level segments: the level assignment chops the highway into ~10 m
+  // pieces, and a stroke per piece showed a wedge of background at every bend (caps meet flat)
+  const runs: HighwaySegment[] = []
   for (const s of segs) {
+    const last = runs[runs.length - 1]
+    if (last && last.level === s.level) last.to = s.to
+    else runs.push({ ...s })
+  }
+  for (const s of runs) {
     const p = slice(s)
     out.push(`<g data-level="${s.level}">`)
+    out.push(poly(p, theme.road.highway, W, ' stroke-linejoin="round"' + glowAttr))
     if (s.level === 'ground')
       for (const d of [W / 2 + 3, -(W / 2 + 3)]) out.push(poly(offset(p, d), theme.highway.trench, 1))
-    if (s.level === 'elevated') {
-      const ts: number[] = []
-      for (let m = 0; m < (s.to - s.from) * total; m += 40) ts.push(s.from + m / total)
-      out.push(`<path d="${ticks(line, ts, W / 2, W / 2 + 8, true).join('')}" fill="none" stroke="${theme.highway.column}" stroke-width="2"/>`)
-    }
-    out.push(poly(p, theme.road.highway, W, glowAttr), '</g>')
+    // elevated hachure reads light (deck colour, near-opaque), sunken stays faint: same colour at 0.35 was too close
+    if (s.level !== 'ground') out.push(poly(p, `url(#hachure-${s.level})`, W, ` stroke-linejoin="round" opacity="${s.level === 'elevated' ? 0.85 : 0.35}"`))
+    out.push('</g>')
   }
 
   for (const c of hw.first.crossings ?? []) {

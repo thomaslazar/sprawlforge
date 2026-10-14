@@ -399,6 +399,32 @@ await page.goto(`${BASE}/?seed=42&tags=coastal,river,arcology`)
 await page.waitForSelector('svg'); await page.screenshot({ path: `${OUT}/arterials-coast.png` })
 if ((await page.locator('svg [data-bridge]').count()) < 1) fail('arterials-coast: no bridge rendered')
 
+// streets cleanup (spec 2026-10-13): highway landing east of the river bridge, zoomed (map metres x 1850-2450, y 1900-2350)
+await page.goto(`${BASE}/?seed=42&tags=coastal,medium,dense,fringe,lively,mixed,river,arcology&pack=generic&theme=print`)
+await page.waitForSelector('svg')
+await page.getByLabel('Show POIs').uncheck()
+// wheel-zoom (semantic zoom: labels re-render smaller) at the map point x 2150, y 2125 until ~600 m of the 4000 m map are visible
+const svgBox = await page.locator('.map-viewport svg').first().boundingBox()
+await page.mouse.move(svgBox.x + (2150 / 4000) * svgBox.width, svgBox.y + (2125 / 4000) * svgBox.height)
+const z0 = (await readTransform()).zoom
+for (let i = 0; i < 40 && (await readTransform()).zoom / z0 < 4000 / 600; i++) { await page.mouse.wheel(0, -240); await page.waitForTimeout(30) }
+await page.waitForTimeout(600) // gesture settles, labels re-render
+await page.screenshot({ path: `${OUT}/streets-highway.png` })
+
+// highway levels (task 6): seed 3 has ground, elevated and sunken; full map, then zoom on the sunken->ground transition (map metres ~1611, 1125)
+await page.goto(`${BASE}/?seed=3&tags=coastal,medium,dense,balanced,normal,mixed,river&pack=generic&theme=print`)
+await page.waitForSelector('svg')
+await page.getByLabel('Show POIs').uncheck()
+await page.screenshot({ path: `${OUT}/highway-levels-full.png` })
+for (const lv of ['sunken', 'ground', 'elevated'])
+  if ((await page.locator(`svg [data-level="${lv}"]`).count()) < 1) fail(`highway-levels: no ${lv} stretch rendered`)
+const svgBox2 = await page.locator('.map-viewport svg').first().boundingBox()
+await page.mouse.move(svgBox2.x + (1611 / 4000) * svgBox2.width, svgBox2.y + (1125 / 4000) * svgBox2.height)
+const zz = (await readTransform()).zoom
+for (let i = 0; i < 40 && (await readTransform()).zoom / zz < 4000 / 600; i++) { await page.mouse.wheel(0, -240); await page.waitForTimeout(30) }
+await page.waitForTimeout(600)
+await page.screenshot({ path: `${OUT}/highway-levels.png` })
+
 // bare URL (no tags) still auto-resolves a landform via resolveTerrain, but
 // the chips/URL must materialize that roll instead of showing nothing staged
 await page.goto(`${BASE}/?seed=42`)

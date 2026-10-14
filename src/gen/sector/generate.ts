@@ -1,4 +1,4 @@
-import { bboxOf, bspSplit, pointInRings, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
+import { bboxOf, bspSplit, onWindowEdge, pointInRings, polylineLength, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
 import { RING_ID_PREFIX } from '../landmarks/place'
 import { generateName } from '../names/names'
 import { getPack } from '../names/packs'
@@ -9,6 +9,7 @@ import {
 import {
   buildPlanarGraph, clipFacesToLand, facesOf, dropSlivers, pruneDanglers, windowRing,
 } from '../streets/graph'
+import { weldConverging } from '../streets/cleanup'
 import { FRONTAGE_ID_PREFIX, RoadIndex, endKey, pruneDangling } from '../streets/trace'
 import { distToPolyline } from '../terrain/rivers'
 import { SIDEWALK, clipSegmentToRing, corridorRects, fillLots, insetRing, isStripBlock, longestEdgeAngle } from '../streets/lots'
@@ -18,7 +19,7 @@ import { GENERATOR_VERSION, type Block, type District, type HighwaySegment, type
 import { placePiers } from './piers'
 import { placePois } from './pois'
 import { selectCompounds } from '../landmarks/compounds'
-import { dryRuns, inWater, landM2 as landM2Of, markWetSpans } from './bridges'
+import { dryRuns, inWater, landM2 as landM2Of, markWetSpans, nearWater } from './bridges'
 import { streetWaterAnchor, traceRoads } from './streets'
 import { assignZones } from './zoning'
 
@@ -66,22 +67,60 @@ function segCross(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
 }
 
 /**
- * The highway never anchors a street, so a face bounded by it gets a frontage street (the highway-side
- * edges offset inward by FRONTAGE_M) and every cut that would end on the highway stops on that instead.
+ * The highway never anchors a street, so a face bounded by it gets a frontage street and every cut that would end on the
+ * highway stops on that instead. One polyline per run of consecutive ring edges along the highway: each vertex moves inward
+ * along the bisector of its two edge normals (FRONTAGE_M / cos(half turn), capped at 2 x FRONTAGE_M), the run's two ends by
+ * their single edge normal and 60 m further out. Clipped to the ring (a clip that splits the run gives several polylines).
  */
-function frontageOf(f: Face, highway: Road): Array<[Pt, Pt]> {
-  const out: Array<[Pt, Pt]> = []
+export function frontageOf(f: { footprint: Pt[] }, highway: Road): Pt[][] {
   const ring = f.footprint
-  for (let i = 0; i < ring.length; i++) {
-    const a = ring[i], b = ring[(i + 1) % ring.length]
-    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-    if ([a, b, mid].some((p) => distToPolyline(p, highway.points) > 6)) continue
+  const n = ring.length
+  const along = ring.map((a, i) => {
+    const b = ring[(i + 1) % n]
+    return [a, b, { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }].every((p) => distToPolyline(p, highway.points) <= 6)
+  })
+  const start = along.findIndex((v, i) => v && !along[(i + n - 1) % n])
+  if (start < 0 && !along.every(Boolean)) return []
+  const first = Math.max(start, 0)
+  const unit = (i: number) => {
+    const a = ring[i % n], b = ring[(i + 1) % n]
     const len = Math.hypot(b.x - a.x, b.y - a.y) || 1
     const u = { x: (b.x - a.x) / len, y: (b.y - a.y) / len }
-    let n = { x: -u.y, y: u.x }
-    if (!pointInRings({ x: mid.x + n.x, y: mid.y + n.y }, [ring])) n = { x: -n.x, y: -n.y }
-    const o = (p: Pt, k: number) => ({ x: p.x + n.x * FRONTAGE_M + u.x * k, y: p.y + n.y * FRONTAGE_M + u.y * k })
-    out.push(...clipSegmentToRing(o(a, -60), o(b, 60), ring))
+    const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+    let nm = { x: -u.y, y: u.x }
+    if (!pointInRings({ x: mid.x + nm.x, y: mid.y + nm.y }, [ring])) nm = { x: -nm.x, y: -nm.y }
+    return { u, nm }
+  }
+  const out: Pt[][] = []
+  for (let i = 0; i < n; i++) {
+    const s0 = (first + i) % n
+    if (!along[s0] || (along[(s0 + n - 1) % n] && !(start < 0 && i === 0))) continue
+    let len = 0
+    while (len < n && along[(s0 + len) % n]) len++
+    const edges = Array.from({ length: len }, (_, k) => unit(s0 + k))
+    const pts: Pt[] = []
+    for (let k = 0; k <= len; k++) {
+      const p = ring[(s0 + k) % n]
+      const e0 = edges[Math.max(k - 1, 0)], e1 = edges[Math.min(k, len - 1)]
+      let m = { x: e0.nm.x + e1.nm.x, y: e0.nm.y + e1.nm.y }
+      const ml = Math.hypot(m.x, m.y) || 1
+      m = { x: m.x / ml, y: m.y / ml }
+      const d = Math.min(FRONTAGE_M / Math.max(m.x * e0.nm.x + m.y * e0.nm.y, 1e-6), 2 * FRONTAGE_M)
+      const ext = k === 0 ? { k: -60, u: edges[0].u } : k === len ? { k: 60, u: edges[len - 1].u } : null
+      pts.push({ x: p.x + m.x * d + (ext ? ext.u.x * ext.k : 0), y: p.y + m.y * d + (ext ? ext.u.y * ext.k : 0) })
+    }
+    // clip each segment to the ring, re-chain pieces that meet
+    let chain: Pt[] = []
+    const flush = () => { if (chain.length > 1) out.push(chain); chain = [] }
+    for (let k = 0; k < pts.length - 1; k++) {
+      const clipped = clipSegmentToRing(pts[k], pts[k + 1], ring)
+      if (clipped.length === 0) { flush(); continue }
+      for (const [p, q] of clipped) {
+        if (chain.length && Math.hypot(chain[chain.length - 1].x - p.x, chain[chain.length - 1].y - p.y) < 0.5) chain.push(q)
+        else { flush(); chain = [p, q] }
+      }
+    }
+    flush()
   }
   return out
 }
@@ -124,14 +163,33 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
       const pieces: Road[] = []
       const gaps: Pt[][] = []
       // a face that only overlaps a core (or a non-ring arcology's plaza) keeps its split, minus the cuts that would run through the core
-      const inCore = (p: Pt, q: Pt) => [0, 0.25, 0.5, 0.75, 1].some((t) => cores.some((core) => pointInRings({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t }, [core])))
-      const add = (p: Pt, q: Pt) => {
-        if (inCore(p, q)) return
+      const segs = (pts: Pt[]) => pts.slice(1).map((q, i): [Pt, Pt] => [pts[i], q])
+      const inCore = (pts: Pt[]) => segs(pts).some(([p, q]) => [0, 0.25, 0.5, 0.75, 1].some((t) => cores.some((core) => pointInRings({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t }, [core]))))
+      const add = (points: Pt[]) => {
+        if (inCore(points)) return
         next += 1
-        pieces.push({ id: `S${String(next).padStart(3, '0')}`, class: 'street', points: [p, q], width: 9, name: null })
+        pieces.push({ id: `S${String(next).padStart(3, '0')}`, class: 'street', points, width: 9, name: null })
+      }
+      // the streets already inside this face (the stranded rule below sorts out which of them stay)
+      const inside = roads.filter((r) => !dropped.has(r.id) && r.class === 'street' && pointInRings(r.points[Math.floor(r.points.length / 2)], [f.footprint]))
+      // a cut that runs parallel (15 deg) and within 15 m of another piece, a street inside the face or the face ring (its bounding road) over more than 20 m is a twin of it: skipped
+      const isTwin = (p: Pt, q: Pt) => {
+        const ang = Math.atan2(q.y - p.y, q.x - p.x), len = Math.hypot(q.x - p.x, q.y - p.y)
+        const others = [...pieces, ...inside].flatMap((r) => segs(r.points)).concat(segs([...f.footprint, f.footprint[0]])).filter(([c, d]) => {
+          let da = Math.abs(Math.atan2(d.y - c.y, d.x - c.x) - ang) % Math.PI
+          if (da > Math.PI / 2) da = Math.PI - da
+          return da <= Math.PI / 12
+        })
+        let near = 0
+        for (let d = 0; d <= len; d += 5) {
+          const x = { x: p.x + ((q.x - p.x) * d) / (len || 1), y: p.y + ((q.y - p.y) * d) / (len || 1) }
+          if (others.some(([c, e]) => distToPolyline(x, [c, e]) <= 15)) near += 5
+        }
+        return near > 20
       }
       const frontage = highway ? frontageOf(f, highway) : []
-      for (const [p, q] of frontage) add(p, q)
+      for (const pl of frontage) add(pl)
+      const frontSegs = frontage.flatMap(segs)
       const nearHw = (e: Pt) => !!highway && distToPolyline(e, highway.points) <= HIGHWAY_NEAR_M
       for (const { axis, strip } of cuts) {
         const [a, b] = axis === 'x'
@@ -150,10 +208,10 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
           for (const end of [0, 1]) {
             const e = end ? q : p, o = end ? p : q
             if (!nearHw(e)) continue
-            const hit = frontage.map(([c, d]) => segCross(o, e, c, d)).find((x) => x !== null)
+            const hit = frontSegs.map(([c, d]) => segCross(o, e, c, d)).find((x) => x !== null)
             if (hit) { if (end) q = hit; else p = hit } else ok = false
           }
-          if (ok && Math.hypot(q.x - p.x, q.y - p.y) > 5) add(p, q)
+          if (ok && Math.hypot(q.x - p.x, q.y - p.y) > 5 && !isTwin(p, q)) add([p, q])
           }
         }
       }
@@ -169,15 +227,15 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
           if (dist > 0.5 && dist < bestD && !(onRing && nearHw(h!))) { best = h; bestD = dist }
         }
         for (let i = 0; i < f.footprint.length; i++) consider(f.footprint[i], f.footprint[(i + 1) % f.footprint.length], true)
-        for (const o of pieces) if (o !== self) consider(o.points[0], o.points[1], false)
+        for (const o of pieces) if (o !== self) for (const [c, d] of segs(o.points)) consider(c, d, false)
         return best
       }
       // a cut trimmed at the shore ends up to 10 m short of the water: that end is anchored (the shore is the block edge)
       const shore = (e: Pt) => [0, 1, 2, 3, 4, 5, 6, 7].some((k) => inWater(terrain, { x: e.x + 12 * Math.cos((k * Math.PI) / 4), y: e.y + 12 * Math.sin((k * Math.PI) / 4) }))
       const looseAt = (e: Pt, self: Road) => !shore(e) && !pieces.some((o) => o !== self && distToPolyline(e, o.points) <= 8) && distToPolyline(e, [...f.footprint, f.footprint[0]]) > 6
       for (const r of pieces) {
-        for (const end of [0, 1]) {
-          const e = r.points[end], o = r.points[1 - end]
+        for (const end of [0, r.points.length - 1]) {
+          const e = r.points[end], o = r.points[end ? end - 1 : 1]
           if (!looseAt(e, r)) continue
           const hit = reach(e, o, r)
           // a ring crossing inside a lake is no junction: the run-on would end the street in water
@@ -186,12 +244,10 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
       }
       // weld each end that stops within 8 m of another piece onto it exactly (the highway test wants <= 6 m)
       for (const r of pieces) {
-        for (const end of [0, 1]) {
+        for (const end of [0, r.points.length - 1]) {
           const e = r.points[end]
           let best: Pt | null = null, bd = 8
-          for (const o of pieces) {
-            if (o === r) continue
-            const [c, d] = o.points
+          for (const [c, d] of pieces.filter((o) => o !== r).flatMap((o) => segs(o.points))) {
             const l2 = (d.x - c.x) ** 2 + (d.y - c.y) ** 2 || 1
             const t = Math.max(0, Math.min(1, ((e.x - c.x) * (d.x - c.x) + (e.y - c.y) * (d.y - c.y)) / l2))
             const q = { x: c.x + t * (d.x - c.x), y: c.y + t * (d.y - c.y) }
@@ -202,9 +258,9 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
         }
       }
       // welding can pull both ends of a short piece onto the same neighbour: a piece left shorter than a cut may be (add's 5 m) goes
-      for (let i = pieces.length - 1; i >= 0; i--) if (Math.hypot(pieces[i].points[1].x - pieces[i].points[0].x, pieces[i].points[1].y - pieces[i].points[0].y) <= 5) pieces.splice(i, 1)
+      for (let i = pieces.length - 1; i >= 0; i--) if (polylineLength(pieces[i].points) <= 5) pieces.splice(i, 1)
       // loose ends were run on above: one that now reaches into a core goes
-      for (let i = pieces.length - 1; i >= 0; i--) if (inCore(pieces[i].points[0], pieces[i].points[1])) pieces.splice(i, 1)
+      for (let i = pieces.length - 1; i >= 0; i--) if (inCore(pieces[i].points)) pieces.splice(i, 1)
       // a piece must be anchored at both ends (another piece, or the face ring away from the highway); dead ends go
       const closed = [...f.footprint, f.footprint[0]]
       // an end near the highway is anchored by another piece only: the face ring there is the corridor edge, and a shore beside it is no junction
@@ -214,20 +270,29 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
         again = false
         for (let i = pieces.length - 1; i >= 0; i--) {
           const r = pieces[i]
-          if (!anchored(r.points[0], r) || !anchored(r.points[1], r)) { pieces.splice(i, 1); again = true }
+          if (!anchored(r.points[0], r) || !anchored(r.points[r.points.length - 1], r)) { pieces.splice(i, 1); again = true }
         }
       }
+      // a street inside the face whose end rests on nothing (ring, any other road, a piece) would cross a sub-block: it goes, and
+      // so does whatever only rested on it. The rest divide the sub-faces like the pieces do.
+      const gone = new Set<string>()
+      for (let again = true; again;) {
+        again = false
+        for (const r of inside) {
+          // frontage ends on the window, water or an obstacle by construction (pruneDangling exempts it too)
+          if (gone.has(r.id) || r.id.startsWith(FRONTAGE_ID_PREFIX)) continue
+          // an end on the window edge or at the water is anchored by it (the inset face ring lies ~17 m off there)
+          const loose = [r.points[0], r.points[r.points.length - 1]].some((e) => distToPolyline(e, closed) > 6 && !onWindowEdge(e, sizeM, 1) && !nearWater(terrain, e, 15)
+            && ![...others, ...roads.filter((o) => !dropped.has(o.id) && !gone.has(o.id)), ...infill, ...pieces].some((o) => o.id !== r.id && distToPolyline(e, o.points) <= 6))
+          if (loose) { gone.add(r.id); again = true }
+        }
+      }
+      const kept = inside.filter((r) => !gone.has(r.id))
       // footprints may contain water: sub-faces with no land are dropped (landM2 > 0), the rest keep their footprint
-      const sub: Face[] = pieces.length ? dropSlivers(facesOf(pruneDanglers(buildPlanarGraph(pieces, [f.footprint, ...gaps])))).map((poly) => ({ poly, footprint: poly })).filter((x) => landM2(x.footprint) > 0) : []
+      const sub: Face[] = pieces.length ? dropSlivers(facesOf(pruneDanglers(buildPlanarGraph([...pieces, ...kept], [f.footprint, ...gaps])))).map((poly) => ({ poly, footprint: poly })).filter((x) => landM2(x.footprint) > 0) : []
       if (sub.length < 2) { out.push(f); continue }
       infill.push(...pieces)
-      // a dead-end street stranded inside the split face would now cross a sub-block: it goes
-      for (const r of roads) {
-        if (dropped.has(r.id) || r.class !== 'street' || !pointInRings(r.points[Math.floor(r.points.length / 2)], [f.footprint])) continue
-        const loose = [r.points[0], r.points[r.points.length - 1]].some((e) => distToPolyline(e, [...f.footprint, f.footprint[0]]) > 6
-          && ![...others, ...pieces].some((o) => o.id !== r.id && distToPolyline(e, o.points) <= 6))
-        if (loose) dropped.add(r.id)
-      }
+      for (const id of gone) dropped.add(id)
       out.push(...sub)
       split = true
     }
@@ -277,8 +342,8 @@ function pruneCutStreets(streets: Road[], arterials: Road[], highway: Road, terr
 
 /**
  * Frontage roads were traced along the whole highway; drop the stretches beside sunken segments, then cut back
- * streets that ended on a dropped stretch. ponytail: the decay cul-de-sac set is not available here, so every
- * street end not resting on a dropped stretch is kept as is.
+ * streets that ended on a dropped stretch. Every street end not resting on a dropped stretch is kept as is
+ * (decay cul-de-sacs included); the final street prune in generateSector protects them by their real set.
  */
 function withTrimmedFrontage(
   traced: Road[], frontage: Road[], highway: Road, segments: HighwaySegment[], arterials: Road[], terrain: Terrain, sizeM: number,
@@ -296,11 +361,32 @@ function withTrimmedFrontage(
   const all = [...streets, ...kept]
   const index = new RoadIndex(200)
   for (const r of [...arterials, ...all]) index.add(r.id, r.points, r.class)
-  // ponytail: decay cul-de-sacs are not protected here (the decay set is not available), so a pass may cut one back
   return pruneDangling(all, index, terrain, sizeM, {
     accept: (c) => c !== 'highway', interiorOnly: true, minLength: 60, exemptPrefixes: [RING_ID_PREFIX],
     keep: new Set([...endsOf(streets).filter((p) => !orphan(p)), ...endsOf(kept).filter((p) => !cutEnd(p))].map(endKey)), waterAnchor: streetWaterAnchor(terrain, sizeM),
   })
+}
+
+/**
+ * Infill and the stranded-street rule can leave street ends resting on nothing: prune once against the complete
+ * road set (the highway never anchors; an end resting on another street's end anchors: that chain is a block edge). Decay cul-de-sacs, being intended, stay.
+ */
+function finalStreetPrune(streets: Road[], others: Road[], terrain: Terrain, sizeM: number, decayEnds: Pt[], infillIds: Set<string>): Road[] {
+  const index = new RoadIndex(200)
+  for (const r of [...others, ...streets]) index.add(r.id, r.points, r.class)
+  // infill pieces are block edges (blocks were cut along them, infillFaces anchored their ends): never trimmed
+  const keep = new Set(decayEnds.map(endKey))
+  for (const r of streets) if (infillIds.has(r.id.split('-')[0])) for (const p of [r.points[0], r.points[r.points.length - 1]]) keep.add(endKey(p))
+  return pruneDangling(streets, index, terrain, sizeM, {
+    accept: (c) => c !== 'highway', minLength: 60, keep, waterAnchor: streetWaterAnchor(terrain, sizeM),
+  })
+}
+
+/** converge-and-weld on the final street set against every road (the index is rebuilt by the prune after) */
+function weldAll(streets: Road[], others: Road[]): Road[] {
+  const index = new RoadIndex(200)
+  for (const r of [...others, ...streets]) index.add(r.id, r.points, r.class)
+  return weldConverging(streets, index)
 }
 
 export function generateSector(params: SectorParams): SectorModel {
@@ -308,7 +394,7 @@ export function generateSector(params: SectorParams): SectorModel {
   const pack = getPack(params.pack)
 
   const terrain = sampleTerrain(params, sizeM)
-  const { highway, arterials, streets: tracedStreets, frontage, arcologies, megablocks } = traceRoads(params, terrain, sizeM)
+  const { highway, arterials, streets: tracedStreets, frontage, arcologies, megablocks, decayEnds } = traceRoads(params, terrain, sizeM)
   const boundaries = [windowRing(sizeM), ...terrain.land.map((poly) => poly[0].map(([x, y]) => ({ x, y })))]
 
   const districtFaces = facesFor([...(highway ? [highway] : []), ...arterials], boundaries, terrain)
@@ -329,10 +415,14 @@ export function generateSector(params: SectorParams): SectorModel {
   const hw = highway ? [{ ...highway, segments, crossings: finalCrossings }] : []
 
   const { faces, infill, dropped } = infillFaces(facesFor([...hw, ...arterials, ...minorAll], boundaries, terrain), minorAll, arterials, highway, terrain, sizeM, [...arcologies.filter((a) => a.access === 'ring'), ...megablocks].map((l) => l.center), [...megablocks.map((k) => k.core), ...arcologies.filter((a) => a.access !== 'ring').map((a) => a.plaza)])
-  const minor = minorAll.filter((r) => !dropped.has(r.id))
+  const infillIds = new Set(infill.map((r) => r.id))
+  const welded = weldAll([...minorAll.filter((r) => !dropped.has(r.id)), ...infill], [...hw, ...arterials, ...ramps])
+  const prunedStreets = finalStreetPrune(welded, [...hw, ...arterials, ...ramps], terrain, sizeM, decayEnds, infillIds)
+  const minor = prunedStreets.filter((r) => !infillIds.has(r.id.split('-')[0]))
+  const infillKept = prunedStreets.filter((r) => infillIds.has(r.id.split('-')[0]))
   const rawBlocks = toBlocks(faces, districts)
 
-  const roads = markWetSpans([...hw, ...arterials, ...minor, ...infill, ...ramps], terrain)
+  const roads = markWetSpans([...hw, ...arterials, ...minor, ...infillKept, ...ramps], terrain)
 
   const nameRng = mulberry32(hashSeed(params.seed, 'names'))
   const namedDistricts = districts.map((d) => ({

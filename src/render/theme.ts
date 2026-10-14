@@ -17,7 +17,7 @@ export interface Theme {
   compound: { fence: string; ground: string }
   poi: { marker: string; label: string }
   bridge: { deck: string; shadow: string }
-  highway: { trench: string; column: string; hatch: string }
+  highway: { trench: string; hatch: string }
   arcology: { fill: string; stroke: string; ring: string }
   megablock: { fill: string; alley: string }
   scaleBar: string
@@ -50,7 +50,7 @@ const neon: Theme = {
   compound: { fence: '#4fc9d9', ground: '#10202a' },
   poi: { marker: '#ffb454', label: '#ffdca8' },
   bridge: { deck: '#8a93a6', shadow: '#04060a' },
-  highway: { trench: '#080a0f', column: '#04060a', hatch: '#8a93a6' },
+  highway: { trench: '#080a0f', hatch: '#8a93a6' },
   arcology: { fill: '#2c3d66', stroke: '#4fc9d9', ring: '#2f7f8c' },
   megablock: { fill: '#0f1424', alley: '#d08a45' },
   scaleBar: '#9fb8c8',
@@ -79,7 +79,7 @@ const print: Theme = {
   compound: { fence: '#444444', ground: '#d4d8cf' },
   poi: { marker: '#b03030', label: '#222222' },
   bridge: { deck: '#e8e8e2', shadow: '#b5b5b0' },
-  highway: { trench: '#d9d9d9', column: '#b5b5b0', hatch: '#e8e8e2' },
+  highway: { trench: '#d9d9d9', hatch: '#e8e8e2' },
   arcology: { fill: '#d5dbe8', stroke: '#555555', ring: '#9a9a9a' },
   megablock: { fill: '#8c8c88', alley: '#2a2a2a' },
   scaleBar: '#222222',
@@ -112,7 +112,7 @@ const blueprint: Theme = {
   compound: { fence: '#f1fbff', ground: '#0d3a6e' },
   poi: { marker: '#eaf7ff', label: '#dff3ff' },
   bridge: { deck: '#e4f4ff', shadow: '#071c38' },
-  highway: { trench: '#09274c', column: '#071c38', hatch: '#e4f4ff' },
+  highway: { trench: '#09274c', hatch: '#e4f4ff' },
   arcology: { fill: '#2a6aa8', stroke: '#f1fbff', ring: '#7fb0d8' },
   megablock: { fill: '#061f3f', alley: '#bfe3ff' },
   scaleBar: '#dff3ff',
@@ -141,7 +141,7 @@ const synthwave: Theme = {
   compound: { fence: '#33c2e6', ground: '#1d1433' },
   poi: { marker: '#ffe14d', label: '#fff2cc' },
   bridge: { deck: '#a893c9', shadow: '#0c0616' },
-  highway: { trench: '#11081a', column: '#0c0616', hatch: '#a893c9' },
+  highway: { trench: '#11081a', hatch: '#a893c9' },
   arcology: { fill: '#3d2766', stroke: '#33c2e6', ring: '#2a7894' },
   megablock: { fill: '#150d24', alley: '#e8a070' },
   scaleBar: '#d9b8ff',
@@ -170,7 +170,7 @@ const tokyoNight: Theme = {
   compound: { fence: '#7dcfff', ground: '#16202e' },
   poi: { marker: '#e0af68', label: '#f0c894' },
   bridge: { deck: '#a9b1d6', shadow: '#0d0e14' },
-  highway: { trench: '#161720', column: '#0d0e14', hatch: '#a9b1d6' },
+  highway: { trench: '#161720', hatch: '#a9b1d6' },
   arcology: { fill: '#34406a', stroke: '#7dcfff', ring: '#4f7f9f' },
   megablock: { fill: '#0a0b10', alley: '#e0af68' },
   scaleBar: '#c0caf5',
