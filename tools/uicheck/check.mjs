@@ -395,6 +395,15 @@ await page.screenshot({ path: `${OUT}/streets-sprawl-river.png` })
 await page.goto(`${BASE}/?seed=42&tags=inland,planned,corp-run`)
 await page.waitForSelector('svg'); await page.screenshot({ path: `${OUT}/arterials-grid.png` })
 if ((await countAttr(page, 'svg [data-junctions]')) < 20) fail('arterials-grid: too few crossroads')
+if ((await countAttr(page, 'svg [data-ramps]')) < 6) fail('arterials-grid: fewer than 6 ramps (spec 2026-10-12 §7 phase 3)')
+// half interchange (spec §6): seed 42's planned grid has one on the arterial B004 that meets the highway near map metres x 1530, y 330; wheel-zoom there to ~600 m visible
+await page.getByLabel('Show POIs').uncheck()
+const svgBoxH = await page.locator('.map-viewport svg').first().boundingBox()
+await page.mouse.move(svgBoxH.x + (1530 / 4000) * svgBoxH.width, svgBoxH.y + (330 / 4000) * svgBoxH.height)
+const zh = (await readTransform()).zoom
+for (let i = 0; i < 40 && (await readTransform()).zoom / zh < 4000 / 600; i++) { await page.mouse.wheel(0, -240); await page.waitForTimeout(30) }
+await page.waitForTimeout(600)
+await page.screenshot({ path: `${OUT}/half-interchange.png` })
 await page.goto(`${BASE}/?seed=42&tags=coastal,river,arcology`)
 await page.waitForSelector('svg'); await page.screenshot({ path: `${OUT}/arterials-coast.png` })
 if ((await page.locator('svg [data-bridge]').count()) < 1) fail('arterials-coast: no bridge rendered')
