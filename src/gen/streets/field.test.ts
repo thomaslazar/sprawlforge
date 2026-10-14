@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { Pt } from '../geometry'
 import { sampleTerrain } from '../terrain'
 import { effectiveIrregularity } from '../sector/zoning'
-import type { SectorParams } from '../types'
-import { PLAN_CELL, buildPatches, buildRoadField, radialBasis, shoreTangent } from './field'
+import type { SectorParams, Terrain } from '../types'
+import { PLAN_CELL, buildPatches, buildRoadField, boundaryBasis, radialBasis, shoreProfile, shoreTangent } from './field'
 
 const params = (over: Partial<SectorParams> = {}): SectorParams => ({
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
@@ -110,7 +110,7 @@ describe('streets/field', () => {
         const pt: Pt = { x: ix * step, y: iy * step }
         const idx = iy * cols + ix
         angle[idx] = Math.atan2(field.sample(pt).major.y, field.sample(pt).major.x)
-        far[idx] = (shoreTangent(terrain, pt)?.dist ?? Infinity) > 250 ? 1 : 0
+        far[idx] = (shoreTangent(terrain, pt)?.dist ?? Infinity) > 300 ? 1 : 0
       }
     }
     let total = 0
@@ -162,5 +162,41 @@ describe('radialBasis', () => {
     expect(b.weight({ x: c.x + 100, y: c.y })).toBeCloseTo(1.5)
     expect(b.weight({ x: c.x + 300, y: c.y })).toBeCloseTo(0.75)
     expect(b.weight({ x: c.x + 600, y: c.y })).toBe(0)
+  })
+})
+
+describe('shore profile', () => {
+  it('is deterministic per seed, setback within 30..150, about 30 % of points off', () => {
+    const a = shoreProfile(params({ seed: 7 })), b = shoreProfile(params({ seed: 7 })), c = shoreProfile(params({ seed: 8 }))
+    let off = 0, n = 0, differs = false
+    // 20 km square: ~1100 noise cells, so the share is stable (a 4 km window holds only ~45)
+    for (let x = 0; x < 20000; x += 397) for (let y = 0; y < 20000; y += 389) {
+      const q = { x, y }; n++
+      expect(a.setback(q)).toBe(b.setback(q)); expect(a.off(q)).toBe(b.off(q))
+      expect(a.setback(q)).toBeGreaterThanOrEqual(30); expect(a.setback(q)).toBeLessThanOrEqual(150)
+      if (a.off(q)) off++
+      if (a.setback(q) !== c.setback(q)) differs = true
+    }
+    expect(off / n).toBeGreaterThan(0.2); expect(off / n).toBeLessThan(0.4); expect(differs).toBe(true)
+  })
+  // straight coast: water x >= 1000, no river
+  const coast = { water: [[[[1000, -10], [5000, -10], [5000, 5000], [1000, 5000], [1000, -10]]]], riverSlice: null } as unknown as Terrain
+  const at = (x: number) => ({ x, y: 2000 })
+  it('boundary weight peaks at the setback, is 0 at the water line and 150 m past the setback', () => {
+    const w = boundaryBasis(coast, { setback: () => 80, off: () => false })
+    expect(w.weight(at(1000 - 80))).toBeCloseTo(1, 2)
+    expect(w.weight(at(1000 - 0.5))).toBeLessThan(0.01)
+    expect(w.weight(at(1000 - 40))).toBeCloseTo(0.5, 2)
+    expect(w.weight(at(1000 - 155))).toBeCloseTo(0.5, 2)
+    expect(w.weight(at(1000 - 231))).toBe(0)
+    expect(lineAngleDiff(w.angle(at(1000 - 80))!, Math.PI / 2)).toBeLessThan(1e-3)
+  })
+  it('boundary weight is 0 where the band is off', () => {
+    expect(boundaryBasis(coast, { setback: () => 80, off: () => true }).weight(at(1000 - 80))).toBe(0)
+  })
+  it('mid-river weight is unchanged', () => {
+    const river = { water: [[[[-10, 900], [4010, 900], [4010, 1100], [-10, 1100], [-10, 900]]]], riverSlice: { course: [{ x: -10, y: 1000 }, { x: 4010, y: 1000 }], width: 60 } } as unknown as Terrain
+    const w = boundaryBasis(river, { setback: () => 150, off: () => true })
+    expect(w.weight({ x: 2000, y: 1010 })).toBeCloseTo(1 - 10 / 250, 6)
   })
 })

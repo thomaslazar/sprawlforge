@@ -1,7 +1,7 @@
 import type { Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import { effectiveIrregularity } from '../sector/zoning'
-import { fractalNoise2D } from '../terrain/noise'
+import { fractalNoise2D, valueNoise2D } from '../terrain/noise'
 import { nearestOnPolyline } from '../terrain/rivers'
 import type { SectorParams, Terrain } from '../types'
 
@@ -9,7 +9,13 @@ const clamp = (lo: number, hi: number, v: number) => Math.max(lo, Math.min(hi, v
 const PATCH_MARGIN = 500
 const SHORE_DIST = 300
 const SEAM_BAND = 100
-const BOUNDARY_REACH = 250
+const BOUNDARY_REACH = 300
+const RIVER_REACH = 250
+const SHORE_NOISE_M = 600
+const SETBACK_MIN = 30
+const SETBACK_SPAN = 120
+const SHORE_BAND = 150
+export const SHORE_GAP_ABOVE = 0.6
 const NOISE_SCALE = 350
 const NOISE_MAX = (35 * Math.PI) / 180
 const GRID_STEP = 20
@@ -53,7 +59,7 @@ function shoreLines(terrain: Terrain): Pt[][] {
 
 const SHORE_CELL = 100
 
-interface ShoreGrid { ax: number[]; ay: number[]; bx: number[]; by: number[]; cells: Map<number, number[]> }
+interface ShoreGrid { ax: number[]; ay: number[]; bx: number[]; by: number[]; cells: Map<number, number[]>; courseFrom: number }
 const shoreGridCache = new WeakMap<Terrain, ShoreGrid>()
 const cellKey = (ix: number, iy: number) => ix * 100003 + iy
 
@@ -61,8 +67,10 @@ const cellKey = (ix: number, iy: number) => ix * 100003 + iy
 function shoreGrid(terrain: Terrain): ShoreGrid {
   const cached = shoreGridCache.get(terrain)
   if (cached) return cached
-  const g: ShoreGrid = { ax: [], ay: [], bx: [], by: [], cells: new Map() }
+  const g: ShoreGrid = { ax: [], ay: [], bx: [], by: [], cells: new Map(), courseFrom: Infinity }
+  const course = terrain.riverSlice?.course
   for (const line of shoreLines(terrain)) {
+    if (line === course) g.courseFrom = g.ax.length
     for (let i = 0; i < line.length - 1; i++) {
       const a = line[i]
       const b = line[i + 1]
@@ -90,7 +98,7 @@ function shoreGrid(terrain: Terrain): ShoreGrid {
  * care about near shore) and searches only the surrounding grid cells; ties
  * resolve to the earliest segment, same as the unbounded linear scan.
  */
-export function shoreTangent(terrain: Terrain, p: Pt, maxDist?: number): { angle: number; dist: number } | null {
+export function shoreTangent(terrain: Terrain, p: Pt, maxDist?: number): { angle: number; dist: number; course: boolean } | null {
   if (maxDist !== undefined) return shoreTangentNear(terrain, p, maxDist)
   const lines = shoreLines(terrain)
   let best: { dist: number; line: Pt[] } | null = null
@@ -113,10 +121,10 @@ export function shoreTangent(terrain: Terrain, p: Pt, maxDist?: number): { angle
     const d = Math.hypot(p.x - (a.x + t * abx), p.y - (a.y + t * aby))
     if (d < segDist) { segDist = d; angle = Math.atan2(aby, abx) }
   }
-  return { angle, dist: best.dist }
+  return { angle, dist: best.dist, course: line === terrain.riverSlice?.course }
 }
 
-function shoreTangentNear(terrain: Terrain, p: Pt, maxDist: number): { angle: number; dist: number } | null {
+function shoreTangentNear(terrain: Terrain, p: Pt, maxDist: number): { angle: number; dist: number; course: boolean } | null {
   const g = shoreGrid(terrain)
   const cx = Math.floor(p.x / SHORE_CELL)
   const cy = Math.floor(p.y / SHORE_CELL)
@@ -145,7 +153,7 @@ function shoreTangentNear(terrain: Terrain, p: Pt, maxDist: number): { angle: nu
     if (bestD <= r * SHORE_CELL) break
   }
   if (bestK < 0 || bestD > maxDist) return null
-  return { angle: Math.atan2(g.by[bestK] - g.ay[bestK], g.bx[bestK] - g.ax[bestK]), dist: bestD }
+  return { angle: Math.atan2(g.by[bestK] - g.ay[bestK], g.bx[bestK] - g.ax[bestK]), dist: bestD, course: bestK >= g.courseFrom }
 }
 
 function nearestOf(from: Pt, pool: Patch[]): Patch | null {
@@ -288,7 +296,18 @@ export function radialBasis(center: Pt, rInner: number, rOuter: number): BasisFi
   }
 }
 
-function boundaryBasis(terrain: Terrain): BasisField {
+export interface ShoreProfile { setback(p: Pt): number; off(p: Pt): boolean }
+
+export function shoreProfile(params: SectorParams): ShoreProfile {
+  const n1 = valueNoise2D(hashSeed(params.seed, 'shore-setback'))
+  const n2 = valueNoise2D(hashSeed(params.seed, 'shore-gap'))
+  return {
+    setback: (p) => SETBACK_MIN + SETBACK_SPAN * n1(p.x / SHORE_NOISE_M, p.y / SHORE_NOISE_M),
+    off: (p) => n2(p.x / SHORE_NOISE_M, p.y / SHORE_NOISE_M) > SHORE_GAP_ABOVE,
+  }
+}
+
+export function boundaryBasis(terrain: Terrain, profile: ShoreProfile): BasisField {
   // angle() then weight() are always called back-to-back for the same p by
   // the sample() cache fill — memoize the one-point lookback so we don't
   // walk every shoreline segment twice per point.
@@ -306,7 +325,11 @@ function boundaryBasis(terrain: Terrain): BasisField {
     angle: (p) => tangentAt(p)?.angle ?? null,
     weight: (p) => {
       const tangent = tangentAt(p)
-      return tangent ? clamp(0, 1, 1 - tangent.dist / BOUNDARY_REACH) : 0
+      if (!tangent) return 0
+      if (tangent.course) return clamp(0, 1, 1 - tangent.dist / RIVER_REACH)
+      if (profile.off(p)) return 0
+      const s = profile.setback(p)
+      return clamp(0, 1, tangent.dist < s ? tangent.dist / s : 1 - (tangent.dist - s) / SHORE_BAND)
     },
   }
 }
@@ -337,7 +360,7 @@ export function buildBasisFields(
   extra: BasisField[] = [],
 ): BasisField[] {
   const grid = gridBasis(patches)
-  const boundary = boundaryBasis(terrain)
+  const boundary = boundaryBasis(terrain, shoreProfile(params))
   const noise = noiseBasis(params, grid)
   return [grid, boundary, noise, ...extra]
 }
