@@ -48,7 +48,7 @@ export function renderLandmarks(model: SectorModel, theme: Theme, out: string[],
       if (blockIds.has(b.blockId))
         out.push(`<polygon${interactive ? '' : ` data-id="${b.id}"`} points="${pts(b.footprint)}" fill="${theme.megablock.fill}" stroke="${theme.megablock.alley}" stroke-width="0.5"/>`)
     const d = model.blocks.filter((b) => b.flags.megablock === m.id).flatMap((b) => b.alleys.map(([p, q]) => `M${n(p.x)},${n(p.y)}L${n(q.x)},${n(q.y)}`)).join(' ')
-    if (d) out.push(`<path d="${d}" fill="none" stroke="${theme.megablock.alley}" stroke-width="1.5"/>`)
+    if (d) out.push(`<path data-landmark-alleys="1" d="${d}" fill="none" stroke="${theme.megablock.alley}" stroke-width="1.5"/>`)
     if (m.footprint.length)
       out.push(`<polygon data-megablock="${m.id}" points="${pts(m.footprint)}" fill="none" stroke="${theme.megablock.alley}" stroke-width="2"/>`)
   }

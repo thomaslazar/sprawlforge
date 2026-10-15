@@ -428,7 +428,8 @@ describe('landmarks', () => {
         expect(generic.split('M').length - 1 + frontageCount(m)).toBe(fringe.buildings.length - hive.length)
         expect(m).not.toContain('<polygon data-id="BLD')
       }
-      expect(m).not.toContain('data-alleys="1" d="M') // only the megablock landmark draw carries alleys
+      expect(m).toMatch(/<path data-landmark-alleys="1" d="M/) // the megablock draw keeps its alleys
+      expect(m).not.toContain('data-alleys="1"') // the generic alley path is gone
       expect(m).toContain('data-landmark-label=""') // valueless attrs are invalid XML, which breaks PNG export
     }
   })

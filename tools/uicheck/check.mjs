@@ -61,7 +61,8 @@ if (!(await page.locator('svg text').allTextContents()).some((t) => /^[\d.]+ ?(m
 const buildings = await countAttr(page, 'svg [data-buildings]')
 if (buildings < 50) fail(`expected a dense map, got ${buildings} buildings`)
 
-if ((await page.locator('svg path[data-alleys]').count()) !== 1) fail('expected exactly one alleys path')
+if ((await page.locator('svg path[data-lots]').count()) < 1) fail('expected lot paths')
+if ((await page.locator('svg path[data-details]').count()) < 1) fail('expected a building details path')
 
 const pois = await page.locator('svg circle[data-id^="P"]').count()
 if (pois < 1) fail('no POIs rendered')
