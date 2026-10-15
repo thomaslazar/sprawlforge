@@ -172,6 +172,14 @@ describe('layoutPiece', () => {
       if (bs.length === 2) expect(gapBox(bs[0].footprint, bs[1].footprint)).toBeGreaterThanOrEqual(20 - 1e-6)
     }
   })
+  it('bigbox and sheds halls stay within 120 m a side on a 300 x 100 m piece', () => {
+    const pc = rectPoly(0, 0, 300, 100)
+    for (const f of ['bigbox', 'sheds'] as const) for (let s = 0; s < 10; s++) {
+      const bs = layoutPiece(pc, sidesOf(pc, pc.map(() => 7.5)), f, ctx(s, 'industrial')).flatMap((l) => l.buildings)
+      expect(bs.length, `${f} seed ${s}`).toBeGreaterThanOrEqual(1)
+      for (const b of bs) { const x = boxOf(b.footprint); expect(Math.max(x.x1 - x.x0, x.y1 - x.y0), `${f} seed ${s}`).toBeLessThanOrEqual(120 + 1e-6) }
+    }
+  })
   it('tower-park towers stand 12 m apart', () => {
     for (let s = 0; s < 10; s++) {
       const bs = layoutPiece(piece, sides, 'tower-park', ctx(s, 'corp')).flatMap((l) => l.buildings)

@@ -18,7 +18,7 @@ import { insetOrLargest } from '../streets/lots'
  *   makeComposite's draws. A composite wins over the drawn shape.
  * - zeilen: lots: twist sign, twist size, first offset, one spacing per further line; shapes: fitShape per slab.
  * - tower-park / plaza: lots: n, then per try size (w, d), x, y; shapes: chooseShape on a successful placement, fitShape.
- * - podium: lots: width and depth fractions, x, y; shapes: fitShape (mirror, base template, turn, then per tower kind, size, x, y). bigbox: lots: hall fraction; then as `building`. sheds: lots: n, gap, per hall w, d.
+ * - podium: lots: width and depth fractions, x, y; shapes: fitShape (mirror, base template, turn, then per tower kind, size, x, y). bigbox (fit box up to 171 m; longer ones as sheds): lots: hall fraction; then as `building`. sheds: lots: n, gap, per hall w, d.
  * - garage: lots: which short end.
  * `building` (halls, strip lots): shapes chooseShape + sizeShape, composites chance (+ composite), shapes fitShape.
  */
@@ -378,7 +378,10 @@ export function layoutPiece(piece: Pt[], sides: Side[], fabric: BlockStyle, ctx:
       return whole(piece, fabric, ctx, [{ shape: 'A19', ...fitShape('A19', sub(f, x, y, w, d), ctx.rng.shapes) }], ctx.zone === 'residential' ? 'interior' : 'margin')
     }
     case 'blockfill': return blockfill(piece, chord, ctx)
-    case 'bigbox': return bigbox(piece, chord, fabric, ctx)
+    case 'bigbox': { // a hall is 0.5-0.7 of the fit box a side: past 171 m it could top 120 m, so that box takes sheds (halls of 30-80 m)
+      const f = fit()
+      return Math.max(f.w, f.d) * 0.7 > 120 ? whole(piece, fabric, ctx, sheds(piece, chord, fabric, ctx)) : bigbox(piece, chord, fabric, ctx)
+    }
     case 'sheds': return whole(piece, fabric, ctx, sheds(piece, chord, fabric, ctx))
     case 'garage': {
       const f = fit()
