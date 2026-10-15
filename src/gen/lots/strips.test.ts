@@ -5,7 +5,7 @@ import { fitBox, holds } from './fitbox'
 import { difference } from '../clip'
 import { arcSide, frontage, lShape, pairOverlapMax, rectPoly } from './fixtures'
 import { sidesOf } from './setback'
-import { stripLots, type StripParams } from './strips'
+import { isSimple, simpleParts, stripLots, type StripParams } from './strips'
 
 const P: StripParams = { depth: 16, width: [10, 18], gap: null }
 const run = (piece: ReturnType<typeof rectPoly>, seed: number, p = P) => stripLots(piece, sidesOf(piece), p, mulberry32(seed))
@@ -91,4 +91,29 @@ describe('stripLots', () => {
     expect(lots.filter((l) => l.corner !== undefined).length).toBeGreaterThanOrEqual(5)
     expect(pairOverlapMax(lots.map((l) => l.poly))).toBeLessThanOrEqual(0.5)
   })
+  it('gapped lots either side of a convex bend do not overlap behind it', () => {
+    // S42 B0703 (rows, D 25, gap 3): the perpendicular back corners of the lots before and after the bend converge
+    const piece = ([[2248.74, 1396.77], [2342.16, 1424.41], [2383.92, 1440.06], [2385.74, 1505.43], [2351.11, 1535.28], [2316.76, 1535.28], [2291.52, 1499.52], [2260.76, 1422.85], [2245.35, 1426.49], [2245.35, 1396.01]] as const).map(([x, y]) => ({ x, y }))
+    const sb = [5, 5, 7.5, 12, 7.5, 7.5, 7.5, 7.5, 7.5, 5]
+    for (let seed = 1; seed <= 20; seed++) {
+      const lots = stripLots(piece, sidesOf(piece, sb), { depth: 25, width: [12, 30], gap: [3, 3] }, mulberry32(seed))
+      expect(pairOverlapMax(lots.map((l) => l.poly)), `seed ${seed}`).toBeLessThanOrEqual(0.5)
+    }
+  })
+  it('simpleParts mends degenerate clipper rings', () => {
+    const sq = rectPoly(0, 0, 20, 20)
+    // a spike (S426 LOT00021: ... (76.2,137.3), (76.1,137.3), (76.2,137.3) ...) goes, the square stays
+    const spiked = [sq[0], { x: 20, y: 0 }, { x: 20, y: 10 }, { x: 20.0001, y: 30 }, { x: 20, y: 10 }, sq[2], sq[3]]
+    expect(simpleParts(spiked).map((r) => Math.round(ringArea(r)))).toEqual([400])
+    // a pinch (one vertex visited twice) splits into its two loops
+    const pinched = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 20, y: 10 }, { x: 20, y: 20 }, { x: 10, y: 10 }, { x: 0, y: 10 }]
+    expect(simpleParts(pinched).map((r) => Math.round(ringArea(r))).sort((a, b) => a - b)).toEqual([50, 100])
+    // a lobe twisted clockwise is dropped, a long thin needle is kept
+    const bow = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 10 }, { x: 10, y: 10 }]
+    for (const r of simpleParts(bow)) expect(ringArea(r)).toBeGreaterThan(0)
+    const needle = [{ x: 0, y: 0 }, { x: 20, y: 0 }, { x: 60, y: 0.4 }, { x: 20, y: 0.6 }, { x: 20, y: 20 }, { x: 0, y: 20 }]
+    expect(simpleParts(needle)).toHaveLength(1); expect(simpleParts(needle)[0]).toHaveLength(6)
+    for (const r of [spiked, pinched, bow]) for (const p of simpleParts(r)) expect(isSimple(p)).toBe(true)
+  })
 })
+

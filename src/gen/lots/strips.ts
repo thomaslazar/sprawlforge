@@ -1,4 +1,4 @@
-import { difference, intersection, type Geom, type MultiPolygon } from '../clip'
+import { difference, intersection, unionPositive, type Geom, type MultiPolygon } from '../clip'
 import { boxOf, pointInRings, ringArea, ringCentroid, type Box, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import { fitBox, holds } from './fitbox'
@@ -186,7 +186,22 @@ export function stripLots(piece: Pt[], sides: Side[], p: StripParams, rng: Rng, 
       const m = pi >= 0 && !res[pi].merged ? make(res[pi].s, l.e) : null
       if (m) { res.length = pi; res.push({ ...m, merged: true }) } else res.push(l)
     }
-    for (const l of res) lay({ poly: l.poly, chord: l.chord, side: si, ...(l.gap || !l.ok ? { filler: true } : {}) })
+    // behind a convex bend the perpendicular cut lines of lots on either side converge: trim each lot by the side's earlier ones
+    const convex = en.some((d, i) => i > 0 && en[i - 1].x * d.y - en[i - 1].y * d.x > EPS)
+    const kept: Pt[][] = []
+    for (const l of res) {
+      let poly: Pt[] | null = l.poly, ok = l.ok
+      if (convex) {
+        const b = boxOf(poly), hit = kept.filter((k) => overlaps(boxOf(k), b))
+        if (hit.length && area(intersection([ring(poly)], ...hit.map((h) => [ring(h)] as Geom))) > 0.01) {
+          poly = trim(poly, hit)
+          if (!poly) continue
+          ok = ok && holds(fitBox(poly, l.chord), 6, 8)
+        }
+      }
+      kept.push(poly)
+      lay({ poly, chord: l.chord, side: si, ...(l.gap || !ok ? { filler: true } : {}) })
+    }
   }
 
   // R9: what the lots leave of the piece, one filler per leftover polygon
@@ -256,3 +271,45 @@ export const STRIP_PARAMS: Partial<Record<BlockStyle, (rng: Rng) => StripParams>
 
 /** the lot rings of a piece's own sides for a strip fabric (phase B) */
 export const frontageLots = (piece: Pt[], fabric: BlockStyle, rng: Rng): Pt[][] => stripLots(piece, sidesOf(piece), STRIP_PARAMS[fabric]!(rng), rng).map((l) => l.poly)
+
+const SNAP = 0.005
+const orient = (p: Pt, q: Pt, r: Pt) => Math.sign((q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x))
+/** no two non-adjacent edges cross properly */
+export const isSimple = (r: Pt[]): boolean => {
+  const n = r.length
+  for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++) {
+    if (i === 0 && j === n - 1) continue
+    const [a, b, c, d] = [r[i], r[(i + 1) % n], r[j], r[(j + 1) % n]]
+    if (orient(a, b, c) * orient(a, b, d) < 0 && orient(c, d, a) * orient(c, d, b) < 0) return false
+  }
+  return true
+}
+/** duplicates (< 5 mm) and spikes (edges turning back within 1 degree, < 0.01 m2: a long needle stays, its chord would cut a neighbour) dropped until none is left */
+function dropSpikes(r0: Pt[]): Pt[] {
+  const r = r0.slice()
+  for (let i = 0, quiet = 0; r.length > 3 && quiet < r.length; i = (i + 1) % r.length) {
+    const a = r[(i + r.length - 1) % r.length], b = r[i], c = r[(i + 1) % r.length]
+    const ux = b.x - a.x, uy = b.y - a.y, vx = c.x - b.x, vy = c.y - b.y
+    if (Math.hypot(ux, uy) < SNAP || (Math.abs(ux * vy - uy * vx) < 0.02 && Math.abs(Math.atan2(ux * vy - uy * vx, ux * vx + uy * vy)) > Math.PI - Math.PI / 180)) { r.splice(i, 1); i = Math.max(-1, i - 2); quiet = 0 } else quiet++
+  }
+  return r
+}
+/** a ring split at its pinches (a vertex visited twice within 5 mm) into its loops; counter-clockwise loops >= 1 m2 */
+function pinches(r0: Pt[]): Pt[][] {
+  const r = dropSpikes(r0), n = r.length
+  for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++) {
+    if (i === 0 && j === n - 1) continue
+    if (dist(r[i], r[j]) < SNAP) return [...pinches(r.slice(i, j)), ...pinches([...r.slice(0, i), ...r.slice(j)])]
+  }
+  return n >= 3 && ringArea(r) >= 1 ? [r] : []
+}
+/**
+ * A counter-clockwise lot ring made simple (T11): spikes and duplicates go; a ring that still crosses or touches itself is
+ * re-filled by the clipper (positive winding only) and its outlines split at their pinches (the clipper's zero-width necks); clockwise loops,
+ * loops under 1 m2 and loops that still cross themselves are dropped.
+ */
+export function simpleParts(r0: Pt[]): Pt[][] {
+  const r = dropSpikes(r0)
+  if (r.length >= 3 && isSimple(r) && pinches(r).length === 1) return ringArea(r) >= 1 ? [r] : []
+  return unionPositive(ring(r)).flatMap((pg) => pinches(unring(pg[0]))).filter(isSimple) // positive fill: a lobe twisted clockwise is no part of the lot
+}

@@ -119,7 +119,7 @@ describe('buildings phase A', () => {
       for (const bl of m.blocks) {
         if (bl.style === 'plaza') continue
         const fp = ccw(simplified(bl.footprint))
-        pieces.set(bl.id, buildable(fp, edgeSetbacks(fp, ctx)))
+        pieces.set(bl.id, buildable(fp, edgeSetbacks(fp, ctx, simplifyFace(bl.footprint)))) // classified on the unsimplified outline, as index.ts does
       }
       const byBlock = new Map<string, Lot[]>()
       const notSimple: string[] = [], outside: string[] = [], bOut: string[] = [], overlap: string[] = []

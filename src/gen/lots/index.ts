@@ -1,5 +1,5 @@
 import { difference, type Geom } from '../clip'
-import { pointInRings, ringArea, ringCentroid, simplifyPolyline, type Pt } from '../geometry'
+import { boxOf, pointInRings, ringArea, ringCentroid, simplifyPolyline, type Box, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import { inWater } from '../sector/bridges'
 import { simplifyFace } from '../streets/graph'
@@ -11,7 +11,7 @@ import { MIN_FIT, chooseFabric, densityClass, fabricCell, sheetZone } from './fa
 import { accepted, fitBox } from './fitbox'
 import { compoundLots, megablockLots, outset } from './landmarks'
 import { buildLot, fillerOf, layoutPiece, type BlockCtx, type LotOut } from './layout'
-import { STRIP_PARAMS, stripLots } from './strips'
+import { STRIP_PARAMS, simpleParts, stripLots } from './strips'
 import { SETBACK, buildable, edgeSetbacks, pieceSetbacks, roadClearance, sidesOf, type SetbackCtx } from './setback'
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
@@ -21,6 +21,7 @@ const ccw = (r: Pt[]) => (ringArea(r) < 0 ? [...r].reverse() : r)
 const dist = (a: Pt, b: Pt) => Math.hypot(b.x - a.x, b.y - a.y)
 const WHOLE = new Set<BlockStyle>(Object.keys(MIN_FIT) as BlockStyle[])
 const MIN_LOT_AREA = 0.5
+const boxesMeet = (a: Box, b: Box) => a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1
 
 /** R1: simplifyFace, then Douglas-Peucker at 2 m on the closed ring */
 function simplified(fp: Pt[]): Pt[] {
@@ -66,7 +67,28 @@ export function fillLots(
 
   /** numbers the lots, gates their buildings and appends everything */
   const emit = (block: Block, district: District, fabric: BlockStyle, ctx: BlockCtx, out: LotOut[]): void => {
-    for (const l of out) {
+    // every lot ring made simple; a ring that falls apart keeps its buildings on the part holding their centroid, the other parts become fillers
+    const parts = out.flatMap((l): Array<LotOut & { dirty?: boolean }> => {
+      const ps = simpleParts(ccw(l.poly))
+      if (ps.length === 1 && ps[0].length === l.poly.length) return [l]
+      return ps.map((poly) => {
+        const bs = l.buildings.filter((b) => pointInRings(ringCentroid(b.footprint), [poly]))
+        return { poly, kind: l.buildings.length && !bs.length ? fillerOf(fabric, ctx.zone, 'interior') : l.kind, buildings: bs, dirty: true }
+      })
+    })
+    // a mended ring came from a degenerate clipper result and may claim a neighbour's ground: an empty one gives it back
+    for (let i = 0; i < parts.length; i++) {
+      const p = parts[i]
+      if (!p.dirty || p.buildings.length) continue
+      const pb = boxOf(p.poly)
+      const hit = parts.filter((q, j) => j !== i && (!q.dirty || j < i) && boxesMeet(boxOf(q.poly), pb)).map((q) => [toRing(q.poly)] as Geom)
+      if (!hit.length) continue
+      const rest = difference([toRing(p.poly)], ...hit)
+      const fixed = rest.some((pg) => pg.length > 1) ? [] : rest.flatMap((pg) => simpleParts(ccw(fromRing(pg[0]))))
+      parts.splice(i, 1, ...fixed.map((poly) => ({ ...p, poly, dirty: false })))
+      i += fixed.length - 1
+    }
+    for (const l of parts) {
       const poly = ccw(l.poly)
       if (Math.abs(ringArea(poly)) < MIN_LOT_AREA) continue
       const lotId = `LOT${String(lots.length + 1).padStart(5, '0')}`
@@ -103,7 +125,12 @@ export function fillLots(
     const mega = megablockOf(block, landmarks)
     const comp = mega ? undefined : compoundsIn.find((k) => k.blockId === block.id)
     if (comp) {
-      const res = compoundLots(block.footprint, comp.gateToward, ctx, stream('compound-lots', block), roadClearance(ccw(simplifyFace(block.footprint)), sctx))
+      const fp = ccw(simplified(block.footprint))
+      const within = buildable(fp, edgeSetbacks(fp, sctx, simplifyFace(block.footprint))).flatMap((b) => {
+        const clear = roadClearance(b, sctx)
+        return clear.length ? difference([toRing(b)], ...clear.map((h) => [toRing(h)] as Geom)).map((pg) => ccw(fromRing(pg[0]))) : [b]
+      })
+      const res = compoundLots(block.footprint, comp.gateToward, ctx, stream('compound-lots', block), within)
       // a crescent block's fence centroid can fall in the bay: no compound there (its POI would sit in water)
       const dry = res ? res.lots.reduce((t, l) => t + l.buildings.filter((b) => !inWater(terrain, ringCentroid(b.footprint))).length, 0) : 0
       if (res && dry >= 2 && !inWater(terrain, ringCentroid(res.fence))) { // fewer than 2 dry buildings: a normal block
@@ -127,9 +154,9 @@ export function fillLots(
           .filter((h) => h.some((p) => pointInRings(p, [poly0])) || poly0.some((p) => pointInRings(p, [h])))
         const clear = roadClearance(poly0, sctx)
         const polys = grounds.length || clear.length ? difference([toRing(poly0)], ...[...grounds, ...clear].map((h) => [toRing(h)] as Geom)) : [[[...toRing(poly0), toRing(poly0)[0]]]]
-        for (const pg of polys) {
-          const poly = ccw(fromRing(pg[0]))
-          if (ringArea(poly) >= 200) pieces.push({ poly, setbacks: pieceSetbacks(poly, fp, sb), holes: pg.slice(1).map((r) => ccw(fromRing(r))) })
+        for (const pg of polys) for (const poly of simpleParts(ccw(fromRing(pg[0])))) { // a road strip's disc can pinch a piece
+          const holes = pg.slice(1).map((r) => ccw(fromRing(r))).filter((h) => pointInRings(h[0], [poly]))
+          if (ringArea(poly) >= 200) pieces.push({ poly, setbacks: pieceSetbacks(poly, fp, sb), holes })
         }
       }
     }

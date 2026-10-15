@@ -104,7 +104,7 @@ export function megablockLots(piece: Pt[], sides: Side[], radius: number, ctx: B
 }
 
 /** R17: fence and gate as before; 2-4 shaped lots in the 14 m inset, the rest yard; null = fall back to a normal block */
-export function compoundLots(footprint: Pt[], gateToward: Pt, ctx: BlockCtx, rng: Rng, clear: Pt[][] = []): { fence: Pt[]; gate: [Pt, Pt]; lots: LotOut[] } | null {
+export function compoundLots(footprint: Pt[], gateToward: Pt, ctx: BlockCtx, rng: Rng, within?: Pt[][]): { fence: Pt[]; gate: [Pt, Pt]; lots: LotOut[] } | null {
   const fence = insetOrLargest(footprint, 4)
   if (!fence || fence.length < 3) return null
   const edges = fence.map((p, i) => ({ a: p, b: fence[(i + 1) % fence.length] }))
@@ -117,8 +117,10 @@ export function compoundLots(footprint: Pt[], gateToward: Pt, ctx: BlockCtx, rng
   const gate: [Pt, Pt] = [{ x: m.x - (ux * COMPOUND_GATE) / 2, y: m.y - (uy * COMPOUND_GATE) / 2 }, { x: m.x + (ux * COMPOUND_GATE) / 2, y: m.y + (uy * COMPOUND_GATE) / 2 }]
 
   // from the footprint, not the fence: clipping the fence's many offset vertices again can stall the clipper
-  const raw = insetOrLargest(footprint, 14)
-  if (!raw) return null
+  // within the block's buildable (less the road strips): the highway's setback reaches past the 14 m inset
+  const raw0 = insetOrLargest(footprint, 14)
+  const raw = raw0 && within ? largestRing(clip.intersection([toRing(raw0)], within.map((w) => [toRing(w)]))) : raw0
+  if (!raw || Math.abs(ringArea(raw)) < 200) return null
   const inner = ccw(raw), isides = sidesOf(inner), li = isides.reduce((b, s, i) => (dist(...s.chord) > dist(...isides[b].chord) ? i : b), 0)
   const depth = Math.min(60, fitBox(inner, isides[li].chord).d)
   const closed = [...fence, fence[0]], r = rng
@@ -129,9 +131,8 @@ export function compoundLots(footprint: Pt[], gateToward: Pt, ctx: BlockCtx, rng
   for (const l of strips) {
     const yard: LotOut = { poly: l.poly, kind: 'yard', buildings: [] }
     if (l.filler || taken >= want || !holds(fitBox(l.poly, l.chord), 20, 20)) { lots.push(yard); continue }
-    // a mitered fence bulges at acute block corners: a building crowding it fails, as does one inside a road's setback
-    // strip (the 14 m inset is short of an arterial's or the highway's) or one the acceptance gate rejects; 3 draws, then yard
-    const ok = (b: Pt[]) => accepted(b) && !b.some((p) => distToPolyline(p, closed) < COMPOUND_CLEAR) && !clear.some((c) => clip.intersection([toRing(b)], [toRing(c)]).length > 0)
+    // a mitered fence bulges at acute block corners: a building crowding it fails, as does one the acceptance gate rejects; 3 draws, then yard
+    const ok = (b: Pt[]) => accepted(b) && !b.some((p) => distToPolyline(p, closed) < COMPOUND_CLEAR)
     let o: LotOut | null = null
     for (let t = 0; t < 3 && !o; t++) { const c = buildLot(l, 'compound', ctx); if (c.buildings.length && c.buildings.every((b) => ok(ccw(b.footprint)))) o = c }
     if (!o) { lots.push(yard); continue }

@@ -60,6 +60,15 @@ describe('landmark lots', () => {
       for (const b of bs) expect(accepted(b.footprint), `seed ${s} ${b.shape}`).toBe(true)
     }
   })
+  it('compound lots stay inside the buildable they are given', () => {
+    // S426 B0301: a highway along one side (26 m setback) reaches past the 14 m inset
+    const fp = rectPoly(0, 0, 200, 160), within = [rectPoly(14, 26, 172, 120)]
+    for (let s = 0; s < 5; s++) {
+      const c = compoundLots(fp, { x: 100, y: 160 }, ctx(s, 'corp'), mulberry32(s), within)
+      expect(c).not.toBeNull()
+      for (const l of c!.lots) expect(insideRing(l.poly, within[0], 0.05), `seed ${s}`).toBe(true)
+    }
+  })
   it('a block too small for 2 compound buildings gives null', () => {
     expect(compoundLots(rectPoly(0, 0, 60, 60), { x: 30, y: 0 }, ctx(1, 'corp'), mulberry32(1))).toBeNull()
   })
