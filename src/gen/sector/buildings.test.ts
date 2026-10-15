@@ -31,9 +31,9 @@ const SEEDS: Array<[string, SectorParams]> = [['S42', S42], ['S782', S782], ['S4
 const NONRECT: Record<number, number> = { 42: 0, 782008753: 0, 426750495: 0, 2268324149: 0 } // measured 0 on all four seeds
 
 // building pairs excused as their blocks overlap (ROADMAP "Overlapping block faces")
-const FACE_LAP: Record<number, number> = { 42: 1, 782008753: 140, 426750495: 0, 2268324149: 184 } // measured after the user review (variation round)
+const FACE_LAP: Record<number, number> = { 42: 1, 782008753: 140, 426750495: 0, 2268324149: 184 } // measured after the user review (variation round; S42 1226 to 1228 after the open-grounds ruling)
 // buildings with a vertex nearer a road centreline than setback - 0.5 m (within the 2 m R1 simplification budget)
-const SIMPLIFIED_NEAR: Record<number, number> = { 42: 1226, 782008753: 3818, 426750495: 621, 2268324149: 1266 } // measured after the user review (variation round)
+const SIMPLIFIED_NEAR: Record<number, number> = { 42: 1228, 782008753: 3818, 426750495: 621, 2268324149: 1266 } // measured after the user review (variation round; S42 1226 to 1228 after the open-grounds ruling)
 
 const cache = new Map<number, SectorModel>()
 const gen = (p: SectorParams): SectorModel => {
@@ -232,5 +232,25 @@ describe('buildings phase A', () => {
     const b = generateSector(S426)
     expect(a.buildings).toEqual(b.buildings)
     expect(a.lots).toEqual(b.lots)
+  }, 300000)
+
+  it('arcologies without a ring road mostly get open grounds', () => {
+    const open: boolean[] = []
+    let holeBuilt = 0
+    for (let seed = 1; seed <= 30; seed++) {
+      const p = tagged(['inland', 'small', 'arcology'], seed, 1)
+      const m = generateSector(p)
+      for (const a of m.arcologies.filter((x) => x.access !== 'ring')) {
+        const bl = m.blocks.find((b) => b.flags?.arcology === a.id)
+        if (!bl) continue
+        const inside = m.buildings.filter((b) => b.blockId === bl.id && pointInRings(ringCentroid(b.footprint), [a.plaza])).length
+        open.push(bl.style === 'plaza' && inside === 0)
+        if (bl.style === 'perimeter') holeBuilt++
+      }
+      if (seed === 1) expect(generateSector(p).lots).toEqual(m.lots)
+    }
+    expect(open.length).toBeGreaterThan(0)
+    expect(open.some(Boolean)).toBe(true)
+    expect(holeBuilt / open.length).toBeLessThanOrEqual(0.25)
   }, 300000)
 })

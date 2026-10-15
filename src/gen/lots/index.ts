@@ -144,6 +144,8 @@ export function fillLots(
 
     // R22 cut, R1 simplify, R2 setbacks, R3 buildable
     const home = landmarks?.arcologies.find((a) => a.access !== 'ring' && pointInRings(a.center, [block.footprint]))
+    // an arcology without a ring road keeps a built ring round its grounds in 8 % of cases (once per arcology), else the grounds stay open
+    const rim = !home || mulberry32(hashSeed(params.seed, 'arcology-rim', home.id)).next() < 0.08
     const pieces: Array<{ poly: Pt[]; setbacks: number[]; holes: Pt[][] }> = []
     for (const cut of cutPlazas(ccw(simplified(block.footprint)), plazas)) {
       const fp = ccw(cut), sb = edgeSetbacks(fp, sctx, simplifyFace(block.footprint))
@@ -179,18 +181,19 @@ export function fillLots(
     } else {
       const fabricRng = stream('fabric', block)
       pieces.forEach((p, k) => {
+        if (!rim && p.holes.length) { emit(block, district, 'plaza', ctx, [{ poly: p.poly, kind: 'plaza', buildings: [] }]); style = 'plaza'; return }
         const sides = sidesOf(p.poly, p.setbacks)
         const longest = sides.reduce((b, s) => (dist(...s.chord) > dist(...b.chord) ? s : b)).chord
         const box = fitBox(p.poly, longest)
         const fits = (f: BlockStyle) => { const m = MIN_FIT[f]; return !m || (box.w >= m[0] && box.d >= m[1]) || (box.w >= m[1] && box.d >= m[0]) }
         let fabric: BlockStyle = strip ? 'strip' : forceStyle ?? chooseFabric(ctx.zone, dc, fabricCell(params.seed, cc), fabricRng, fits)
         // R39: a ground-side block gets a built front; a piece around a plaza hole needs a fabric that builds every side (terrace keeps two)
-        if (home && !strip && !forceStyle && (WHOLE.has(fabric) || fabric === 'terrace')) fabric = 'perimeter'
+        if (home && rim && !strip && !forceStyle && (WHOLE.has(fabric) || fabric === 'terrace')) fabric = 'perimeter'
         if (p.holes.length && (!STRIP_PARAMS[fabric] || fabric === 'terrace')) fabric = 'perimeter'
         const out = p.holes.length
           ? stripLots(p.poly, sides, STRIP_PARAMS[fabric]!(ctx.rng.lots), ctx.rng.lots, p.holes).map((l) => buildLot(l, fabric, ctx))
           : layoutPiece(p.poly, sides, fabric, ctx)
-        if (k === 0) style = fabric
+        if (k === 0 && style !== 'plaza') style = fabric
         emit(block, district, fabric, ctx, out)
       })
     }
