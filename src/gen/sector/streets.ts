@@ -130,10 +130,11 @@ export function traceRoads(params: SectorParams, terrain: Terrain, sizeM: number
   // stubs facing each other across the river become one road (bridged later by markWetSpans)
   arterials = joinRiverStubs(arterials, terrain, sizeM, indexOf(arterials))
   ;({ roads: arterials } = joinFreeEnds(arterials, terrain, sizeM, indexOf(arterials), plazas, MAJOR.separation))
-  // prune, never invent: an arterial ends on an arterial / water / the edge, or the tail is cut (never on the highway: it crosses it)
+  // prune, never invent: an arterial ends on an arterial / water / the edge / the highway (a T end, §6.1), or the tail is cut
   const beforePrune = arterials
   arterials = pruneDangling(arterials, indexOf(arterials), terrain, sizeM, {
     accept: (c) => c === 'arterial', minLength: 300,
+    anchorEnd: (p) => !!highway && distToPolyline(p, highway.points) <= 1,
   })
   const pruned = beforePrune.length - arterials.length + arterials.filter((r) => { const b = beforePrune.find((x) => x.id === r.id); return b && b.points !== r.points }).length
   index = indexOf(arterials)

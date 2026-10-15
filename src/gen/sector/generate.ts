@@ -259,6 +259,12 @@ function infillFaces(faces: Face[], roads: Road[], others: Road[], highway: Road
       }
       // welding can pull both ends of a short piece onto the same neighbour: a piece left shorter than a cut may be (add's 5 m) goes
       for (let i = pieces.length - 1; i >= 0; i--) if (polylineLength(pieces[i].points) <= 5) pieces.splice(i, 1)
+      // a piece under 80 m whose ends are both on the face ring and under 40 m apart only nicks a corner into a sliver block (S352: a straight 10.9 m nick): it goes
+      const ringLine = [...f.footprint, f.footprint[0]]
+      for (let i = pieces.length - 1; i >= 0; i--) {
+        const pts = pieces[i].points, a = pts[0], z = pts[pts.length - 1]
+        if (Math.hypot(a.x - z.x, a.y - z.y) < 40 && polylineLength(pts) < 80 && distToPolyline(a, ringLine) <= 6 && distToPolyline(z, ringLine) <= 6) pieces.splice(i, 1)
+      }
       // loose ends were run on above: one that now reaches into a core goes
       for (let i = pieces.length - 1; i >= 0; i--) if (inCore(pieces[i].points)) pieces.splice(i, 1)
       // a piece must be anchored at both ends (another piece, or the face ring away from the highway); dead ends go
@@ -383,10 +389,10 @@ function finalStreetPrune(streets: Road[], others: Road[], terrain: Terrain, siz
 }
 
 /** converge-and-weld on the final street set against every road (the index is rebuilt by the prune after) */
-function weldAll(streets: Road[], others: Road[]): Road[] {
+function weldAll(streets: Road[], others: Road[], infillIds: Set<string>): Road[] {
   const index = new RoadIndex(200)
   for (const r of [...others, ...streets]) index.add(r.id, r.points, r.class)
-  return weldConverging(streets, index)
+  return weldConverging(streets, index, { keepShort: (id) => infillIds.has(id.split('-')[0]) })
 }
 
 export function generateSector(params: SectorParams): SectorModel {
@@ -410,13 +416,13 @@ export function generateSector(params: SectorParams): SectorModel {
   const minorAll = highway ? pruneCutStreets(cutStreetsAtGround(streets, highway, segments), arterials, highway, terrain, sizeM) : streets
   const crossings = highway ? highwayCrossings(highway, [...arterials, ...minorAll], segments, levelRng) : []
   const { crossings: finalCrossings, ramps } = highway
-    ? buildInterchanges(highway, crossings, arterials, segments, terrain, sizeM)
+    ? buildInterchanges(highway, crossings, arterials, segments, terrain, sizeM, mulberry32(hashSeed(params.seed, 'half-interchanges')))
     : { crossings, ramps: [] as Road[] }
   const hw = highway ? [{ ...highway, segments, crossings: finalCrossings }] : []
 
   const { faces, infill, dropped } = infillFaces(facesFor([...hw, ...arterials, ...minorAll], boundaries, terrain), minorAll, arterials, highway, terrain, sizeM, [...arcologies.filter((a) => a.access === 'ring'), ...megablocks].map((l) => l.center), [...megablocks.map((k) => k.core), ...arcologies.filter((a) => a.access !== 'ring').map((a) => a.plaza)])
   const infillIds = new Set(infill.map((r) => r.id))
-  const welded = weldAll([...minorAll.filter((r) => !dropped.has(r.id)), ...infill], [...hw, ...arterials, ...ramps])
+  const welded = weldAll([...minorAll.filter((r) => !dropped.has(r.id)), ...infill], [...hw, ...arterials, ...ramps], infillIds)
   const prunedStreets = finalStreetPrune(welded, [...hw, ...arterials, ...ramps], terrain, sizeM, decayEnds, infillIds)
   const minor = prunedStreets.filter((r) => !infillIds.has(r.id.split('-')[0]))
   const infillKept = prunedStreets.filter((r) => infillIds.has(r.id.split('-')[0]))

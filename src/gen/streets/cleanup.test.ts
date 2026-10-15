@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Pt } from '../geometry'
+import { polylineLength, type Pt } from '../geometry'
 import { distToPolyline } from '../terrain/rivers'
 import type { Road, RoadClass } from '../types'
 import { dropStreetHairpins, weldConverging } from './cleanup'
@@ -135,5 +135,20 @@ describe('weldConverging: a run in the middle', () => {
     expect(distToPolyline(out[1].points[0], A.points)).toBeLessThanOrEqual(1)
     expect(out[1].points.at(-1)).toEqual({ x: 200, y: 49 })
     expect(out[1].points[0].x).toBeGreaterThan(out[0].points.at(-1)!.x)
+  })
+})
+
+describe('weldConverging: keepShort', () => {
+  const keep = () => true
+  it('keeps a 37 m remainder of a keepShort street', () => {
+    const B = road('S1', line([0, 4], [60, 4], [60, 41]))
+    const out = weldConverging([B], setup(A, B), { keepShort: keep })
+    expect(out.map((r) => r.id)).toEqual(['S1'])
+    expect(polylineLength(out[0].points)).toBeGreaterThan(30)
+    expect(weldConverging([B], setup(A, B)).length).toBe(0)
+  })
+  it('drops a remainder of 5 m or less even for a keepShort street', () => {
+    const B = road('S1', line([0, 2], [60, 2], [60, 5]))
+    expect(weldConverging([B], setup(A, B), { near: 3, keepShort: keep })).toEqual([])
   })
 })

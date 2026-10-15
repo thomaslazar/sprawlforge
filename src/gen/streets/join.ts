@@ -109,6 +109,13 @@ export function crossingGuard(index: RoadIndex, from: Pt, target: Pt, ownId: str
 
 const END_TRY = 8
 
+/** T end on the highway: the kept road must be at least this long (m) */
+export const TEE_MIN_M = 300
+/** ... and the arterial crosses the highway at least this steeply */
+export const TEE_MIN_ANGLE = Math.PI / 4
+/** an end this close (m) to the highway centreline counts as resting on it */
+export const TEE_SNAP_M = 2
+
 /**
  * End pass: a non-ring arterial end that is still free (not on a road, the window edge or water)
  * curves into the nearest arterial ahead of it, instead of being pruned later.
@@ -177,5 +184,44 @@ export function joinFreeEnds(
       }
     }
   }
+  teeEnds(out, terrain, sizeM, index)
   return { roads: out, joined }
+}
+
+/**
+ * Tee sweep: an end still free after the join passes that crosses the highway (steeply, leaving a long enough road,
+ * with nothing of another arterial on the tail) is cut at the nearest crossing and ends on the highway (spec §6.1).
+ * No re-smoothing: the cut keeps the road's own points.
+ */
+function teeEnds(out: Road[], terrain: Terrain, sizeM: number, index: RoadIndex) {
+  const isHighway = (_id: string, c: string) => c === 'highway'
+  for (let ri = 0; ri < out.length; ri++) {
+    const road = out[ri]
+    if (road.class !== 'arterial' || road.id.startsWith(RING_ID_PREFIX)) continue
+    for (const atStart of [true, false]) {
+      const pts = out[ri].points
+      if (pts.length < 2) break
+      const fwd = atStart ? pts.slice().reverse() : pts
+      const end = fwd[fwd.length - 1]
+      if (onWindowEdge(end, sizeM, 1) || nearWater(terrain, end, 15)
+        || index.nearestMatching(end, 6, (h) => h.id !== road.id && h.cls === 'arterial') || index.nearestMatching(end, 1, (h) => h.cls === 'highway')) continue
+      for (let i = fwd.length - 2; i >= 0; i--) {
+        const hit = index.firstCrossing(fwd[i + 1], fwd[i], isHighway)
+        if (!hit) continue
+        if (angleGapLines(Math.atan2(fwd[i + 1].y - fwd[i].y, fwd[i + 1].x - fwd[i].x), hit.segAngle) < TEE_MIN_ANGLE) break
+        const kept = [...fwd.slice(0, Math.hypot(fwd[i].x - hit.at.x, fwd[i].y - hit.at.y) <= 1 ? i : i + 1), hit.at]
+        if (polylineLength(kept) < TEE_MIN_M) break
+        const tail = [hit.at, ...fwd.slice(i + 1)], tl = polylineLength(tail)
+        let clear = true
+        for (let d = 6.01; d <= tl && clear; d += 5) clear = !index.nearestMatching(pointAtT(tail, d / tl), 6, (h) => h.id !== road.id && h.cls === 'arterial')
+        if (clear) {
+          const cut = atStart ? kept.reverse() : kept
+          index.remove(road.id)
+          index.add(road.id, cut, 'arterial')
+          out[ri] = { ...road, points: cut }
+        }
+        break
+      }
+    }
+  }
 }

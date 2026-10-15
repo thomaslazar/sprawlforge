@@ -333,6 +333,37 @@ new `PruneOpts.acceptEndOn?: (cls, p) => boolean` or equivalent).
 Half interchanges render like full ones (ramps are roads). No new SVG
 attributes; `data-ramps` counts both.
 
+### 6.4 As built (phase 3)
+
+- The tee sweep (`teeEnds` in `join.ts`) runs after the join passes: an end
+  that still has no junction is cut at its nearest highway crossing. The
+  tail-junction rule: the sweep refuses when any other arterial lies within
+  6 m of the tail beyond the crossing (the tail then ends at a real
+  junction, the old end pass handles it). `TEE_MIN_M = 300`,
+  `TEE_MIN_ANGLE = π/4`.
+- `PruneOpts.anchorEnd?: (p) => boolean`: `traceRoads` passes
+  `distToPolyline(p, highway) <= 1`, so a tee end counts as anchored.
+- `TEE_SNAP_M = 2` (`join.ts`, imported by `highway.ts`): the highway is
+  simplified at 1 m after the cut, so a tee end can sit up to 1 m off the
+  centreline; 2 m is the tolerance for "rests on the highway" in
+  `highwayCrossings`.
+- A tee gets its half interchange by level, with no rng: the kind follows the
+  highway level at the crossing (over / under), and there is no ground-level
+  special case.
+- `siteOk` (dry highway point, clear of level transitions, `IC_REACH_M` from
+  every chosen interchange, halves included) is shared by full and half
+  interchanges; `rampTriples(c, sides)` takes the sides to build.
+- Order: tee halves first, then chance halves (`HALF_CHANCE = 0.25`, stream
+  `hashSeed(seed, 'half-interchanges')`), both in highway order; the side is
+  drawn once (no second try on the other side). Ramp ids follow that order.
+- Measured (seed 42): P1 (`coastal,medium,dense,fringe,lively,mixed,river`)
+  3 full + 1 tee half, 0 chance halves, 14 ramps; planned
+  (`inland,planned,corp-run`) 3 full + 1 chance half, 14 ramps (was 12);
+  P3 prune 27 → 26 (still over the 20 bound; see ROADMAP).
+- Infill (found while re-pinning): a cut that is a short hook with both ends
+  on its face ring is dropped, and a welded infill remainder is never dropped
+  for its length (both left sliver blocks / block sides without a road).
+
 ## 7. Tests and checks
 
 - `smoothBends`: a right-angle polyline becomes an arc of the requested

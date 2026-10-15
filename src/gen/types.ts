@@ -32,6 +32,10 @@ export interface HighwayCrossing {
   at: number
   kind: 'over' | 'under'
   interchange: boolean
+  /** an arterial ending on the highway (§6.1) */
+  tee?: boolean
+  /** two ramps on one side of the arterial (§6.2) */
+  half?: boolean
 }
 
 export interface SectorParams {

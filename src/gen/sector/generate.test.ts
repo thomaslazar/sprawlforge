@@ -4,7 +4,8 @@ import { ISLET_MOAT_OUTER_FACTOR, ISLET_RADIUS_MAX } from '../terrain/field'
 import { GENERATOR_VERSION, type SectorModel, type Block, type District, type Road, type SectorParams, type Terrain } from '../types'
 import { hashSeed, mulberry32 } from '../rng'
 import { distToPolyline } from '../terrain/rivers'
-import { RoadIndex, riverCrossingSeeds } from '../streets/trace'
+import { RoadIndex, courseTangentAt, riverCrossingSeeds } from '../streets/trace'
+import { TEE_SNAP_M } from '../streets/join'
 import { traceRoads } from './streets'
 import { sampleTerrain } from '../terrain'
 import { RING_ID_PREFIX, ringRoad } from '../landmarks/place'
@@ -304,14 +305,28 @@ describe('generateSector invariants', () => {
     }
   })
 
-  it('ramp count is four times the interchange count', () => {
+  it('ramp count is 4 × full + 2 × half', () => {
     for (const p of sweep) {
-      const m = generateSector(p)
-      const hw = m.roads.find((r) => r.class === 'highway')
+      const m = generateSector(p), hw = m.roads.find((r) => r.class === 'highway')
       if (!hw) continue
-      const ics = (hw.crossings ?? []).filter((c) => c.interchange).length
-      expect(m.roads.filter((r) => r.class === 'ramp'), `${p.seed}/${p.landform}`).toHaveLength(4 * ics)
+      const c = hw.crossings ?? []
+      expect(m.roads.filter((r) => r.class === 'ramp'), `${p.seed}/${p.landform}`).toHaveLength(4 * c.filter((x) => x.interchange).length + 2 * c.filter((x) => x.half).length)
     }
+  })
+  it('every tee crossing is at 45° or more', { timeout: 300000 }, () => {
+    let tees = 0
+    const p1 = { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river']), seed: 42, pack: 'generic', theme: 'print' } as any
+    for (const p of [...sweep, p1]) {
+      const m = generateSector(p), hw = m.roads.find((r) => r.class === 'highway')
+      for (const c of (hw?.crossings ?? []).filter((x) => x.tee)) {
+        tees++
+        const at = pointAtT(hw!.points, c.at)
+        const art = m.roads.filter((r) => r.id === c.roadId || r.id.startsWith(c.roadId + '-')).sort((a, b) => distToPolyline(at, a.points) - distToPolyline(at, b.points))[0]
+        const h = courseTangentAt(hw!.points, at), a = courseTangentAt(art.points, at)
+        expect(Math.abs(h.x * a.x + h.y * a.y), `${p.seed} ${c.roadId}`).toBeLessThanOrEqual(Math.cos(Math.PI / 4) + 1e-6)
+      }
+    }
+    expect(tees).toBeGreaterThan(0)
   })
 
   it('pieces of one arterial share a name', () => {
@@ -465,7 +480,7 @@ describe('river bridges (seed 42)', () => {
       expect(idx.nearestMatching(e, 1, (h) => family(h.id) !== family(b.id) && (h.cls === 'arterial' || h.cls === 'highway')), b.id).not.toBeNull()
     }
   })
-  it('no arterial ends on the highway', () => {
+  it('an arterial ends near the highway only as a T end', () => {
     const hw = m.roads.filter((r) => r.class === 'highway')
     expect(hw.length).toBeGreaterThan(0)
     const S = m.meta.sizeM
@@ -476,7 +491,15 @@ describe('river bridges (seed 42)', () => {
     for (const r of arts) for (const e of [r.points[0], r.points.at(-1)!]) {
       if (e.x < 1 || e.y < 1 || e.x > S - 1 || e.y > S - 1) continue
       if (idx.nearestMatching(e, 6, (h) => h.id !== r.id)) continue
-      for (const h of hw) expect(distToPolyline(e, h.points), r.id).toBeGreaterThan(30)
+      for (const h of hw) {
+        const d = distToPolyline(e, h.points)
+        if (d > 30) continue
+        expect(d, r.id).toBeLessThanOrEqual(1)
+        // the end on the highway is reported as a tee crossing of that arterial
+        // (`at` runs along the whole highway; a bridge splits it into pieces that all carry the same crossings)
+        const whole = hw.flatMap((x) => x.points)
+        expect((h.crossings ?? []).some((c) => c.roadId === r.id && c.tee && Math.hypot(pointAtT(whole, c.at).x - e.x, pointAtT(whole, c.at).y - e.y) < 2), r.id).toBe(true)
+      }
     }
   })
   it('every arterial bridge is shorter than 600 m', () => {
@@ -494,7 +517,7 @@ describe('no doubled arterials', () => {
     // 66 streets / 9 arterials measured (66 before the singularity stop, 41 with it ending
     // halves at the seed; 74 / 13 before prune-dangling); bounds = measured - 10 %
     expect(m.roads.filter((r) => r.class === 'street').length).toBeGreaterThanOrEqual(44) // 49 measured after streets stopped anchoring on the highway (hooks gone)
-    expect(arts.length).toBeGreaterThanOrEqual(7) // was >= 8: arterials cross the highway; a tail past it with no arterial junction is pruned (half interchanges: ROADMAP)
+    expect(arts.length).toBeGreaterThanOrEqual(8) // 14 measured after the half interchanges (v9)
     let worst = 0
     for (let i = 0; i < arts.length; i++) {
       for (let j = i + 1; j < arts.length; j++) {
@@ -670,7 +693,7 @@ describe('block size', () => {
         // blocks beside a megablock, and an arcology's own block, stay big on purpose
         // a strip block is a long band between frontage road and highway (about 40 m wide): its area says nothing about street spacing
         const nearCore = m.megablocks.some((k) => k.core.some((p) => pointInRings(p, [b.footprint])) || pointInRings(k.center, [b.footprint]))
-        return Math.abs(ringArea(b.footprint)) > ([2982258224, 42].includes(params.seed) ? 64000 : params.seed === 4280430344 ? 61000 : 60000) && // 4280430344: 61000 (was 60000; arterials re-roll (v9): B4406 60227, a courtyard block 220 m from water, user accepted) // 2982258224 and 42: 64000 (was 60000; measured 61431 / 63192 for B0419/B0423 and 63158 / 62743 for B0505/B0829): arterials cross the highway; a tail past it with no arterial junction is pruned (half interchanges: ROADMAP)
+        return Math.abs(ringArea(b.footprint)) > (params.seed === 4280430344 ? 61000 : 60000) && // 4280430344: 61000 (was 60000; arterials re-roll (v9): B4406 60227, a courtyard block 220 m from water, user accepted) // 2982258224 and 42: 64000 -> 60000 (arterials phase 3 measured 58046 / 59794 at most: the tail past the highway is a tee now)
          Math.min(c.x, c.y, s - c.x, s - c.y) >= 150 && !wet(c) && !nearCore && b.style !== 'strip' && !m.arcologies.some((a) => pointInRings(a.center, [b.footprint]))
       })
       expect(big.map((b) => `${b.id} ${Math.round(Math.abs(ringArea(b.footprint)))}`), `seed ${params.seed}`).toEqual([])
@@ -739,7 +762,9 @@ describe('streets at the highway', () => {
         const rs = m.roads.filter((r) => r.id === cr.roadId || r.id.startsWith(cr.roadId + '-'))
         expect(rs.length).toBeGreaterThan(0)
         const sides = new Set(rs.flatMap((r) => r.points.map(side)))
-        expect(sides.has(-1) && sides.has(1)).toBe(true)
+        if (cr.tee) sides.delete(0)
+        if (cr.tee) expect(sides.has(-1) !== sides.has(1), cr.roadId).toBe(true)
+        else expect(sides.has(-1) && sides.has(1)).toBe(true)
       }
     })
   }
@@ -832,7 +857,7 @@ describe('landmarks in road tracing', () => {
           const closed = [...pts, pts[0]]
           const spokes = m.roads.filter((r) => r.class === 'arterial' && !ring.includes(r)).flatMap((r) => [r.points[0], r.points[r.points.length - 1]])
             .filter((e) => distToPolyline(e, closed) <= 6)
-          expect(spokes.length).toBeGreaterThanOrEqual(2) // was 3 (seed 11 lost one ring spoke): arterials cross the highway; a tail past it with no arterial junction is pruned (half interchanges: ROADMAP)
+          expect(spokes.length).toBeGreaterThanOrEqual(3) // 5 / 6 measured (seeds 11 / 7) after the half interchanges (v9)
         }
       })
       it('half rings are open and spoked', () => {
@@ -1116,8 +1141,8 @@ describe('frontage', () => {
 describe('compound names', () => {
   it('are drawn after the landmark names, which stay as before', { timeout: 300000 }, () => {
     const m = generateSector({ ...base, corpDominance: 0.85, arcology: true, megablock: true })
-    expect(m.arcologies.map((a) => a.name)).toEqual(['Gemini Robotics Towers']) // C1 fix round re-roll; rule C1: 'Gemini Logistics Towers'; 7b stabilisation: 'The Apex-Robotics Gemini'; v9: 'The Vertex-Dynamics Gemini'; was 'Kessler Twin Towers': arterials cross the highway (and one-point roads are gone): layout shifts the name draw; same as the original golden
-    expect(m.megablocks.map((a) => a.name)).toEqual(['The Chrome Hive']) // C1 fix round re-roll; rule C1: 'Row Stacks'; 7b stabilisation: 'The Black Hive'; v9: 'The Iron Hive'; was 'Docks Block', before that 'Gardens Block': arterials cross the highway, layout shifts the name draw
+    expect(m.arcologies.map((a) => a.name)).toEqual(['Apex Twin Towers']) // arterials re-roll (v9): 'Gemini Robotics Towers' -> 'Apex Twin Towers' (half interchanges re-roll the layout and so the name draw); C1 fix round re-roll; rule C1: 'Gemini Logistics Towers'; 7b stabilisation: 'The Apex-Robotics Gemini'; v9: 'The Vertex-Dynamics Gemini'; was 'Kessler Twin Towers': arterials cross the highway (and one-point roads are gone): layout shifts the name draw; same as the original golden
+    expect(m.megablocks.map((a) => a.name)).toEqual(['Docks Stacks']) // arterials re-roll (v9): 'The Chrome Hive' -> 'Docks Stacks'; C1 fix round re-roll; rule C1: 'Row Stacks'; 7b stabilisation: 'The Black Hive'; v9: 'The Iron Hive'; was 'Docks Block', before that 'Gardens Block': arterials cross the highway, layout shifts the name draw
     expect(m.compounds.length).toBeGreaterThan(0)
     for (const c of m.compounds) expect(c.name.length).toBeGreaterThan(0)
     expect(m.pois.filter((p) => p.type === 'corp_campus').map((p) => p.name)).toEqual(m.compounds.map((c) => c.name))
@@ -1180,6 +1205,7 @@ describe('arterial ends (model seeds)', () => {
     return worst
   }
   // last-resort prune: ideal 0; measured at rule C1 with crossing joins ending as Ts: P1: 3, P2: 6, P3: 17, S7: 5, S3017268931: 3, S2982258224: 0, S4280430344: 6, S11: 11, S782008753: 4, R1: 1, R2: 3, R3: 2 — bound raised 10 → 20 by user ruling 2026-10-13 (the 90° connector rule prunes more ends instead of curving them; the user prefers that)
+  // phase 3 (T ends on the highway): P3 27 → 26, P1 6 → 5, P2 6 → 5, S7 6 → 5, R1 6 → 0, R3 1 → 0, the rest unchanged
   for (const [name, p] of Object.entries(MODEL_SETS)) {
     it(`${name}: every arterial end is anchored and at most 20 were pruned`, { timeout: 120000 }, () => {
       const sizeM = p.size * 1000
@@ -1193,7 +1219,7 @@ describe('arterial ends (model seeds)', () => {
         if (r.id.startsWith(RING_ID_PREFIX) && Math.hypot(first.x - last.x, first.y - last.y) < 1) continue
         for (const e of [first, last]) {
           const near = idx.nearestMatching(e, 6, (h) => h.id !== r.id && h.cls === 'arterial')
-          const ok = onEdge(e, sizeM) || near || nearWater(terrain, e, 15)
+          const ok = onEdge(e, sizeM) || near || nearWater(terrain, e, 15) || (t.highway !== undefined && distToPolyline(e, t.highway.points) <= TEE_SNAP_M)
           expect(ok, `${name} ${r.id} end ${e.x.toFixed(0)},${e.y.toFixed(0)}`).toBeTruthy()
         }
       }
@@ -1248,13 +1274,13 @@ describe('waterfront arterials (P1 seed 42)', () => {
 describe('street free ends', () => {
   // seed 42: 12 before the ring-outward seeding re-rolled the streets stream (13 decay ends, 11 alive now)
   // arterials re-roll (v9): decay ends alive 11 / 11 / 19 -> 14 / 9 / 10 (a re-roll re-draws the decay rolls: 15 / 12 / 13 decay ends in all now)
-  const DECAY: Record<number, number> = { 42: 14, 426750495: 9, 2268324149: 10 } // decay ends alive after the final prune, as measured without it
+  const DECAY: Record<number, number> = { 42: 11, 426750495: 7, 2268324149: 10 } // decay ends alive after the final prune, as measured without it; arterials re-roll (v9): 42: 14 -> 11, 426750495: 9 -> 7 (half interchanges re-roll the fabric)
   const refs: [string, number, SectorParams, number, number][] = [
     // [label, seed, params, BOUND, STRAY]. BOUND = free ends measured at 3e3416d, all but STRAY decay cul-de-sacs; a re-roll re-pins it to the new decay count; a non-decay free end is a defect.
     // STRAY = the free ends that are no decay end: infill ends (S372/S375 at the window inset, S351 6.0 m off a street, shore ends), kept by the final prune because blocks were cut along them. Ratchet down, never up.
     ['seed 42', 42, { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 12, 3],
     ['seed 426750495', 426750495, { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 11, 2], // arterials re-roll (v9): 13 / 4 -> 11 / 2 (S157 1074,1639, S165 1755,1994 infill ends)
-    ['seed 2268324149', 2268324149, { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 9, 3], // arterials re-roll (v9): BOUND 16 -> 9; STRAY 2 -> 3 (S499 1642,671, S522 2626,1921, S525 2685,1852, inland infill ends; user accepted)
+    ['seed 2268324149', 2268324149, { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 12, 3], // half interchanges re-roll (v9): BOUND 9 -> 12 (strays 3 -> 2, the extra are unjoined decay cul-de-sacs, none near the highway; user raised); arterials re-roll (v9): BOUND 16 -> 9; STRAY 2 -> 3 (S499 1642,671, S522 2626,1921, S525 2685,1852, inland infill ends; user accepted)
   ]
   for (const [label, seed, params, bound, strayBound] of refs) describe(label, () => {
     let m: SectorModel
@@ -1347,7 +1373,7 @@ describe('block sides have a road', () => {
   // BOUND measured at 3e3416d: 3 / 7 / 4. Before this round 66 / 31 / 14 (main 57 / 28 / 134; 201 / 90 / 103 at BASE 0f45e0a). Ratchet down, never up.
   // [label, params, BOUND]: edges of block footprints with no road within 10 m, no water within 15 m, not on the window edge, not in a megablock/arcology
   const refs: [string, SectorParams, number][] = [
-    ['seed 42', { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 3],
+    ['seed 42', { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 4], // half interchanges re-roll (v9): 3 -> 4 (two window-edge slivers, one edge along decay street S081; user raised)
     ['seed 426750495', { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 8], // arterials re-roll (v9): 7 -> 8 after the frontage-end fix re-rolled the seed (B2507/B2508/B2525 near the river; user accepted)
     ['seed 2268324149', { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 14],
   ]
