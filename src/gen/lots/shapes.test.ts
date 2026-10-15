@@ -38,6 +38,20 @@ describe('shapes', () => {
     expect(cornerShape(q90, 90, 'perimeter', true, 400).id).toBe('A4'); expect(cornerShape(q65, 65, 'perimeter', true, 400).id).toBe('A15')
     expect(cornerShape(q40, 40, 'rows', false, 1600).id).toBe('A16'); expect(cornerShape(q40, 40, 'rows', false, 1400).id).toBeNull()
   })
+  it('corner rule edge cases', () => {
+    expect(cornerShape(q90, 160, 'perimeter', true, 400)).toEqual({ id: null, fit: true })
+    expect(cornerShape(q65, 65, 'perimeter', true, 140).id).toBeNull()
+    expect(cornerShape(q65, 65, 'perimeter', true, 140).fit).toBeUndefined()
+  })
+  it('sizing fractional fit box', () => {
+    const fit = { origin: { x: 3, y: 4 }, angle: 0.4, w: 37.6, d: 21.4 }
+    for (const id of ['A1', 'A2', 'A4', 'A20']) for (const mode of ['continuous', 'detached', 'villas', 'gapped'] as const) for (let s = 0; s < 60; s++) {
+      const b = sizeShape(id, fit, mode, mulberry32(s))
+      if (!b) continue
+      expect(b.w).toBeLessThanOrEqual(37.6); expect(b.d).toBeLessThanOrEqual(21.4)
+      for (const p of boxRing(b)) expect(insideOrOn(p, boxRing(fit), 0.05), `${id} ${mode}`).toBe(true)
+    }
+  })
   it('sizing stays inside the fit box', () => {
     const fit = { origin: { x: 3, y: 4 }, angle: 0, w: 40, d: 30 }
     for (const mode of ['continuous', 'detached', 'villas', 'gapped'] as const) for (let s = 0; s < 50; s++) {

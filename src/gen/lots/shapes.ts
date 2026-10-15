@@ -194,16 +194,19 @@ export function sizeShape(id: string, fit: FitBox, mode: 'continuous' | 'detache
       : clamp(Math.max(s.minW, 0.5 * fit.w) + rng.next() * (Math.max(s.minW, 0.85 * fit.w) - Math.max(s.minW, 0.5 * fit.w)), 0, fit.w))
     const wc = Math.max(w, s.minW)
     if (wc > fit.w) continue
-    const d = Math.round(clamp(wc * (lo + rng.next() * (hi - lo)), s.minD, fit.d))
-    if (d < s.minD || d / wc < lo - 1e-6 || d / wc > hi + 1e-6) continue
+    const d = Math.min(Math.round(wc * (lo + rng.next() * (hi - lo))), Math.floor(fit.d)) // whole metres, never past the fit box
+    if (d < s.minD) continue
+    if (d / wc < lo - 1e-6 || d / wc > hi + 1e-6) continue
     if (mode === 'gapped') return at(0, 0, wc, d)
-    return at(Math.round(rng.next() * (fit.w - wc)), rng.int(0, Math.floor(Math.min(6, fit.d - d))), wc, d)
+    return at(Math.floor(rng.next() * (fit.w - wc)), rng.int(0, Math.floor(Math.min(6, fit.d - d))), wc, d)
   }
   return null
 }
 
 /** R26; `quad` = (corner, projection, inner point, projection). `fit: true` = fit normally, no id and no fit = plaza filler */
 export function cornerShape(quad: Pt[], thetaDeg: number, fabric: BlockStyle, continuous: boolean, area: number): { id: 'A4' | 'A15' | 'A16' | null; footprint?: Pt[]; fit?: true } {
+  if (thetaDeg >= 155) return { id: null, fit: true } // not a corner lot (R7)
+  if (area < 150) return { id: null }
   if (thetaDeg >= 80 && thetaDeg <= 100) return fabric === 'perimeter' ? { id: 'A4' } : { id: null, fit: true }
   if (thetaDeg < 50) {
     if (area < 1500) return { id: null }
