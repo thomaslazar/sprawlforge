@@ -285,9 +285,12 @@ function blockfill(piece: Pt[], chord: [Pt, Pt], ctx: BlockCtx): LotOut[] {
   return ms.map((m, i): LotOut => {
     if (!ok(m.poly)) return { poly: m.poly, kind: fillerOf('blockfill', ctx.zone, 'interior'), buildings: [] }
     const fp = trimShortEdges(m.poly), local = fp.map(toF), a = ringArea(fp)
+    const lw = Math.max(...local.map((p) => p.x)) - Math.min(...local.map((p) => p.x)), ld = Math.max(...local.map((p) => p.y)) - Math.min(...local.map((p) => p.y))
+    let k = 0
+    const fitW = (v: number, side: number) => Math.min(v, Math.max(6, 2 * Math.floor((side - 8) / 2))) // a well needs 4 m of wall each side: shrink to what the slab holds (not below 6)
     const boxes = i === big && nt ? placeBoxes(local, nt, () => { const t = rs.int(20, 30); return [t, t] }, 4, 6, rs)
-      : a > 2500 ? placeBoxes(local, 1, () => [2 * rs.int(7, 15), 2 * rs.int(7, 15)], 4, 4, rs)
-        : a > 900 ? placeBoxes(local, rs.int(1, 3), () => [2 * rs.int(3, 7), 2 * rs.int(3, 7)], 4, 4, rs) : []
+      : a > 2500 ? placeBoxes(local, 1, () => { const sh = 2 * Math.floor(k++ / 4); return [Math.max(6, fitW(2 * rs.int(7, 15), lw) - sh), Math.max(6, fitW(2 * rs.int(7, 15), ld) - sh)] }, 4, 4, rs) // courtyard, shrinking to a lightwell on thin slabs
+        : a > 900 ? placeBoxes(local, rs.int(1, 3), () => { const sh = 2 * Math.floor(k++ / 8); return [Math.max(6, fitW(2 * rs.int(3, 7), lw) - sh), Math.max(6, fitW(2 * rs.int(3, 7), ld) - sh)] }, 4, 4, rs) : []
     const details = boxes.map(([x, y, w, d]) => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + d }, { x, y: y + d }].map(fromF))
     return { poly: m.poly, kind: lotKind(m.poly, [fp], fillerOf('blockfill', ctx.zone, 'interior')), buildings: [{ shape: i === big && nt ? 'B1T' : 'B1', footprint: fp, details }] }
   })
@@ -362,7 +365,7 @@ export function layoutPiece(piece: Pt[], sides: Side[], fabric: BlockStyle, ctx:
     case 'zeilen': return whole(piece, fabric, ctx, zeilen(piece, chord, ctx))
     case 'tower-park': {
       const f = fit(), cap = Math.floor(Math.min(f.w, f.d))
-      return whole(piece, fabric, ctx, scatter(f, r.int(1, 3), () => { const s = Math.min(r.int(24, 36), cap); return [s, s] }, ['A2', 'A11', 'A12', 'A13', 'A14'], ctx))
+      return whole(piece, fabric, ctx, scatter(f, Math.min(8, Math.max(2, Math.round(f.w * f.d / 3500))), () => { const s = Math.min(r.int(24, 36), cap); return [s, s] }, ['A2', 'A11', 'A12', 'A13', 'A14'], ctx))
     }
     case 'plaza': {
       const f = fit(), hw = Math.floor(0.4 * f.w), hd = Math.floor(0.4 * f.d)

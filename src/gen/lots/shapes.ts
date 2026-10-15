@@ -135,7 +135,8 @@ export function placeBoxes(base: Pt[], n: number, size: () => [number, number], 
   const closed = [...base, base[0]], out: Array<[number, number, number, number, number]> = []
   let draws = 0
   const inside = (x: number, y: number, w: number, d: number) => {
-    const q = [P(x - margin, y - margin), P(x + w + margin, y - margin), P(x + w + margin, y + d + margin), P(x - margin, y + d + margin)]
+    const m = margin - 1e-6 // a margin box may touch the base edge (rectangular slabs): nudge it in
+    const q = [P(x - m, y - m), P(x + w + m, y - m), P(x + w + m, y + d + m), P(x - m, y + d + m)]
     return q.every((c) => pointInRings(c, [base])) && !base.some((v) => v.x > q[0].x && v.x < q[2].x && v.y > q[0].y && v.y < q[2].y)
       && !q.some((a, i) => { const b = q[(i + 1) % 4]; return base.some((c, j) => segmentsIntersect(a, b, c, closed[j + 1])) })
   }

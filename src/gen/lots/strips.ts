@@ -5,7 +5,7 @@ import { fitBox, holds } from './fitbox'
 import type { BlockStyle } from '../types'
 import { sidesOf, type Side } from './setback'
 
-export interface StripParams { depth: number; width: [number, number]; gap: [number, number] | null; sides?: (s: Side[]) => number[] }
+export interface StripParams { depth: number; width: [number, number]; wide?: true; gap: [number, number] | null; sides?: (s: Side[]) => number[] }
 /** `corner` = interior angle in degrees; `filler` = gap, interior leftover or failed merge */
 export interface StripLot { poly: Pt[]; chord: [Pt, Pt]; side: number; corner?: number; filler?: boolean }
 
@@ -135,7 +135,7 @@ export function stripLots(piece: Pt[], sides: Side[], p: StripParams, rng: Rng, 
     let c = a0
     const draw = (r: [number, number]) => r[0] + rng.next() * (r[1] - r[0])
     while (a1 - c >= wmax) {
-      const w = draw(p.width)
+      const w = p.wide ? Math.max(draw(p.width), draw(p.width)) : draw(p.width) // wide: max of two draws skews to the wide end
       segs.push({ s: c, e: c + w }); c += w
       if (p.gap && a1 - c > 0) { const g = Math.min(draw(p.gap), a1 - c); segs.push({ s: c, e: c + g, gap: true }); c += g }
     }
@@ -266,7 +266,7 @@ export const STRIP_PARAMS: Partial<Record<BlockStyle, (rng: Rng) => StripParams>
   rows: (r) => { const d = r1(15, 30)(r); return { depth: d, width: [10, 36], gap: gap(2, 6)(r) } },
   detached: (r) => ({ depth: r1(25, 35)(r), width: [20, 30], gap: null }),
   villas: (r) => ({ depth: r1(30, 40)(r), width: [25, 45], gap: null }),
-  strip: (r) => { const d = r1(10, 14)(r); return { depth: d, width: [10, 40], gap: gap(2, 6)(r), sides: (s) => s.flatMap((x, i) => (x.setback === 7.5 ? [i] : [])) } }, // user review: frontage 10-40, gap 2-6
+  strip: (r) => { const d = r1(10, 14)(r); return { depth: d, width: [10, 40], wide: true, gap: gap(2, 6)(r), sides: (s) => s.flatMap((x, i) => (x.setback === 7.5 ? [i] : [])) } }, // user review: frontage 10-40, gap 2-6
 }
 
 /** the lot rings of a piece's own sides for a strip fabric (phase B) */

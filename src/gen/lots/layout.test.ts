@@ -73,6 +73,7 @@ describe('layoutPiece', () => {
   it('blockfill: unequal masses fill the piece, lightwells inside them (user review)', () => {
     const P = (...a: number[][]): Pt[] => a.map(([x, y]) => ({ x, y }))
     const odd = P([0, 0], [150, 10], [170, 90], [60, 130], [-10, 70])
+    let qualifying = 0
     for (const pc of [rectPoly(0, 0, 150, 110), odd]) for (let s = 0; s < 10; s++) {
       const out = layoutPiece(pc, sidesOf(pc, pc.map(() => 7.5)), 'blockfill', { ...ctx(s, 'corp'), density: 'packed' })
       const bs = out.flatMap((l) => l.buildings)
@@ -84,10 +85,12 @@ describe('layoutPiece', () => {
       for (const b of bs) {
         expect(['B1', 'B1T']).toContain(b.shape)
         for (const d of b.details) { expect(insideRing(d, b.footprint, 0.05)).toBe(true); for (const p of d) expect(distToRing(p, b.footprint)).toBeGreaterThanOrEqual(4 - 0.05) }
-        if (b.shape === 'B1' && ringArea(b.footprint) > 900) expect(b.details.length, `seed ${s}`).toBeGreaterThanOrEqual(0)
+        const fp = b.footprint, e = fp.map((p, k) => [p, fp[(k + 1) % fp.length]] as [Pt, Pt]).sort((u, v) => Math.hypot(v[1].x - v[0].x, v[1].y - v[0].y) - Math.hypot(u[1].x - u[0].x, u[1].y - u[0].y))[0], fb = fitBox(fp, e) // fit box along the longest edge
+        if (b.shape === 'B1' && ringArea(b.footprint) > 900 && Math.min(fb.w, fb.d) >= 14) { qualifying++; expect(b.details.length, `seed ${s}`).toBeGreaterThanOrEqual(1) }
       }
       for (const l of out) for (const b of l.buildings) expect(insideRing(b.footprint, l.poly, 0.05)).toBe(true)
     }
+    expect(qualifying).toBeGreaterThan(0)
   })
   it('variation along fronts (user review): ragged back line, vacant lots, few repeats', () => {
     // depth along the front side of a perimeter block varies
@@ -164,9 +167,11 @@ describe('layoutPiece', () => {
   it('tower-park towers stand 20 m apart', () => {
     for (let s = 0; s < 10; s++) {
       const bs = layoutPiece(piece, sides, 'tower-park', ctx(s, 'corp')).flatMap((l) => l.buildings)
-      expect(bs.length).toBeGreaterThanOrEqual(1); expect(bs.length).toBeLessThanOrEqual(3)
+      expect(bs.length).toBeGreaterThanOrEqual(2); expect(bs.length).toBeLessThanOrEqual(8)
       for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) expect(gapBox(bs[i].footprint, bs[j].footprint)).toBeGreaterThanOrEqual(20 - 1e-6)
     }
+    const count = (w: number, s: number) => { const pc = rectPoly(0, 0, w, w); return layoutPiece(pc, sidesOf(pc, pc.map(() => 7.5)), 'tower-park', ctx(s, 'corp')).flatMap((l) => l.buildings).length }
+    for (let s = 0; s < 5; s++) { expect(count(140, s), `big ${s}`).toBeGreaterThanOrEqual(4); expect(count(65, s), `small ${s}`).toBeLessThanOrEqual(2) }
   })
   it('villas pools sit inside green lots, 3 m clear', () => {
     let pools = 0

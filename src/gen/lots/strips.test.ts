@@ -115,5 +115,13 @@ describe('stripLots', () => {
     expect(simpleParts(needle)).toHaveLength(1); expect(simpleParts(needle)[0]).toHaveLength(6)
     for (const r of [spiked, pinched, bow]) for (const p of simpleParts(r)) expect(isSimple(p)).toBe(true)
   })
+  it('wide flag skews widths to the wide end (max of two draws, mean ~30 vs 25)', () => {
+    const piece = rectPoly(0, 0, 3000, 60)
+    const mean = (wide?: true) => {
+      const ws = stripLots(piece, sidesOf(piece), { depth: 12, width: [10, 40], wide, gap: null, sides: () => [0] }, mulberry32(3)).filter((l) => !l.filler && l.corner === undefined).map((l) => Math.hypot(l.chord[1].x - l.chord[0].x, l.chord[1].y - l.chord[0].y))
+      return ws.reduce((t, w) => t + w, 0) / ws.length
+    }
+    expect(mean(true)).toBeGreaterThanOrEqual(26)
+    expect(mean(true)).toBeGreaterThan(mean() + 2)
+  })
 })
-
