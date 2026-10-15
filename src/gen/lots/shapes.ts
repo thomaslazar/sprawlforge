@@ -133,7 +133,7 @@ function build(id: string, w: number, d: number, rng: Rng): Built {
 }
 
 /** drops repeated and collinear vertices */
-function clean(ring: Pt[]): Pt[] {
+export function cleanRing(ring: Pt[]): Pt[] {
   let r = ring.filter((p, i) => { const q = ring[(i + ring.length - 1) % ring.length]; return Math.hypot(p.x - q.x, p.y - q.y) > 1e-9 })
   for (let again = true; again;) {
     again = false
@@ -159,7 +159,7 @@ export function fitShape(id: string, box: FitBox, rng: Rng): { footprint: Pt[]; 
     return P(box.origin.x + u.x * x - u.y * p.y, box.origin.y + u.y * x + u.x * p.y)
   }
   const ring = (r: Pt[]) => (mirror ? [...r].reverse() : r).map(to)
-  return { footprint: clean(ring(b.footprint)), details: b.details.map((r) => (mirror && r.length > 2 ? ring(r) : r.map(to))) }
+  return { footprint: cleanRing(ring(b.footprint)), details: b.details.map((r) => (mirror && r.length > 2 ? ring(r) : r.map(to))) }
 }
 
 /** R23 */

@@ -1,4 +1,6 @@
 import { expect } from 'vitest'
+import { COMPOSITES, makeComposite } from './composites'
+import { mulberry32 } from '../rng'
 // test helpers for the lot pass (not production code)
 import { boxOf, pointInRings, ringArea, type Pt } from '../geometry'
 import { intersection } from '../clip'
@@ -96,3 +98,16 @@ export const cornerQuad = (thetaDeg: number, D = 16): Pt[] => {
   return [{ x: 0, y: 0 }, { x: t, y: 0 }, { x: m * Math.cos(th / 2), y: m * Math.sin(th / 2) }, { x: t * Math.cos(th), y: t * Math.sin(th) }]
 }
 export const q90 = cornerQuad(90), q65 = cornerQuad(65), q40 = cornerQuad(40)
+
+/** angle is 90 or 270 degrees within 1 */
+export const near90or270 = (a: number): boolean => Math.min(Math.abs(a - 90), Math.abs(a - 270)) <= 1
+
+/** first composite with this id on a 60 x 40 box (seeds 0..999), failing loudly when none comes up */
+export const firstWith = (id: keyof typeof COMPOSITES) => {
+  const c = COMPOSITES[id], box = { origin: { x: 0, y: 0 }, angle: 0, w: 60, d: 40 }
+  for (let s = 0; s < 1000; s++) {
+    const r = makeComposite(box, c.zones[0], c.density[0], false, mulberry32(s))
+    if (r && r.shape === id) return r
+  }
+  throw new Error(`no ${id} composite within 1000 seeds`)
+}
