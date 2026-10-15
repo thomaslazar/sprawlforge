@@ -40,7 +40,7 @@ const MODE: Partial<Record<BlockStyle, 'continuous' | 'detached' | 'villas' | 'g
 const HALLS = ['A1', 'A2', 'A3', 'A18']
 const ALLOWED: Partial<Record<BlockStyle, string[]>> = {
   perimeter: ['A1', 'A2', 'A3', 'A20'], terrace: ['A1'], shophouse: ['A1', 'A3'], detached: ['A1', 'A2', 'A4', 'A20'],
-  rows: ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A10', 'A17', 'A20', 'A23'], villas: ['A1', 'A2', 'A4', 'A5', 'A6', 'A7', 'A10', 'A20'], strip: ['A1', 'A20'],
+  rows: ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A10', 'A17', 'A20', 'A23'], villas: ['A1', 'A2', 'A4', 'A5', 'A6', 'A7', 'A10', 'A20'], strip: ['A1', 'A20'], compound: ['A2', 'A3', 'A6', 'A9', 'A11'],
 }
 
 /** R30 */
