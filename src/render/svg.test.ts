@@ -356,6 +356,12 @@ describe('lots and details', () => {
       expect(svg.indexOf('data-lots')).toBeLessThan(svg.indexOf('data-buildings') === -1 ? svg.indexOf('data-id="BLD') : svg.indexOf('data-buildings'))
       expect(svg).toMatch(/<path data-details="1"[^>]*vector-effect="non-scaling-stroke"/)
       expect(svg).toMatch(/<pattern id="parking-\d+"/)
+      const towers = m.buildings.filter((b) => ['A19', 'E3', 'E5'].includes(b.shape) && b.details?.length)
+      if (towers.length) {
+        const d = svg.match(/<path data-towers="1" d="([^"]*)" fill="#/)![1]
+        expect(d.split('M').length - 1).toBe(towers.reduce((a, b) => a + b.details!.length, 0))
+        expect(svg.indexOf('data-towers')).toBeLessThan(svg.indexOf('data-details'))
+      }
     }
   })
   it('every theme has a green lot tint', () => {

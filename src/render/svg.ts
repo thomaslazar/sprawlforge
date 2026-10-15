@@ -238,7 +238,13 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     }
   }
 
-  const detailD = model.buildings.flatMap((b) => (b.details ?? []).map((r) => `M${r.map((p) => `${n(p.x)},${n(p.y)}`).join('L')}Z`)).join(' ')
+  // podium/roof towers are solid darker masses; every other detail ring stays an outline
+  const isTower = (b: { shape: string }) => b.shape === 'A19' || b.shape === 'E3' || b.shape === 'E5'
+  const ringsD = (bs: typeof model.buildings) => bs.flatMap((b) => (b.details ?? []).map(ringD)).join(' ')
+  const towerD = ringsD(model.buildings.filter(isTower))
+  const detailD = ringsD(model.buildings.filter((b) => !isTower(b)))
+  if (towerD)
+    out.push(`<path data-towers="1" d="${towerD}" fill="${theme.building.tower}" stroke="${theme.building.stroke}" stroke-width="0.5" vector-effect="non-scaling-stroke"/>`)
   if (detailD)
     out.push(`<path data-details="1" d="${detailD}" fill="none" stroke="${theme.building.stroke}" stroke-width="0.5" vector-effect="non-scaling-stroke"/>`)
 
