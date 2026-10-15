@@ -19,7 +19,7 @@ const districts: District[] = [
 ]
 const buildings: Building[] = Array.from({ length: 30 }, (_, i) => ({
   id: `BLD0101${String(i + 1).padStart(2, '0')}`,
-  blockId: 'B0101',
+  blockId: 'B0101', shape: 'A1', lotId: 'LOT00001',
   districtId: 'D01',
   footprint: [{ x: i * 20, y: 0 }, { x: i * 20 + 15, y: 0 }, { x: i * 20 + 15, y: 15 }, { x: i * 20, y: 15 }],
 }))
@@ -48,7 +48,7 @@ describe('placePois', () => {
     // in water even though the clipped footprint (centroid (4,4)) is
     // entirely on land
     const clipped: Building = {
-      id: 'BLD010101', blockId: 'B0101', districtId: 'D01',
+      id: 'BLD010101', blockId: 'B0101', districtId: 'D01', shape: 'A1', lotId: 'LOT00001',
       footprint: [{ x: 0, y: 0 }, { x: 8, y: 0 }, { x: 8, y: 8 }, { x: 0, y: 8 }],
     }
     const pois = placePois(districts, [clipped], pack, base)
@@ -60,7 +60,7 @@ describe('placePois', () => {
     // which sits in the L's missing notch (outside the shape); the shoelace
     // centroid must land inside the polygon instead
     const lShaped: Building = {
-      id: 'BLD010101', blockId: 'B0101', districtId: 'D01',
+      id: 'BLD010101', blockId: 'B0101', districtId: 'D01', shape: 'A1', lotId: 'LOT00001',
       footprint: [
         { x: 0, y: 0 }, { x: 20, y: 0 }, { x: 20, y: 10 },
         { x: 10, y: 10 }, { x: 10, y: 20 }, { x: 0, y: 20 },

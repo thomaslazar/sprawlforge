@@ -1,6 +1,6 @@
 import type { Pt, Rect } from './geometry'
 
-export const GENERATOR_VERSION = 9
+export const GENERATOR_VERSION = 10
 
 export const ZONE_TYPES = [
   'corp', 'residential', 'slum', 'industrial', 'entertainment', 'docks',
@@ -137,8 +137,8 @@ export interface District {
   flags: LandmarkFlags
 }
 
-export type BlockStyle = 'rows' | 'courtyard' | 'plaza' | 'sheds' | 'megablock' | 'strip' | 'compound'
-  | 'perimeter' | 'terrace' | 'shophouse' | 'zeilen' | 'detached' | 'villas' | 'tower-park' | 'podium' | 'bigbox' | 'garage'
+export type BlockStyle = 'perimeter' | 'terrace' | 'shophouse' | 'rows' | 'zeilen' | 'detached' | 'villas'
+  | 'tower-park' | 'podium' | 'bigbox' | 'sheds' | 'plaza' | 'garage' | 'strip' | 'megablock' | 'compound'
 
 export type LotKind = 'building' | 'parking' | 'plaza' | 'yard' | 'green' | 'pool'
 export interface Lot { id: string; blockId: string; poly: Pt[]; kind: LotKind; buildingIds: string[] }
@@ -152,7 +152,7 @@ export interface Block {
   footprint: Pt[]
   /** how the block is built up (set by fillLots) */
   style: BlockStyle
-  /** alley centrelines through a `rows` block, meters */
+  /** hive alley centrelines, meters; megablocks only */
   alleys: Array<[Pt, Pt]>
   flags: LandmarkFlags
 }
@@ -161,8 +161,13 @@ export interface Building {
   id: string
   blockId: string
   districtId: string
-  /** outer ring, meters; a rotated BSP lot clipped to its block's footprint */
+  /** outer ring, meters, counter-clockwise */
   footprint: Pt[]
+  /** catalogue id: 'A1'..'A23' | 'E1'..'E6' | 'hive' | 'F1'..'F23' */
+  shape: string
+  lotId: string
+  /** extra rings drawn on the roof (courtyards, pools, parking rings) */
+  details?: Pt[][]
 }
 
 export interface Pier {
@@ -209,6 +214,7 @@ export interface SectorModel {
   districts: District[]
   blocks: Block[]
   buildings: Building[]
+  lots: Lot[]
   pois: Poi[]
   piers: Pier[]
   arcologies: Arcology[]

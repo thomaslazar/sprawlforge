@@ -74,7 +74,7 @@ describe('renderSector', () => {
     roads: [],
     districts: [],
     blocks: [],
-    buildings: [],
+    buildings: [], lots: [],
     pois,
     piers: [],
     arcologies: [], megablocks: [], compounds: [],
@@ -113,7 +113,7 @@ describe('renderSector', () => {
     // proves the land-clip actually confines the fill (C2)
     districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, poly: rectPoly({ x: 0, y: 0, w: 1000, h: 1000 }), irregularity: 0.5, shore: true, labelAt: { x: 500, y: 500 }, flags: {} }],
     blocks: [],
-    buildings: [],
+    buildings: [], lots: [],
     pois: [],
     piers: [{ id: 'PR01', points: [{ x: 700, y: 500 }, { x: 760, y: 500 }], width: 6 }],
     arcologies: [], megablocks: [], compounds: [],
@@ -134,7 +134,7 @@ describe('renderSector', () => {
       ],
       districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, poly: rectPoly({ x: 0, y: 0, w: 1000, h: 1000 }), irregularity: 0.5, shore: false, labelAt: { x: 500, y: 500 }, flags: {} }],
       blocks: [],
-      buildings: [],
+      buildings: [], lots: [],
       pois: [poi('P01', 'Alpha Tower', 500, 600)],
       piers: [],
       arcologies: [], megablocks: [], compounds: [],
@@ -157,7 +157,7 @@ describe('renderSector', () => {
       meta: { seed: 1, generatorVersion: GENERATOR_VERSION, params: base, sizeM: 1000, metroSeed: 1 },
       terrain: { landform: 'inland', river: false, lakes: false, islands: false, metroSeed: 1, water: [], land: [[[[0, 0], [1000, 0], [1000, 1000], [0, 1000]]]], riverSlice: null },
       roads: [{ id: 'RH', class: 'highway', points: [{ x: 0, y: 500 }, { x: 900, y: 500 }], width: 20, name: 'Highway', bridge: false, segments: [seg(0, 0.34, 'ground'), seg(0.34, 0.67, 'elevated'), seg(0.67, 1, 'sunken')] }],
-      districts: [], blocks: [], buildings: [], pois: [], piers: [], arcologies: [], megablocks: [], compounds: [],
+      districts: [], blocks: [], buildings: [], lots: [], pois: [], piers: [], arcologies: [], megablocks: [], compounds: [],
     }
     const svg = renderSector(m, theme)
     const group = (l: string) => svg.match(new RegExp(`<g data-level="${l}">[\\s\\S]*?</g>`))![0]

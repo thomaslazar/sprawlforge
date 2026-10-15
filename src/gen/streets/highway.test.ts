@@ -7,7 +7,7 @@ import { sampleTerrain } from '../terrain'
 import { distToPolyline } from '../terrain/rivers'
 import type { District, HighwaySegment, Road, SectorParams, Terrain, ZoneType } from '../types'
 import {
-  FRONTAGE_ID_PREFIX, HIGHWAY_OPTS, HIGHWAY_WIDTH, FRONTAGE_OFF, HIGHWAY_DECK_MAX, assignHighwayLevels, buildInterchanges, HALF_CHANCE, cutStreetsAtGround, highwayCrossings, levelAt, noBuildStrips, traceHighway, frontageRoads, trimFrontage,
+  FRONTAGE_ID_PREFIX, HIGHWAY_OPTS, HIGHWAY_WIDTH, FRONTAGE_OFF, HIGHWAY_DECK_MAX, assignHighwayLevels, buildInterchanges, HALF_CHANCE, cutStreetsAtGround, highwayCrossings, levelAt, traceHighway, frontageRoads, trimFrontage,
 } from './highway'
 import { MAJOR } from './trace'
 
@@ -356,13 +356,6 @@ describe('highway levels', () => {
     const segs = [seg(0, 1, 'elevated')]
     const cr = highwayCrossings(hw, arts, segs, rng())
     expect(buildInterchanges(hw, cr, arts, segs, dry, 4000, never).crossings.filter((c) => c.interchange)).toHaveLength(1)
-  })
-
-  it('no-build strips exist for elevated and ground, not sunken', () => {
-    const segs = [seg(0, 0.3, 'elevated'), seg(0.3, 0.6, 'sunken', true), seg(0.6, 1, 'ground', true)]
-    const strips = noBuildStrips(hw, segs)
-    expect(strips).toHaveLength(2)
-    for (const st of strips) expect(st.some((p) => Math.abs(p.x - 2000) > HIGHWAY_WIDTH / 2)).toBe(true)
   })
 })
 

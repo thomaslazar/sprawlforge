@@ -1,8 +1,8 @@
 import * as clip from '../clip'
-import { bboxOf, bspSplit, pointInRings, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
+import { bboxOf, bspSplit, ringArea, ringCentroid, rotatePt, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import { distToPolyline } from '../terrain/rivers'
-import { insetOrLargest } from '../streets/lots'
+import { clipSegmentToRing, insetOrLargest, longestEdgeAngle } from '../streets/lots'
 import { fitBox, boxRing, holds, widthOk } from './fitbox'
 import { buildLot, type BlockCtx, type LotOut } from './layout'
 import { sidesOf, type Side } from './setback'
@@ -23,33 +23,6 @@ const largestRing = (g: clip.MultiPolygon): Pt[] | null => {
   return best && ccw(best)
 }
 const insideOf = (inner: Pt[], outer: Pt[]) => clip.difference([toRing(inner)], [toRing(outer)]).every((pg) => Math.abs(ringArea(fromRing(pg[0]))) < 0.01)
-
-/** copied from streets/lots.ts (Task 9 deletes the originals) */
-function longestEdgeAngle(poly: Pt[]): number {
-  let best = 0, angle = 0
-  poly.forEach((a, i) => { const b = poly[(i + 1) % poly.length], d = (b.x - a.x) ** 2 + (b.y - a.y) ** 2; if (d > best) { best = d; angle = Math.atan2(b.y - a.y, b.x - a.x) } })
-  return angle
-}
-
-/** copied from streets/lots.ts: the parts of segment a-b inside the ring, so a BSP cut never pokes out of a rotated core */
-function clipSegmentToRing(a: Pt, b: Pt, ring: Pt[]): Array<[Pt, Pt]> {
-  const ts = [0, 1], dx = b.x - a.x, dy = b.y - a.y
-  for (let i = 0; i < ring.length; i++) {
-    const p = ring[i], q = ring[(i + 1) % ring.length], ex = q.x - p.x, ey = q.y - p.y, den = dx * ey - dy * ex
-    if (Math.abs(den) < 1e-12) continue
-    const t = ((p.x - a.x) * ey - (p.y - a.y) * ex) / den, u = ((p.x - a.x) * dy - (p.y - a.y) * dx) / den
-    if (t > 0 && t < 1 && u >= 0 && u <= 1) ts.push(t)
-  }
-  ts.sort((x, y) => x - y)
-  const out: Array<[Pt, Pt]> = []
-  for (let i = 1; i < ts.length; i++) {
-    const t0 = ts[i - 1], t1 = ts[i]
-    if (t1 - t0 < 1e-9) continue
-    const mid = { x: a.x + (dx * (t0 + t1)) / 2, y: a.y + (dy * (t0 + t1)) / 2 }
-    if (pointInRings(mid, [ring])) out.push([{ x: a.x + dx * t0, y: a.y + dy * t0 }, { x: a.x + dx * t1, y: a.y + dy * t1 }])
-  }
-  return out
-}
 
 const octagon = (c: Pt, r: number, theta: number): Pt[] =>
   Array.from({ length: 8 }, (_, k) => { const a = theta - Math.PI / 2 - Math.PI / 8 + (k * Math.PI) / 4; return { x: c.x + r * Math.cos(a), y: c.y + r * Math.sin(a) } })
@@ -76,12 +49,22 @@ const outset = (core: Pt[], d: number): Pt[] => {
  * stripLots' draws; ctx.rng.shapes/composites inside buildLot for the ring lots. Compound: rng (arg): stripLots' draws (depth is fixed, min(60, fit depth)), then n in 2-4; shapes/composites inside buildLot.
  */
 
+/** insetOrLargest, minus the point-reflected ring insetRing returns for a piece thinner than 2d (its vertices sit inside, but < d from the boundary) */
+function inner(piece: Pt[], d: number): Pt[] | null {
+  const r = insetOrLargest(piece, d), closed = [...piece, piece[0]]
+  return r && r.every((p) => distToPolyline(p, closed) >= d - 0.5) ? r : null
+}
+
 /** R16: octagon or equal-area rectangle core, perimeter ring around it, hive BSP inside */
 export function megablockLots(piece: Pt[], sides: Side[], radius: number, ctx: BlockCtx, rng: Rng): { core: Pt[]; lots: LotOut[]; alleys: Array<[Pt, Pt]> } {
   const rect = rng.chance(0.5)
-  const inset = insetOrLargest(piece, 26)
-  // ponytail: a piece with no 26 m inset gets no megablock (empty core); the caller then lots it normally
-  if (!inset) return { core: [], lots: [], alleys: [] }
+  const inset = inner(piece, 26)
+  // a piece with no 26 m inset: the core is its 6 m fit box (no hive, no ring) over one plaza lot; a megablock never vanishes
+  if (!inset) {
+    const p = ccw(piece), small = inner(p, 6)
+    const core = small ? boxRing(fitBox(ccw(small), sidesOf(ccw(small)).reduce((b, x) => (dist(...x.chord) > dist(...b.chord) ? x : b)).chord)) : p
+    return { core, lots: [{ poly: p, kind: 'plaza', buildings: [] }], alleys: [] }
+  }
   const theta = longestEdgeAngle(piece), c = ringCentroid(piece)
   const rot = piece.map((p) => rotatePt(p, -theta, c)), bb = bboxOf(rot), aspect = bb.w / bb.h
   let core: Pt[] | null = null

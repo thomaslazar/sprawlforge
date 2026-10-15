@@ -27,6 +27,13 @@ describe('landmark lots', () => {
     expect(insideRing(r.core, buildable(small, [7.5, 7.5, 7.5, 7.5])[0], 0.05)).toBe(true)
     expect(isRectangle(r.core)).toBe(true)
   })
+  it('a piece with no 26 m inset keeps a 6 m fit-box core and one plaza lot', () => {
+    const tiny = rectPoly(0, 0, 40, 36), r = megablockLots(tiny, sidesOf(tiny), 20, ctx(1, 'mixed'), mulberry32(1))
+    expect(r.core.length).toBeGreaterThanOrEqual(3)
+    expect(insideRing(r.core, tiny, 0.05)).toBe(true)
+    expect(r.lots.length).toBe(1); expect(r.lots[0].kind).toBe('plaza'); expect(r.lots[0].buildings).toEqual([])
+    expect(r.alleys).toEqual([])
+  })
   it('the ring around the core is perimeter-lotted', () => {
     for (let s = 0; s < 5; s++) {
       const r = megablockLots(big, sidesOf(big), 200, ctx(s, 'mixed'), mulberry32(s))
