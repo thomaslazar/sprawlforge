@@ -336,11 +336,30 @@ describe('renderSector', () => {
   })
 })
 
-describe('alleys', () => {
-  it('alleys render as one path in interactive mode', () => {
-    const svg = renderSector(model, getTheme('neon'), { interactive: true })
-    expect(svg.match(/<path data-alleys/g)!.length).toBe(1)
-    expect(svg.indexOf('data-alleys')).toBeLessThan(svg.indexOf('data-streets'))
+const hsl = (hex: string): [number, number] => {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, l = (mx + mn) / 2
+  if (!d) return [0, 0]
+  const h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4
+  return [(h * 60 + 360) % 360, d / (1 - Math.abs(2 * l - 1))]
+}
+describe('lots and details', () => {
+  const s42 = { ...base, seed: 42, size: 4, landform: 'coastal', river: true, arcology: true } as SectorParams
+  it('lot and details paths in both modes', { timeout: 120000 }, () => {
+    const m = generateSector(s42)
+    for (const interactive of [false, true]) {
+      const svg = renderSector(m, getTheme('neon'), { interactive })
+      for (const k of ['parking', 'plaza', 'yard', 'green'] as const) {
+        const n = m.lots.filter((l) => l.kind === k).length
+        if (n) expect(svg).toContain(`<path data-lots="${k}" data-count="${n}"`)
+      }
+      expect(svg.indexOf('data-lots')).toBeLessThan(svg.indexOf('data-buildings') === -1 ? svg.indexOf('data-id="BLD') : svg.indexOf('data-buildings'))
+      expect(svg).toMatch(/<path data-details="1"[^>]*vector-effect="non-scaling-stroke"/)
+      expect(svg).toMatch(/<pattern id="parking-\d+"/)
+    }
+  })
+  it('every theme has a green lot tint', () => {
+    for (const t of Object.values(themes)) { const [h, s] = hsl(t.lot.green); expect(h, t.id).toBeGreaterThanOrEqual(80); expect(h).toBeLessThanOrEqual(160); expect(s).toBeGreaterThanOrEqual(0.2) }
   })
 })
 
@@ -409,10 +428,7 @@ describe('landmarks', () => {
         expect(generic.split('M').length - 1 + frontageCount(m)).toBe(fringe.buildings.length - hive.length)
         expect(m).not.toContain('<polygon data-id="BLD')
       }
-      const alleyPaths = m.match(/<path data-alleys[^>]*>/g) ?? []
-      expect(alleyPaths.length).toBeGreaterThan(0)
-      const generic = alleyPaths.join('')
-      expect(generic).not.toContain(getTheme('neon').megablock.alley)
+      expect(m).not.toContain('data-alleys="1" d="M') // only the megablock landmark draw carries alleys
       expect(m).toContain('data-landmark-label=""') // valueless attrs are invalid XML, which breaks PNG export
     }
   })

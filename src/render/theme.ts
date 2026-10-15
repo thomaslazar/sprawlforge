@@ -11,6 +11,8 @@ export interface Theme {
   districtLabel: string
   road: Record<RoadClass, string>
   building: { fill: string; stroke: string }
+  /** non-building lots: paving tints, parking stripe colour */
+  lot: { parking: string; plaza: string; yard: string; green: string; pool: string; stripe: string }
   /** strip lots along the highway frontage */
   frontage: { fill: string; stroke: string }
   /** walled corporate compounds */
@@ -46,6 +48,7 @@ const neon: Theme = {
   districtLabel: '#9fb8c8',
   road: { highway: '#e8577f', arterial: '#4fc9d9', street: '#3a4560', ramp: '#44879c' },
   building: { fill: '#202840', stroke: '#4a5a7a' },
+  lot: { parking: '#141a28', plaza: '#161c2c', yard: '#0f131d', green: '#16301f', pool: '#12304a', stripe: '#2a3550' },
   frontage: { fill: '#3a2a12', stroke: '#d08a45' },
   compound: { fence: '#4fc9d9', ground: '#10202a' },
   poi: { marker: '#ffb454', label: '#ffdca8' },
@@ -75,6 +78,7 @@ const print: Theme = {
   districtLabel: '#333333',
   road: { highway: '#222222', arterial: '#555555', street: '#bbbbbb', ramp: '#888888' },
   building: { fill: '#e2e2dc', stroke: '#88888a' },
+  lot: { parking: '#e4e4e2', plaza: '#f3f3f0', yard: '#f8f8f6', green: '#dfe8d8', pool: '#d6e6f2', stripe: '#c6c6c4' },
   frontage: { fill: '#c9c9c4', stroke: '#6a6a66' },
   compound: { fence: '#444444', ground: '#d4d8cf' },
   poi: { marker: '#b03030', label: '#222222' },
@@ -108,6 +112,7 @@ const blueprint: Theme = {
   districtLabel: '#dff3ff',
   road: { highway: '#ffffff', arterial: '#f1fbff', street: '#9dc4e0', ramp: '#c7e0f0' },
   building: { fill: '#0e335f', stroke: '#e4f4ff' },
+  lot: { parking: '#0c2f58', plaza: '#0d3056', yard: '#0b2d56', green: '#1f5236', pool: '#14507d', stripe: '#2a5f93' },
   frontage: { fill: '#1a4f8c', stroke: '#e4f4ff' },
   compound: { fence: '#f1fbff', ground: '#0d3a6e' },
   poi: { marker: '#eaf7ff', label: '#dff3ff' },
@@ -137,6 +142,7 @@ const synthwave: Theme = {
   districtLabel: '#d9b8ff',
   road: { highway: '#ff3fa4', arterial: '#33c2e6', street: '#4a3a66', ramp: '#3e7ea6' },
   building: { fill: '#251a3a', stroke: '#6b4f99' },
+  lot: { parking: '#1b1030', plaza: '#1d1233', yard: '#170c27', green: '#1c3a2c', pool: '#1a2f5a', stripe: '#36245a' },
   frontage: { fill: '#3d2b5e', stroke: '#6b4f99' },
   compound: { fence: '#33c2e6', ground: '#1d1433' },
   poi: { marker: '#ffe14d', label: '#fff2cc' },
@@ -166,6 +172,7 @@ const tokyoNight: Theme = {
   districtLabel: '#c0caf5',
   road: { highway: '#f7768e', arterial: '#7dcfff', street: '#414868', ramp: '#5f8cb4' },
   building: { fill: '#24283b', stroke: '#565f89' },
+  lot: { parking: '#1e202e', plaza: '#202233', yard: '#1b1c29', green: '#1f3a2e', pool: '#1d3550', stripe: '#33384f' },
   frontage: { fill: '#3a4160', stroke: '#565f89' },
   compound: { fence: '#7dcfff', ground: '#16202e' },
   poi: { marker: '#e0af68', label: '#f0c894' },

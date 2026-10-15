@@ -1,4 +1,5 @@
 import type { SectorModel } from '../gen/types'
+import type { Pt } from '../gen/geometry'
 import type { Theme } from './theme'
 import { renderHighway, renderJunctionMarkers } from './highway'
 import { renderCompounds, hiveBuildingIds, stripBuildingIds, renderLandmarks } from './landmarks'
@@ -7,6 +8,26 @@ const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
 const n = (v: number) => String(Math.round(v * 100) / 100)
+const ringD = (r: Pt[]) => `M${r.map((p) => `${n(p.x)},${n(p.y)}`).join('L')}Z`
+
+/** parking lots grouped by their longest edge's angle (5° steps) → ring paths */
+function parkingGroups(model: SectorModel): Map<number, string[]> {
+  const byAngle = new Map<number, string[]>()
+  for (const l of model.lots) {
+    if (l.kind !== 'parking') continue
+    let best = 0, ang = 0
+    l.poly.forEach((a, i) => {
+      const b = l.poly[(i + 1) % l.poly.length], len = Math.hypot(b.x - a.x, b.y - a.y)
+      if (len > best) { best = len; ang = Math.atan2(b.y - a.y, b.x - a.x) }
+    })
+    // stripes are vertical in pattern space, so rotating by the edge angle makes them perpendicular to it
+    const deg = ((Math.round((ang * 180) / Math.PI / 5) * 5) % 180 + 180) % 180
+    const g = byAngle.get(deg)
+    if (g) g.push(ringD(l.poly))
+    else byAngle.set(deg, [ringD(l.poly)])
+  }
+  return byAngle
+}
 
 interface Box {
   x: number
@@ -114,6 +135,8 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   const shoreD = shoreSegments.join(' ')
 
   out.push('<defs>')
+  for (const deg of parkingGroups(model).keys())
+    out.push(`<pattern id="parking-${deg}" patternUnits="userSpaceOnUse" width="2.5" height="2.5" patternTransform="rotate(${deg})"><rect width="0.3" height="2.5" fill="${theme.lot.stripe}"/></pattern>`)
   out.push(`<path id="water-shape" d="${waterD}" fill-rule="evenodd"/>`)
   out.push(`<clipPath id="water-clip"><use href="#water-shape"/></clipPath>`)
   out.push(`<clipPath id="land-clip"><path d="${landD}" fill-rule="evenodd"/></clipPath>`)
@@ -181,6 +204,14 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   }
   out.push('</g>')
 
+  for (const k of ['yard', 'plaza', 'green', 'pool', 'parking'] as const) {
+    const ls = model.lots.filter((l) => l.kind === k)
+    if (ls.length) out.push(`<path data-lots="${k}" data-count="${ls.length}" d="${ls.map((l) => ringD(l.poly)).join(' ')}" fill="${theme.lot[k]}"/>`)
+  }
+  const byAngle = parkingGroups(model)
+  for (const [deg, rings] of byAngle)
+    out.push(`<path data-parking="${deg}" d="${rings.join(' ')}" fill="url(#parking-${deg})"/>`)
+
   renderCompounds(model, theme, out)
 
   const hive = hiveBuildingIds(model)
@@ -207,17 +238,11 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     }
   }
 
-  renderLandmarks(model, theme, out, interactive)
+  const detailD = model.buildings.flatMap((b) => (b.details ?? []).map((r) => `M${r.map((p) => `${n(p.x)},${n(p.y)}`).join('L')}Z`)).join(' ')
+  if (detailD)
+    out.push(`<path data-details="1" d="${detailD}" fill="none" stroke="${theme.building.stroke}" stroke-width="0.5" vector-effect="non-scaling-stroke"/>`)
 
-  // alleys: thin translucent strokes between buildings, under the streets
-  const alleyPath = (blocks: typeof model.blocks) => {
-    const d = blocks.flatMap((b) => b.alleys.map(([a, c]) => `M${n(a.x)},${n(a.y)}L${n(c.x)},${n(c.y)}`)).join(' ')
-    return d ? `<path data-alleys="1" d="${d}" fill="none" stroke="${theme.road.street}" stroke-width="2" stroke-opacity="0.5"/>` : ''
-  }
-  // megablock blocks' alleys are drawn by renderLandmarks in their own colour
-  const plain = model.blocks.filter((b) => !b.flags.megablock)
-  if (interactive) out.push(alleyPath(plain))
-  else for (const b of plain) out.push(alleyPath([b]))
+  renderLandmarks(model, theme, out, interactive)
 
   // streets → arterials → ramps; the highway itself is drawn per level by
   // renderHighway once it has segments
