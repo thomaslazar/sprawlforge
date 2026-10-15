@@ -3,10 +3,10 @@ import { boxOf, ringArea, ringCentroid, type Pt } from '../geometry'
 import { mulberry32 } from '../rng'
 import { fitBox } from './fitbox'
 import { distToRing, insideRing, pairOverlapMax, rectPoly } from './fixtures'
-import { layoutPiece, lotKind, type BlockCtx } from './layout'
+import { VACANT, layoutPiece, lotKind, type BlockCtx } from './layout'
 import { sidesOf } from './setback'
 import { densityClass } from './fabrics'
-import type { SheetZone } from './shapes'
+import type { DensityClass, SheetZone } from './shapes'
 
 const piece = rectPoly(0, 0, 160, 120)
 const sides = sidesOf(piece, piece.map(() => 7.5))
@@ -61,7 +61,8 @@ describe('layoutPiece', () => {
     for (const f of ['perimeter', 'terrace', 'shophouse', 'rows'] as const) for (let s = 0; s < 5; s++) {
       const dense = layoutPiece(piece, sides, f, ctx(s, 'residential'))
       const bs = dense.flatMap((l) => l.buildings)
-      expect(bs.some((b) => fromSides(ringCentroid(b.footprint)) >= 30), `${f} seed ${s}`).toBe(true)
+      if (f === 'perimeter') expect(bs.some((b) => fromSides(ringCentroid(b.footprint)) >= 30), `${f} seed ${s}`).toBe(true) // fronts are <= 20 m deep
+      else expect(bs.length, `${f} seed ${s}`).toBeGreaterThan(layoutPiece(piece, sides, f, { ...ctx(s, 'residential'), density: 'sparse' }).flatMap((l) => l.buildings).length)
       expect(pairOverlapMax(dense.map((l) => l.poly)), `${f} seed ${s}`).toBeLessThanOrEqual(0.5)
       for (const l of dense) { expect(insideRing(l.poly, piece, 0.05)).toBe(true); for (const b of l.buildings) expect(insideRing(b.footprint, l.poly, 0.05)).toBe(true) }
       if (f !== 'perimeter') continue
@@ -88,11 +89,41 @@ describe('layoutPiece', () => {
       for (const l of out) for (const b of l.buildings) expect(insideRing(b.footprint, l.poly, 0.05)).toBe(true)
     }
   })
+  it('variation along fronts (user review): ragged back line, vacant lots, few repeats', () => {
+    // depth along the front side of a perimeter block varies
+    const depths = Array.from({ length: 10 }, (_, s) => layoutPiece(piece, sides, 'perimeter', { ...ctx(s, 'residential'), density: 'sparse' })
+      .flatMap((l) => l.buildings).map((b) => boxOf(b.footprint)).filter((b) => Math.abs(b.y0) < 1e-6 && b.x0 > 20 && b.x1 < 140).map((b) => b.y1 - b.y0)).flat()
+    const mean = depths.reduce((a, b) => a + b, 0) / depths.length
+    expect(Math.sqrt(depths.reduce((a, b) => a + (b - mean) ** 2, 0) / depths.length)).toBeGreaterThanOrEqual(1.5)
+    // vacancy share per density class over >= 2000 strip lots
+    for (const [dc, p] of Object.entries(VACANT) as Array<[DensityClass, number]>) {
+      let n = 0, v = 0
+      const thin = rectPoly(0, 0, 300, 50) // no interior left for rear rings, so every lot is a frontage lot
+      for (let s = 0; n < 2000; s++) for (const l of layoutPiece(thin, sidesOf(thin, thin.map(() => 7.5)), 'rows', { ...ctx(s, 'mixed'), density: dc })) {
+        if (l.vacant) v++
+        if (l.vacant || l.buildings.length) n++
+      }
+      expect(Math.abs(v / n - p), dc).toBeLessThanOrEqual(0.03)
+    }
+    // consecutive lots on one side rarely repeat shape and width
+    let pairs = 0, same = 0
+    for (let s = 0; s < 200; s++) {
+      const bs = layoutPiece(piece, sides, 'rows', ctx(s, 'mixed')).flatMap((l) => l.buildings).map((b) => ({ b: boxOf(b.footprint), shape: b.shape })).filter((x) => Math.abs(x.b.y0) < 1e-6).sort((p, q) => p.b.x0 - q.b.x0)
+      for (let i = 1; i < bs.length; i++) { pairs++; if (bs[i].shape === bs[i - 1].shape && Math.round(bs[i].b.x1 - bs[i].b.x0) === Math.round(bs[i - 1].b.x1 - bs[i - 1].b.x0)) same++ }
+    }
+    expect(same / pairs).toBeLessThanOrEqual(0.02)
+  })
   it('continuous fronts touch', () => {
     for (let s = 0; s < 10; s++) {
-      const fronts = layoutPiece(piece, sides, 'perimeter', ctx(s, 'residential')).flatMap((l) => l.buildings).map((b) => boxOf(b.footprint)).filter((b) => Math.abs(b.y0) < 1e-6).sort((a, b) => a.x0 - b.x0)
+      const out = layoutPiece(piece, sides, 'perimeter', ctx(s, 'residential'))
+      const fronts = out.flatMap((l) => l.buildings).map((b) => boxOf(b.footprint)).filter((b) => Math.abs(b.y0) < 1e-6).sort((a, b) => a.x0 - b.x0)
+      const vacant = out.filter((l) => l.vacant).map((l) => boxOf(l.poly)) // a vacant lot (user review) is the only gap allowed
       expect(fronts.length).toBeGreaterThan(5)
-      for (let i = 1; i < fronts.length; i++) expect(Math.abs(fronts[i].x0 - fronts[i - 1].x1), `seed ${s}`).toBeLessThanOrEqual(0.05)
+      const coveredBy = (a: number, b: number) => vacant.reduce((t, v) => t + Math.max(0, Math.min(b, v.x1) - Math.max(a, v.x0)), 0)
+      for (let i = 1; i < fronts.length; i++) {
+        const gap = fronts[i].x0 - fronts[i - 1].x1
+        expect(Math.abs(gap) - coveredBy(fronts[i - 1].x1, fronts[i].x0), `seed ${s}`).toBeLessThanOrEqual(0.05)
+      }
     }
   })
   it('terrace builds on two antiparallel sides and leaves green', () => {

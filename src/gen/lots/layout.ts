@@ -12,8 +12,8 @@ import { insetOrLargest } from '../streets/lots'
 
 /*
  * Draw order (rng.lots / rng.shapes / rng.composites), fixed per fabric:
- * - strip fabrics: lots: depth, gap (once per block), then stripLots' own draws, then per lot (villas only) the pool
- *   chance and up to 12 pool tries; in dense/packed perimeter, terrace, shophouse and rows the interior leftover then draws per
+ * - strip fabrics: lots: depth, gap (once per block), then stripLots' own draws, then per non-filler lot the vacancy chance and
+ *   (villas only) the pool chance and up to 12 pool tries; a lot repeating its side neighbour's shape and width draws its shape once more; in dense/packed perimeter, terrace, shophouse and rows the interior leftover then draws per
  *   rear ring gap, depth and stripLots' draws (rearRings), its lots' shapes as `building`. Per lot, shapes: chooseShape, sizeShape, (fitShape mirror); composites: chance, then
  *   makeComposite's draws. A composite wins over the drawn shape.
  * - zeilen: lots: twist sign, twist size, first offset, one spacing per further line; shapes: fitShape per slab.
@@ -24,7 +24,7 @@ import { insetOrLargest } from '../streets/lots'
  */
 
 export type Bld = { shape: string; footprint: Pt[]; details: Pt[][] }
-export interface LotOut { poly: Pt[]; kind: LotKind; buildings: Bld[] }
+export interface LotOut { poly: Pt[]; kind: LotKind; buildings: Bld[]; vacant?: true }
 export interface BlockCtx { zone: SheetZone; density: DensityClass; rng: { lots: Rng; shapes: Rng; composites: Rng } }
 
 const dist = (a: Pt, b: Pt) => Math.hypot(b.x - a.x, b.y - a.y)
@@ -98,7 +98,7 @@ function widen(fit: FitBox, lot: StripLot): FitBox {
 }
 
 /** per-lot step: corner rule (R26) -> shape -> size -> fit -> composite chance -> filler kind; also used for megablock rings */
-export function buildLot(lot: StripLot, fabric: BlockStyle, ctx: BlockCtx, shapes?: string[]): LotOut {
+export function buildLot(lot: StripLot, fabric: BlockStyle, ctx: BlockCtx, shapes?: string[], avoid?: { shape: string; w: number }): LotOut {
   const filler = (w: Parameters<typeof fillerOf>[2]) => fillerOf(fabric, ctx.zone, w)
   const none = (w: Parameters<typeof fillerOf>[2]): LotOut => ({ poly: lot.poly, kind: filler(w), buildings: [] })
   if (lot.filler) return none(lot.side < 0 ? 'interior' : 'gap')
@@ -113,7 +113,10 @@ export function buildLot(lot: StripLot, fabric: BlockStyle, ctx: BlockCtx, shape
     else if (c.id && c.id !== 'A4') { b = { shape: c.id, footprint: c.footprint!, details: [] }; direct = true }
     else if (!c.id && !c.fit) return none('corner')
   }
-  if (!direct) b = shapes ? building(shapes, fit, 'gapped', fabric, ctx) : building(ALLOWED[fabric] ?? ['A1'], fit, MODE[fabric] ?? 'gapped', fabric, ctx)
+  const draw = () => (shapes ? building(shapes, fit, 'gapped', fabric, ctx) : building(ALLOWED[fabric] ?? ['A1'], fit, MODE[fabric] ?? 'gapped', fabric, ctx))
+  if (!direct) b = draw()
+  // user review: the same shape at the same width as the previous lot on this side is drawn again, once
+  if (!direct && b && avoid && b.shape === avoid.shape && frontWidth(b.footprint, lot.chord) === avoid.w) b = draw()
   if (!b) return none('interior')
   return { poly: lot.poly, kind: lotKind(lot.poly, [b.footprint], filler('interior')), buildings: [b] }
 }
@@ -290,6 +293,14 @@ function blockfill(piece: Pt[], chord: [Pt, Pt], ctx: BlockCtx): LotOut[] {
   })
 }
 
+/** user review: the chance a strip lot stays vacant, per density class */
+export const VACANT: Record<DensityClass, number> = { sparse: 0.15, dense: 0.05, packed: 0.02 }
+/** a footprint's extent along the chord, whole metres */
+export const frontWidth = (fp: Pt[], chord: [Pt, Pt]): number => {
+  const l = dist(...chord) || 1, ux = (chord[1].x - chord[0].x) / l, uy = (chord[1].y - chord[0].y) / l, xs = fp.map((p) => p.x * ux + p.y * uy)
+  return Math.round(Math.max(...xs) - Math.min(...xs))
+}
+
 const REAR = new Set<BlockStyle>(['perimeter', 'terrace', 'shophouse', 'rows'])
 const REAR_SHAPES = ['A1', 'A2', 'A3', 'A20']
 /** inset by d and simplified at 1 m (the offset leaves slivers and doubled vertices), or null when the inset is gone or point-reflected */
@@ -334,9 +345,14 @@ export function layoutPiece(piece: Pt[], sides: Side[], fabric: BlockStyle, ctx:
     const rng = ctx.rng.lots
     const lots = stripLots(piece, sides, strips(rng), rng)
     const rear = REAR.has(fabric) && ctx.density !== 'sparse'
+    let prev: { side: number; shape: string; w: number } | null = null
     return lots.flatMap((l) => {
       if (rear && l.filler && l.side < 0) return rearRings(l.poly, fabric, ctx)
-      const o = buildLot(l, fabric, ctx)
+      // user review: a strip lot stays vacant now and then (R29 filler)
+      if (!l.filler && rng.chance(VACANT[ctx.density])) { prev = null; return [{ poly: l.poly, kind: fillerOf(fabric, ctx.zone, 'interior'), buildings: [], vacant: true as const }] }
+      const o = buildLot(l, fabric, ctx, undefined, prev && prev.side === l.side ? prev : undefined)
+      const b = o.buildings[0]
+      prev = b ? { side: l.side, shape: b.shape, w: frontWidth(b.footprint, l.chord) } : null
       return [o, ...(fabric === 'villas' ? pool(o, l.chord, rng) : [])]
     })
   }

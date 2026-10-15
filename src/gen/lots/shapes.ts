@@ -214,7 +214,7 @@ export function sizeShape(id: string, fit: FitBox, mode: 'continuous' | 'detache
     return { origin: P(fit.origin.x + ux * x - uy * y, fit.origin.y + uy * x + ux * y), angle: fit.angle, w, d }
   }
   if (mode === 'continuous') {
-    const d = clamp(Math.round(fit.d * (0.9 + 0.1 * rng.next())), Math.min(s.minD, fit.d), fit.d)
+    const d = clamp(Math.round(fit.d * (0.6 + 0.4 * rng.next())), Math.min(s.minD, fit.d), fit.d) // user review: 0.6-1.0 (was 0.9-1.0), a ragged back line
     return fit.w >= s.minW && d >= s.minD ? at(0, 0, fit.w, d) : null
   }
   const [lo, hi] = s.aspect

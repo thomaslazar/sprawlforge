@@ -260,10 +260,10 @@ const r1 = (lo: number, hi: number) => (r: Rng) => r.int(lo, hi)
 const gap = (lo: number, hi: number) => (r: Rng): [number, number] => { const g = r.int(lo, hi); return [g, g] }
 /** §3.4: depth and gap drawn per block, frontage kept as the table's range */
 export const STRIP_PARAMS: Partial<Record<BlockStyle, (rng: Rng) => StripParams>> = {
-  perimeter: (r) => ({ depth: r1(14, 20)(r), width: [10, 18], gap: null }),
-  terrace: (r) => ({ depth: r1(10, 12)(r), width: [6, 8], gap: null, sides: terraceSides }),
-  shophouse: (r) => ({ depth: r1(20, 30)(r), width: [6, 8], gap: null }),
-  rows: (r) => { const d = r1(15, 30)(r); return { depth: d, width: [12, 30], gap: gap(2, 6)(r) } },
+  perimeter: (r) => ({ depth: r1(14, 20)(r), width: [8, 22], gap: null }), // frontages widened ~25 % per the user review (10-18, 6-8, 6-8, 12-30 before)
+  terrace: (r) => ({ depth: r1(10, 12)(r), width: [5, 9], gap: null, sides: terraceSides }),
+  shophouse: (r) => ({ depth: r1(20, 30)(r), width: [5, 10], gap: null }),
+  rows: (r) => { const d = r1(15, 30)(r); return { depth: d, width: [10, 36], gap: gap(2, 6)(r) } },
   detached: (r) => ({ depth: r1(25, 35)(r), width: [20, 30], gap: null }),
   villas: (r) => ({ depth: r1(30, 40)(r), width: [25, 45], gap: null }),
   strip: (r) => { const d = r1(10, 14)(r); return { depth: d, width: [10, 40], gap: gap(2, 6)(r), sides: (s) => s.flatMap((x, i) => (x.setback === 7.5 ? [i] : [])) } }, // user review: frontage 10-40, gap 2-6

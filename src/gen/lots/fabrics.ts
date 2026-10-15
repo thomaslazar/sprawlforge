@@ -3,6 +3,9 @@ import { hashSeed, type Rng } from '../rng'
 import type { BlockStyle, ZoneType } from '../types'
 import type { DensityClass, SheetZone } from './shapes'
 
+/** R20 cell coherence (user review: 0.6 -> 0.4, more variation between neighbouring blocks) */
+export const COHERENCE = 0.4
+
 export function densityClass(d: number): DensityClass {
   return d < 0.35 ? 'sparse' : d < 0.65 ? 'dense' : 'packed'
 }
@@ -45,7 +48,7 @@ export function fabricCell(seed: number, p: Pt): number {
   return hashSeed(seed, 'fabric', Math.floor(p.x / 500), Math.floor(p.y / 500)) / 2 ** 32
 }
 
-/** R20-R21. Draw order: next() picks cell-vs-fresh (< 0.6 = cell), a second next() only when fresh. */
+/** R20-R21. Draw order: next() picks cell-vs-fresh (< 0.4 = cell; 0.6 before the user review), a second next() only when fresh. */
 /** the R19 row of a sheet zone and density class (blockfill split packed mixed, commerce and corp off their dense rows) */
 export function fabricRow(zone: SheetZone, dc: DensityClass): string {
   if (zone === 'residential') return `residential ${dc}`
@@ -55,7 +58,7 @@ export function fabricRow(zone: SheetZone, dc: DensityClass): string {
 
 export function chooseFabric(zone: SheetZone, dc: DensityClass, cell: number, rng: Rng, fits: (f: BlockStyle) => boolean): BlockStyle {
   const row = FABRIC_WEIGHTS[fabricRow(zone, dc)]
-  const u = (rng.next() < 0.6 ? cell : rng.next()) * 100
+  const u = (rng.next() < COHERENCE ? cell : rng.next()) * 100
   let acc = 0
   let drawn = row.length - 1
   for (let i = 0; i < row.length; i++) { acc += row[i][1]; if (u < acc) { drawn = i; break } }
