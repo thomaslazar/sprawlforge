@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { mulberry32 } from '../rng'
-import { ringArea } from '../geometry'
+import { boxOf, ringArea } from '../geometry'
 import { boxRing, widthOk } from './fitbox'
-import { CURVED_OR_SLANTED, SHAPES, chooseShape, cornerShape, fitShape, sizeShape } from './shapes'
-import { insideOrOn, interiorAngles, minNonArcEdge, q40, q65, q90 } from './fixtures'
+import { CURVED_OR_SLANTED, PODIUM_BASES, SHAPES, chooseShape, cornerShape, fitShape, podiumBase, sizeShape } from './shapes'
+import { distToRing, insideOrOn, insideRing, interiorAngles, minNonArcEdge, q40, q65, q90 } from './fixtures'
 
 describe('shapes', () => {
   it('templates are rectilinear', () => { // T3
@@ -59,4 +59,30 @@ describe('shapes', () => {
       if (b) { expect(b.origin.x).toBeGreaterThanOrEqual(3); expect(b.origin.x + b.w).toBeLessThanOrEqual(43.01); expect(b.origin.y + b.d).toBeLessThanOrEqual(34.01) }
     }
   })
+  it('A19 towers are 20-30 m, inside the podium, placed anywhere (user review)', () => {
+    const box = { origin: { x: 0, y: 0 }, angle: 0, w: 90, d: 90 }
+    const dc: number[] = []
+    let nearEdge = 0
+    for (let s = 0; s < 60; s++) {
+      const { footprint, details } = fitShape('A19', box, mulberry32(s))
+      for (const t of details) {
+        const b = boxOf(t), c = { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 }
+        expect(Math.max(b.x1 - b.x0, b.y1 - b.y0), `seed ${s}`).toBeLessThanOrEqual(30 + 1e-6)
+        expect(Math.max(b.x1 - b.x0, b.y1 - b.y0)).toBeGreaterThanOrEqual(20 - 1e-6)
+        expect(insideRing(t, footprint, 0.05), `seed ${s}`).toBe(true)
+        dc.push(Math.hypot(c.x - 45, c.y - 45))
+        if (Math.min(...t.map((p) => distToRing(p, footprint))) <= 15) nearEdge++ // the tower's near side within 15 m of a podium edge
+      }
+    }
+    const mean = dc.reduce((a, b) => a + b, 0) / dc.length, sd = Math.sqrt(dc.reduce((a, b) => a + (b - mean) ** 2, 0) / dc.length)
+    expect(sd).toBeGreaterThanOrEqual(8)
+    expect(nearEdge / dc.length).toBeGreaterThanOrEqual(0.25)
+  })
+  it('podium bases come from the listed templates', () => {
+    const seen = new Map<string, number>()
+    for (let s = 0; s < 400; s++) { const b = podiumBase(80, 60, mulberry32(s)); seen.set(b.id, (seen.get(b.id) ?? 0) + 1); expect(ringArea(b.footprint)).toBeGreaterThan(0) }
+    expect([...seen.keys()].sort()).toEqual(PODIUM_BASES.map(([id]) => id).sort())
+    for (const [id, w] of PODIUM_BASES) expect(Math.abs(seen.get(id)! / 400 - w / 100), id).toBeLessThan(0.06)
+  })
 })
+

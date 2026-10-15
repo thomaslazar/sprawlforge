@@ -170,8 +170,7 @@ export function fillLots(
       const all = pieces.length ? pieces : [{ poly: fallback, setbacks: [] as number[], holes: [] as Pt[][] }]
       const area = (p: { poly: Pt[] }) => Math.abs(ringArea(p.poly))
       const main = all.find((p) => pointInRings(mega.center, [p.poly])) ?? all.reduce((b, p) => (area(p) > area(b) ? p : b))
-      const radius = mega.core.length ? mega.core.reduce((t, p) => t + dist(p, mega.center), 0) / mega.core.length : 100
-      const r = megablockLots(main.poly, sidesOf(main.poly, main.setbacks), radius, ctx, stream('megablocks', block))
+      const r = megablockLots(main.poly, stream('megablocks', block))
       megablockCores.set(mega.id, r.core)
       emit(block, district, 'megablock', ctx, r.lots)
       alleys = r.alleys
@@ -185,9 +184,9 @@ export function fillLots(
         const box = fitBox(p.poly, longest)
         const fits = (f: BlockStyle) => { const m = MIN_FIT[f]; return !m || (box.w >= m[0] && box.d >= m[1]) || (box.w >= m[1] && box.d >= m[0]) }
         let fabric: BlockStyle = strip ? 'strip' : forceStyle ?? chooseFabric(ctx.zone, dc, fabricCell(params.seed, cc), fabricRng, fits)
-        // R39: a ground-side block gets a built front
-        if (home && !strip && !forceStyle && WHOLE.has(fabric)) fabric = 'perimeter'
-        if (p.holes.length && !STRIP_PARAMS[fabric]) fabric = 'perimeter'
+        // R39: a ground-side block gets a built front; a piece around a plaza hole needs a fabric that builds every side (terrace keeps two)
+        if (home && !strip && !forceStyle && (WHOLE.has(fabric) || fabric === 'terrace')) fabric = 'perimeter'
+        if (p.holes.length && (!STRIP_PARAMS[fabric] || fabric === 'terrace')) fabric = 'perimeter'
         const out = p.holes.length
           ? stripLots(p.poly, sides, STRIP_PARAMS[fabric]!(ctx.rng.lots), ctx.rng.lots, p.holes).map((l) => buildLot(l, fabric, ctx))
           : layoutPiece(p.poly, sides, fabric, ctx)

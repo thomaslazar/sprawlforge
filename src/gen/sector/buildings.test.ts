@@ -31,9 +31,9 @@ const SEEDS: Array<[string, SectorParams]> = [['S42', S42], ['S782', S782], ['S4
 const NONRECT: Record<number, number> = { 42: 0, 782008753: 0, 426750495: 0, 2268324149: 0 } // measured 0 on all four seeds
 
 // building pairs excused as their blocks overlap (ROADMAP "Overlapping block faces")
-const FACE_LAP: Record<number, number> = { 42: 1, 782008753: 145, 426750495: 0, 2268324149: 192 } // measured after the Task 11 defect wave
+const FACE_LAP: Record<number, number> = { 42: 1, 782008753: 172, 426750495: 0, 2268324149: 192 } // measured after the user review (S782: 145 before, the hive now fills the overlapping megablock faces)
 // buildings with a vertex nearer a road centreline than setback - 0.5 m (within the 2 m R1 simplification budget)
-const SIMPLIFIED_NEAR: Record<number, number> = { 42: 1099, 782008753: 3745, 426750495: 596, 2268324149: 1130 } // measured after the Task 11 defect wave
+const SIMPLIFIED_NEAR: Record<number, number> = { 42: 1539, 782008753: 4860, 426750495: 769, 2268324149: 1760 } // measured after the user review (1099 / 3745 / 596 / 1130 before: more continuous fronts and wider strip lots)
 
 const cache = new Map<number, SectorModel>()
 const gen = (p: SectorParams): SectorModel => {
@@ -143,7 +143,7 @@ describe('buildings phase A', () => {
       none('buildings outside their lot', bOut)
       none('lots overlapping in a block', overlap)
     })
-    it('megablock', () => {
+    it('megablock', () => { // the hive fills the whole buildable piece (user review): every cell inside it
       for (const k of m.megablocks) {
         const blk = m.blocks.find((x) => x.flags.megablock === k.id)
         for (const b of m.buildings.filter((x) => x.shape === 'hive' && x.blockId === blk?.id)) expect(insideRing(b.footprint, k.core, 0.05), `${k.id} ${b.id}`).toBe(true)
@@ -189,13 +189,13 @@ describe('buildings phase A', () => {
   })
 
   it('fabric mix', () => {
-    // measured, pooled over the four seeds (share / weight; rows with < 20 blocks are not asserted):
+    // measured after the user-review weights, pooled over the four seeds (share / weight; rows with < 20 blocks are not asserted):
     // residential sparse n=15 detached .40/.50 villas .20/.20 rows .40/.30
-    // residential dense n=782 perimeter .26/.30 terrace .29/.25 rows .22/.25 zeilen .19/.15 tower-park .04/.05
-    // residential packed n=307 perimeter .51/.50 terrace .13/.20 zeilen .18/.15 tower-park .11/.10 podium .05/.05
-    // mixed sparse n=8; mixed dense n=682 perimeter .40/.40 shophouse .23/.25 rows .25/.20 podium .12/.15
-    // commerce n=365 perimeter .36/.30 shophouse .24/.20 podium .21/.25 plaza .00/.10 garage .02/.05 bigbox .13/.10
-    // corp n=1183 podium .42/.40 tower-park .26/.30 perimeter .32/.20 plaza .00/.10
+    // residential dense n=782 perimeter .11/.15 terrace .31/.32 rows .35/.33 zeilen .19/.15 tower-park .04/.05
+    // residential packed n=307 perimeter .30/.30 terrace .41/.45 zeilen .18/.15 tower-park .10/.10
+    // mixed sparse n=8; mixed dense n=682 perimeter .20/.20 shophouse .39/.40 rows .38/.35 podium .03/.05
+    // commerce n=360 perimeter .14/.15 shophouse .57/.50 podium .10/.10 plaza .00/.10 garage .03/.05 bigbox .13/.10
+    // corp n=1205 podium .17/.15 tower-park .18/.20 perimeter .15/.10 plaza .00/.10 shophouse .50/.45
     // industrial n=642 bigbox .37/.50 sheds .39/.35 rows .24/.15; fringe n=15
     // pooled rows (sheet zone x density) -> fabric counts
     const rows = new Map<string, { n: number; by: Map<string, number> }>()

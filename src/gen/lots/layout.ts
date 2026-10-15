@@ -15,7 +15,7 @@ import { STRIP_PARAMS, stripLots, type StripLot } from './strips'
  *   makeComposite's draws. A composite wins over the drawn shape.
  * - zeilen: lots: twist sign, twist size, first offset, one spacing per further line; shapes: fitShape per slab.
  * - tower-park / plaza: lots: n, then per try size (w, d), x, y; shapes: chooseShape on a successful placement, fitShape.
- * - podium: shapes: fitShape. bigbox: lots: hall fraction; then as `building`. sheds: lots: n, gap, per hall w, d.
+ * - podium: lots: width and depth fractions, x, y; shapes: fitShape (mirror, base template, turn, then per tower kind, size, x, y). bigbox: lots: hall fraction; then as `building`. sheds: lots: n, gap, per hall w, d.
  * - garage: lots: which short end.
  * `building` (halls, strip lots): shapes chooseShape + sizeShape, composites chance (+ composite), shapes fitShape.
  */
@@ -40,7 +40,7 @@ const MODE: Partial<Record<BlockStyle, 'continuous' | 'detached' | 'villas' | 'g
 const HALLS = ['A1', 'A2', 'A3', 'A18']
 const ALLOWED: Partial<Record<BlockStyle, string[]>> = {
   perimeter: ['A1', 'A2', 'A3', 'A20'], terrace: ['A1'], shophouse: ['A1', 'A3'], detached: ['A1', 'A2', 'A4', 'A20'],
-  rows: ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A10', 'A17', 'A20', 'A23'], villas: ['A1', 'A2', 'A4', 'A5', 'A6', 'A7', 'A10', 'A20'], strip: ['A1', 'A20'], compound: ['A2', 'A3', 'A6', 'A9', 'A11'],
+  rows: ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A10', 'A17', 'A20', 'A23'], villas: ['A1', 'A2', 'A4', 'A5', 'A6', 'A7', 'A10', 'A20'], strip: ['A1', 'A2', 'A3', 'A4', 'A6', 'A8', 'A20'], compound: ['A2', 'A3', 'A6', 'A9', 'A11'],
 }
 
 /** R30 */
@@ -253,9 +253,10 @@ export function layoutPiece(piece: Pt[], sides: Side[], fabric: BlockStyle, ctx:
       const f = fit(), hw = Math.floor(0.4 * f.w), hd = Math.floor(0.4 * f.d)
       return whole(piece, fabric, ctx, scatter(f, r.int(0, 2), () => (hw < 16 || hd < 16 ? null : [r.int(16, hw), r.int(16, hd)]), ['A11', 'A12', 'A14', 'A17', 'A21', 'A22', 'A23'], ctx))
     }
-    case 'podium': {
-      const f = fit(), floor = (v: number) => Math.min(v, Math.max(40, Math.floor(0.9 * v))), w = floor(f.w), d = floor(f.d) // 40 m floor: A19 needs it
-      return whole(piece, fabric, ctx, [{ shape: 'A19', ...fitShape('A19', sub(f, Math.floor((f.w - w) / 2), Math.floor((f.d - d) / 2), w, d), ctx.rng.shapes) }], 'margin')
+    case 'podium': { // user review: 0.45-0.65 of the fit box a side (40 m floor, 90 m cap), anywhere in it on the 2 m grid; the rest plaza, green in residential
+      const f = fit(), side = (v: number) => Math.min(v, Math.max(40, Math.min(90, Math.floor(v * (0.45 + 0.2 * r.next())))))
+      const w = side(f.w), d = side(f.d), x = 2 * r.int(0, Math.floor((f.w - w) / 2)), y = 2 * r.int(0, Math.floor((f.d - d) / 2))
+      return whole(piece, fabric, ctx, [{ shape: 'A19', ...fitShape('A19', sub(f, x, y, w, d), ctx.rng.shapes) }], ctx.zone === 'residential' ? 'interior' : 'margin')
     }
     case 'bigbox': return bigbox(piece, chord, fabric, ctx)
     case 'sheds': return whole(piece, fabric, ctx, sheds(piece, chord, fabric, ctx))

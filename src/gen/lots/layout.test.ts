@@ -44,6 +44,18 @@ describe('layoutPiece', () => {
       expect(x.x1 - x.x0, `seed ${s}`).toBeGreaterThanOrEqual(40 - 1e-6); expect(x.y1 - x.y0).toBeGreaterThanOrEqual(40 - 1e-6)
     }
   })
+  it('podium: a template whose box is 0.2-0.45 of the fit box, at most 90 m a side, towers inside it, the rest plaza or green (user review)', () => {
+    const big = rectPoly(0, 0, 220, 200)
+    for (const [pc, zone, rest] of [[piece, 'corp', 'plaza'], [big, 'commerce', 'plaza'], [piece, 'residential', 'green']] as const) for (let s = 0; s < 10; s++) {
+      const out = layoutPiece(pc, sidesOf(pc, pc.map(() => 7.5)), 'podium', ctx(s, zone)), b = out[0].buildings[0], x = boxOf(b.footprint), fb = boxOf(pc)
+      expect(b.shape).toBe('A19')
+      expect(Math.max(x.x1 - x.x0, x.y1 - x.y0), `seed ${s}`).toBeLessThanOrEqual(90 + 1e-6)
+      const share = ((x.x1 - x.x0) * (x.y1 - x.y0)) / ((fb.x1 - fb.x0) * (fb.y1 - fb.y0)) // the podium's box; an L, U or D fills less of it
+      if (pc === piece) { expect(share, `seed ${s}`).toBeGreaterThanOrEqual(0.2); expect(share).toBeLessThanOrEqual(0.45) }
+      for (const t of b.details) expect(insideRing(t, b.footprint, 0.05), `seed ${s}`).toBe(true)
+      expect(out[0].kind).toBe(rest)
+    }
+  })
   it('continuous fronts touch', () => {
     for (let s = 0; s < 10; s++) {
       const fronts = layoutPiece(piece, sides, 'perimeter', ctx(s, 'residential')).flatMap((l) => l.buildings).map((b) => boxOf(b.footprint)).filter((b) => Math.abs(b.y0) < 1e-6).sort((a, b) => a.x0 - b.x0)

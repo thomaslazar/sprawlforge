@@ -266,7 +266,7 @@ export const STRIP_PARAMS: Partial<Record<BlockStyle, (rng: Rng) => StripParams>
   rows: (r) => { const d = r1(15, 30)(r); return { depth: d, width: [12, 30], gap: gap(2, 6)(r) } },
   detached: (r) => ({ depth: r1(25, 35)(r), width: [20, 30], gap: null }),
   villas: (r) => ({ depth: r1(30, 40)(r), width: [25, 45], gap: null }),
-  strip: (r) => { const d = r1(10, 14)(r); return { depth: d, width: [10, 16], gap: gap(2, 4)(r), sides: (s) => s.flatMap((x, i) => (x.setback === 7.5 ? [i] : [])) } },
+  strip: (r) => { const d = r1(10, 14)(r); return { depth: d, width: [10, 40], gap: gap(2, 6)(r), sides: (s) => s.flatMap((x, i) => (x.setback === 7.5 ? [i] : [])) } }, // user review: frontage 10-40, gap 2-6
 }
 
 /** the lot rings of a piece's own sides for a strip fabric (phase B) */

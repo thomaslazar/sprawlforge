@@ -18,15 +18,15 @@ export function sheetZone(zone: ZoneType, dc: DensityClass): SheetZone {
   }
 }
 
-/** R19, rows in draw order */
+/** R19, rows in draw order; user review 2026-10-15 cut podium and perimeter, the freed weight going to rows/terrace/shophouse */
 export const FABRIC_WEIGHTS: Record<string, Array<[BlockStyle, number]>> = {
   'residential sparse': [['detached', 50], ['villas', 20], ['rows', 30]],
-  'residential dense': [['perimeter', 30], ['terrace', 25], ['rows', 25], ['zeilen', 15], ['tower-park', 5]],
-  'residential packed': [['perimeter', 50], ['terrace', 20], ['zeilen', 15], ['tower-park', 10], ['podium', 5]],
+  'residential dense': [['perimeter', 15], ['terrace', 32], ['rows', 33], ['zeilen', 15], ['tower-park', 5]],
+  'residential packed': [['perimeter', 30], ['terrace', 45], ['zeilen', 15], ['tower-park', 10]],
   'mixed sparse': [['rows', 50], ['detached', 30], ['shophouse', 20]],
-  'mixed dense': [['perimeter', 40], ['shophouse', 25], ['rows', 20], ['podium', 15]],
-  commerce: [['perimeter', 30], ['shophouse', 20], ['podium', 25], ['plaza', 10], ['garage', 5], ['bigbox', 10]],
-  corp: [['podium', 40], ['tower-park', 30], ['perimeter', 20], ['plaza', 10]],
+  'mixed dense': [['perimeter', 20], ['shophouse', 40], ['rows', 35], ['podium', 5]],
+  commerce: [['perimeter', 15], ['shophouse', 50], ['podium', 10], ['plaza', 10], ['garage', 5], ['bigbox', 10]],
+  corp: [['podium', 15], ['tower-park', 20], ['perimeter', 10], ['plaza', 10], ['shophouse', 45]], // user review: the freed 45 to shophouse (the row has no rows/terrace)
   industrial: [['bigbox', 50], ['sheds', 35], ['rows', 15]],
   fringe: [['detached', 40], ['villas', 15], ['sheds', 25], ['rows', 20]],
 }

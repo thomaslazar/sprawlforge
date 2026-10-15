@@ -1,5 +1,6 @@
 import type { Pt } from '../geometry'
-import { ringArea } from '../geometry'
+import { pointInRings, ringArea } from '../geometry'
+import { distToPolyline } from '../terrain/rivers'
 import type { Rng } from '../rng'
 import type { BlockStyle } from '../types'
 import type { FitBox } from './fitbox'
@@ -41,7 +42,7 @@ export const SHAPES: Record<string, ShapeDef> = {
 }
 
 /** R25 */
-export const CURVED_OR_SLANTED: ReadonlySet<string> = new Set(['A11', 'A12', 'A13', 'A15', 'A16', 'A17', 'A21', 'A22', 'A23'])
+export const CURVED_OR_SLANTED: ReadonlySet<string> = new Set(['A11', 'A12', 'A13', 'A15', 'A16', 'A17', 'A19', 'A21', 'A22', 'A23']) // A19: its podium may be a D, stadium or rounded template
 
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x))
 /** clamp(x, lo, hi) snapped to 2 m (lo and hi are even) */
@@ -111,25 +112,36 @@ function build(id: string, w: number, d: number, rng: Rng): Built {
       else for (let x = 8; x < w - 1e-9; x += 8) teeth.push([P(x, 0), P(x, d)])
       return { footprint: rect(w, d), details: teeth }
     }
-    case 'A19': {
-      const m = 4, iw = w - 2 * m, id_ = d - 2 * m, alongX = w >= d, long = alongX ? iw : id_, short = alongX ? id_ : iw
-      const n = Math.max(1, Math.min(rng.int(1, 3), Math.floor(long / 16)))
-      const cell = long / n, details: Pt[][] = []
-      for (let i = 0; i < n; i++) {
-        const kind = (['A11', 'A12', 'A13'] as const)[rng.int(0, 2)]
-        const bl = n > 1 ? cell - 2 : cell, bw = alongX ? bl : short, bd = alongX ? short : bl
-        const s = Math.min(bw, bd), [tw, td] = kind === 'A13' ? [bw, bd] : [s, s]
-        const ox = m + (alongX ? i * cell : 0) + (bw - tw) / 2 + (n > 1 && alongX ? 1 : 0)
-        const oy = m + (alongX ? 0 : i * cell) + (bd - td) / 2 + (n > 1 && !alongX ? 1 : 0)
-        details.push(build(kind, tw, td, rng).footprint.map((p) => P(p.x + ox, p.y + oy)))
+    case 'A19': { // user review: a template podium (podiumBase), 1-3 towers 20-30 m drawn anywhere inside it on the 2 m grid, 4 m in, 6 m apart
+      const base = podiumBase(w, d, rng), closed = [...base.footprint, base.footprint[0]]
+      const n = rng.int(1, 3), towers: Pt[][] = [], boxes: number[][] = []
+      for (let i = 0; i < n; i++) for (let t = 0; t < 40; t++) {
+        const kind = (['A11', 'A12', 'A13'] as const)[rng.int(0, 2)], tw = rng.int(20, 30), td = kind === 'A13' ? Math.round(0.65 * tw) : tw
+        if (tw > w - 8 || td > d - 8) continue
+        const x = 4 + 2 * rng.int(0, Math.floor((w - 8 - tw) / 2)), y = 4 + 2 * rng.int(0, Math.floor((d - 8 - td) / 2))
+        if (boxes.some(([bx, by, bw, bd]) => Math.max(bx - x - tw, x - bx - bw, by - y - td, y - by - bd) < 6)) continue
+        const ring = build(kind, tw, td, rng).footprint.map((p) => P(p.x + x, p.y + y))
+        if (!ring.every((p) => pointInRings(p, [base.footprint]) && distToPolyline(p, closed) >= 4)) continue
+        towers.push(ring); boxes.push([x, y, tw, td])
+        break
       }
-      return { footprint: rect(w, d), details }
+      return { footprint: base.footprint, details: towers }
     }
     case 'A20': { const n = par(0.25 * Math.min(w, d), 6, 10); return plain([P(0, 0), P(w, 0), P(w, d - n), P(w - n, d - n), P(w - n, d), P(0, d)]) }
     case 'A21': { const r = d / 2; return plain([P(0, 0), ...arcPts(w - r, r, r, r, -90, 90, 12), P(0, d)]) }
     case 'A22': { const r = d / 2; return plain([...arcPts(w - r, r, r, r, -90, 90, 12), ...arcPts(r, r, r, r, 90, 270, 12)]) }
   }
   throw new Error(`no template for ${id} (A15 and A16 come from cornerShape)`)
+}
+
+/** podium footprints (user review, D9): big-shape templates by weight */
+export const PODIUM_BASES: ReadonlyArray<readonly [string, number]> = [['A3', 25], ['A4', 15], ['A5', 10], ['A21', 15], ['A22', 15], ['A23', 10], ['A1', 10]]
+/** the podium's footprint in its w x d box: a drawn template, turned 90 degrees half the time (the D, stadium and slab always run along the longer side) */
+export function podiumBase(w: number, d: number, rng: Rng): { id: string; footprint: Pt[] } {
+  const id = rng.weighted(PODIUM_BASES)
+  const long = ['A3', 'A21', 'A22'].includes(id), turn = long ? d > w : rng.chance(0.5)
+  const f = build(id, turn ? d : w, turn ? w : d, rng).footprint
+  return { id, footprint: turn ? f.map((p) => P(p.y, p.x)).reverse() : f }
 }
 
 /** drops repeated and collinear vertices */
