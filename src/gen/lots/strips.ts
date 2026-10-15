@@ -176,9 +176,20 @@ export function stripLots(piece: Pt[], sides: Side[], p: StripParams, rng: Rng, 
 
   // R9: what the lots leave of the piece, one filler per leftover polygon
   const rest = difference(pieceGeom, ...laid.map((l) => [ring(l.poly)] as Geom))
-  for (const pg of rest) {
-    const r = unring(pg[0])
+  const push = (ringPts: [number, number][]) => {
+    const r = unring(ringPts)
     if (Math.abs(ringArea(r)) >= 1) out.push({ poly: ringArea(r) < 0 ? r.reverse() : r, chord: longest(r), side: -1, filler: true })
+  }
+  // a ring-shaped leftover (holes) is cut by the extended sides of the hole box, in the frame of the longest piece edge, into simple pieces
+  const [fa, fb] = longest(piece), fu = unit(fa, fb), fn = left(fu)
+  const toF = ([x, y]: [number, number]) => ({ x: (x - fa.x) * fu.x + (y - fa.y) * fu.y, y: (x - fa.x) * fn.x + (y - fa.y) * fn.y })
+  const fromF = (x: number, y: number): [number, number] => [fa.x + fu.x * x + fn.x * y, fa.y + fu.y * x + fn.y * y]
+  const B = 1e5
+  for (const pg of rest) {
+    if (pg.length < 2) { push(pg[0]); continue }
+    const hp = pg.slice(1).flat().map(toF), x0 = Math.min(...hp.map((q) => q.x)), x1 = Math.max(...hp.map((q) => q.x)), y0 = Math.min(...hp.map((q) => q.y)), y1 = Math.max(...hp.map((q) => q.y))
+    const rect = (a: number, b: number, c: number, d: number): Geom => [[fromF(a, c), fromF(b, c), fromF(b, d), fromF(a, d)]]
+    for (const r of [rect(-B, x0, -B, B), rect(x1, B, -B, B), rect(x0, x1, -B, y0), rect(x0, x1, y1, B)]) for (const part of intersection([pg], r)) push(part[0])
   }
   return out
 }

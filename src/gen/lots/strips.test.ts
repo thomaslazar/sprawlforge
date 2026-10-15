@@ -36,7 +36,10 @@ describe('stripLots', () => {
   })
   it('a lot too narrow for 6 x 8 merges into its neighbour', () => {
     const lots = run(rectPoly(0, 0, 37.5, 60), 4, { ...P, width: [5.5, 5.5] })
-    expect(lots.some((l) => !l.filler && l.corner === undefined)).toBe(true)
+    const strip = lots.filter((l) => !l.filler && l.corner === undefined)
+    expect(strip.length).toBeGreaterThan(0)
+    for (const l of strip) expect(frontage(l)).toBeGreaterThanOrEqual(6 - 1e-9) // no 5.5 m lot survives
+    expect(strip.some((l) => frontage(l) >= 11 - 1e-9)).toBe(true) // a merge happened
     for (const l of lots.filter((l) => !l.filler)) expect(holds(fitBox(l.poly, l.chord), 6, 8)).toBe(true)
   })
   it('acute corner lot', () => {
@@ -50,5 +53,23 @@ describe('stripLots', () => {
     const lots = run(rectPoly(0, 0, 100, 60), 7, { ...P, gap: [3, 5] })
     expect(lots.filter((l) => l.filler).length).toBeGreaterThan(1)
     expect(pairOverlapMax(lots.map((l) => l.poly))).toBeLessThanOrEqual(0.5)
+  })
+  it('holes: leftover splits into simple fillers, strips face the hole', () => {
+    const piece = rectPoly(0, 0, 400, 300), hole = rectPoly(140, 100, 120, 100)
+    const lots = stripLots(piece, sidesOf(piece), P, mulberry32(8), [hole])
+    expect(pairOverlapMax(lots.map((l) => l.poly))).toBeLessThanOrEqual(0.5)
+    const inHole = (q: { x: number; y: number }) => q.x > 140 + 0.05 && q.x < 260 - 0.05 && q.y > 100 + 0.05 && q.y < 200 - 0.05
+    const fillers = lots.filter((l) => l.filler)
+    expect(fillers.length).toBeGreaterThan(1)
+    for (const f of fillers) for (const q of f.poly) expect(inHole(q)).toBe(false)
+    expect(lots.filter((l) => l.side >= 4 && !l.filler && l.corner === undefined).length).toBeGreaterThan(0)
+    for (const l of lots.filter((l) => l.side >= 4 && !l.filler && l.corner === undefined)) {
+      for (const q of l.chord) expect(Math.min(Math.abs(q.x - 140), Math.abs(q.x - 260), Math.abs(q.y - 100), Math.abs(q.y - 200))).toBeLessThan(1e-6)
+      const b = fitBox(l.poly, l.chord)
+      const c = { x: b.origin.x + Math.cos(b.angle) * b.w / 2 - Math.sin(b.angle) * b.d / 2, y: b.origin.y + Math.sin(b.angle) * b.w / 2 + Math.cos(b.angle) * b.d / 2 }
+      expect(inHole(c)).toBe(false)
+      const mid = { x: (l.chord[0].x + l.chord[1].x) / 2, y: (l.chord[0].y + l.chord[1].y) / 2 }
+      expect(Math.hypot(c.x - 200, c.y - 150)).toBeGreaterThan(Math.hypot(mid.x - 200, mid.y - 150)) // fit box lies outward of the hole wall
+    }
   })
 })
