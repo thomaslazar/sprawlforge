@@ -164,6 +164,14 @@ describe('layoutPiece', () => {
       for (const b of out.flatMap((l) => l.buildings)) expect(insideRing(b.footprint, yard[0].poly, 0.05)).toBe(true)
     }
   })
+  it('plaza: 1-2 pavilions, 16 m to half the fit box a side, 20 m apart (user review)', () => {
+    for (const [w, d] of [[40, 40], [60, 45], [160, 120]]) for (let s = 0; s < 10; s++) {
+      const pc = rectPoly(0, 0, w, d), bs = layoutPiece(pc, sidesOf(pc, pc.map(() => 7.5)), 'plaza', ctx(s, 'corp')).flatMap((l) => l.buildings)
+      expect(bs.length, `${w}x${d} seed ${s}`).toBeGreaterThanOrEqual(1); expect(bs.length).toBeLessThanOrEqual(2)
+      for (const b of bs) { const x = boxOf(b.footprint); expect(x.x1 - x.x0).toBeLessThanOrEqual(w / 2 + 1e-6); expect(x.y1 - x.y0).toBeLessThanOrEqual(d / 2 + 1e-6) }
+      if (bs.length === 2) expect(gapBox(bs[0].footprint, bs[1].footprint)).toBeGreaterThanOrEqual(20 - 1e-6)
+    }
+  })
   it('tower-park towers stand 12 m apart', () => {
     for (let s = 0; s < 10; s++) {
       const bs = layoutPiece(piece, sides, 'tower-park', ctx(s, 'corp')).flatMap((l) => l.buildings)
