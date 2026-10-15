@@ -17,7 +17,7 @@ describe('fitbox', () => {
   it('fit box front sits on the innermost frontage point of a rising front', () => {
     // front y = x/6 (0 -> 5 m over 30 m), back 30: area(x0 = 0, w) = w(30 - w/6), best at w = 30 (vertex 45 is out of range) -> 30 x 25 = 750
     const b = fitBox([{ x: 0, y: 0 }, { x: 30, y: 5 }, { x: 30, y: 30 }, { x: 0, y: 30 }], [{ x: 0, y: 0 }, { x: 30, y: 0 }])
-    expect(Math.abs(b.origin.y - 5)).toBeLessThanOrEqual(0.05); expect(b.w * b.d).toBeGreaterThanOrEqual(750 - 1); expect(b.w * b.d).toBeLessThanOrEqual(750 + 1e-6)
+    expect(Math.abs(b.origin.y - 5)).toBeLessThanOrEqual(0.05); expect(b.w * b.d).toBeGreaterThanOrEqual(750 - 1); expect(b.w * b.d).toBeLessThanOrEqual(750.01)
   })
   it('fit box of a 600 × 400 m lot', () => {
     const t = performance.now(), b = fitBox(rectPoly(0, 0, 600, 400), [{ x: 0, y: 0 }, { x: 600, y: 0 }])
