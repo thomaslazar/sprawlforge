@@ -291,6 +291,15 @@ are one round of their own, after the building pass:
   styled sliders/selects/buttons). Inline styles should survive only where
   values are computed at runtime (e.g. the map transform).
 
+- **Click a building to see its type** (user, 2026-10-15) — tapping a
+  building shows what it is (shape id, fabric/block style, lot kind, maybe
+  the composite it belongs to). Needs per-building hit targets in the SVG
+  (today lots and buildings are one `<path>` per kind) plus a small popover.
+
+- **Mobile-friendly generator** (user, 2026-10-15) — the generator UI has
+  to work on a phone: touch pan/zoom on the map, knob panel as a drawer or
+  bottom sheet, no hover-only affordances, sane layout under ~400 px wide.
+
 - **Multi-language UI** — English first, German second. UI strings are
   externalized from day one (no hardcoded labels in components) so adding
   German is translation work, not refactoring. Generated map content
