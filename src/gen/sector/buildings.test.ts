@@ -14,6 +14,7 @@ import { fractalNoise2D } from '../terrain/noise'
 import type { Building, Lot, SectorModel, SectorParams } from '../types'
 import { distToPolyline } from '../terrain/rivers'
 import { generateSector } from './generate'
+import { inWater } from './bridges'
 
 const base: SectorParams = {
   seed: 42, size: 4, density: 0.5, corpDominance: 0.5, poiDensity: 0.5, irregularity: 0.5,
@@ -33,7 +34,10 @@ const NONRECT: Record<number, number> = { 42: 0, 782008753: 0, 426750495: 0, 226
 // building pairs excused as their blocks overlap (ROADMAP "Overlapping block faces")
 const FACE_LAP: Record<number, number> = { 42: 1, 782008753: 149, 426750495: 0, 2268324149: 184 } // measured after the user review (variation round; S782 140 to 149 after the plaza/strip fix round re-rolls)
 // buildings with a vertex nearer a road centreline than setback - 0.5 m (within the 2 m R1 simplification budget)
-const SIMPLIFIED_NEAR: Record<number, number> = { 42: 1235, 782008753: 3814, 426750495: 620, 2268324149: 1266 } // measured after the user review (variation round; plaza/strip fix round: S42 1228 to 1235, S782 3818 to 3814, S426 621 to 620)
+const SIMPLIFIED_NEAR: Record<number, number> = { 42: 1321, 782008753: 4107, 426750495: 686, 2268324149: 1365 } // measured after the user review (variation round; plaza/strip fix round: S42 1228 to 1235, S782 3818 to 3814, S426 621 to 620; sparse-block guard round, more buildings: S42 1235 to 1321, S782 3814 to 4107, S426 620 to 686, S2268 1266 to 1365)
+
+// blocks of 0.5 ha or more under 10 % built: the sparse-block guard re-lays them as sheds or rows (S42 59 and S782 206 before it); the rest sit behind highway setbacks or on water
+const SPARSE: Record<number, number> = { 42: 13, 782008753: 29 }
 
 const cache = new Map<number, SectorModel>()
 const gen = (p: SectorParams): SectorModel => {
@@ -178,6 +182,16 @@ describe('buildings phase A', () => {
   it.each([['S42', S42], ['S782', S782]] as const)('%s strip, sheds and bigbox blocks of 3000 m2 or more are never empty', (_, p) => {
     const m = gen(p), built = new Set(m.buildings.map((b) => b.blockId))
     none('empty strip/sheds/bigbox blocks', m.blocks.filter((b) => ['strip', 'sheds', 'bigbox'].includes(b.style) && Math.abs(ringArea(b.footprint)) >= 3000 && !built.has(b.id)).map((b) => `${b.id} ${b.style}`))
+  }, 300000)
+
+  it.each([['S42', S42], ['S782', S782]] as const)('%s blocks of 0.5 ha or more are built (sparse-block guard)', (_, p) => {
+    const m = gen(p), lotted = new Set(m.lots.map((l) => l.blockId))
+    const area = new Map<string, number>()
+    for (const b of m.buildings) area.set(b.blockId, (area.get(b.blockId) ?? 0) + Math.abs(ringArea(b.footprint)))
+    const big = m.blocks.filter((b) => Math.abs(ringArea(b.footprint)) >= 5000)
+    // empty only as open grounds or a plaza too small for a pavilion, with no buildable piece, or drawn over water (S782: B8227, B8232)
+    none('empty blocks of 0.5 ha or more', big.filter((b) => !area.has(b.id) && b.style !== 'plaza' && lotted.has(b.id) && !inWater(m.terrain, ringCentroid(b.footprint))).map((b) => `${b.id} ${b.style}`))
+    expect(big.filter((b) => (area.get(b.id) ?? 0) < 0.1 * Math.abs(ringArea(b.footprint))).length).toBeLessThanOrEqual(SPARSE[p.seed])
   }, 300000)
 
   describe('road strips', () => {

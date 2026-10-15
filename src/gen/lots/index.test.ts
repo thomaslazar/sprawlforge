@@ -95,4 +95,13 @@ describe('fillLots', () => {
     expect(out.lots.some((l) => l.poly.some((p) => distToRing(p, plaza) < 7))).toBe(true)
     for (const b of out.buildings) for (const p of b.footprint) expect(pointInRings(p, [plaza])).toBe(false)
   })
+  it('a block of 0.5 ha or more is never left under 10 % built', () => {
+    const ind: District = { ...resDistrict, id: 'D07', zone: 'industrial' }
+    for (const district of [ind, resDistrict]) for (let seed = 1; seed <= 12; seed++) {
+      const block: Block = { ...bigBlock('B0', 100, 100), districtId: district.id, poly: rectPoly(100, 100, 150, 150), footprint: rectPoly(100, 100, 150, 150) }
+      const out = fillLots([district], [block], { ...base, seed }, dryTerrain, [])
+      const cover = out.buildings.reduce((t, b) => t + Math.abs(ringArea(b.footprint)), 0) / 22500
+      expect(cover >= 0.1 || out.buildings.length >= 3, `${district.zone} seed ${seed}: ${out.blocks[0].style} ${out.buildings.length} bld ${cover.toFixed(3)}`).toBe(true)
+    }
+  })
 })

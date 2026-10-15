@@ -180,31 +180,50 @@ export function fillLots(
       for (const p of all) if (p !== main) emit(block, district, 'rows', ctx, layoutPiece(p.poly, sidesOf(p.poly, p.setbacks), 'rows', ctx))
     } else {
       const fabricRng = stream('fabric', block)
-      pieces.forEach((p, k) => {
-        if (!rim && p.holes.length) { emit(block, district, 'plaza', ctx, [{ poly: p.poly, kind: 'plaza', buildings: [] }]); style = 'plaza'; return }
-        const sides = sidesOf(p.poly, p.setbacks)
-        const longest = sides.reduce((b, s) => (dist(...s.chord) > dist(...b.chord) ? s : b)).chord
-        const box = fitBox(p.poly, longest)
-        const fits = (f: BlockStyle) => { const m = MIN_FIT[f]; return !m || (box.w >= m[0] && box.d >= m[1]) || (box.w >= m[1] && box.d >= m[0]) }
-        // a strip block with a fit box 80 m deep or more is a strip, sheds or bigbox, a third each (the draw only there)
-        const deep = strip && Math.min(box.w, box.d) >= 80
-        const pick = deep ? fabricRng.pick(['sheds', 'bigbox', 'strip'] as const) : 'strip'
-        let fabric: BlockStyle = strip ? (fits(pick) ? pick : 'strip') : forceStyle ?? chooseFabric(ctx.zone, dc, fabricCell(params.seed, cc), fabricRng, fits)
-        // R39: a ground-side block gets a built front; a piece around a plaza hole needs a fabric that builds every side (terrace keeps two)
-        if (home && rim && !strip && !forceStyle && (WHOLE.has(fabric) || fabric === 'terrace')) fabric = 'perimeter'
-        if (p.holes.length && (!STRIP_PARAMS[fabric] || fabric === 'terrace')) fabric = 'perimeter'
-        let out = p.holes.length
-          ? stripLots(p.poly, sides, STRIP_PARAMS[fabric]!(ctx.rng.lots), ctx.rng.lots, p.holes).map((l) => buildLot(l, fabric, ctx))
-          : layoutPiece(p.poly, sides, fabric, ctx)
-        // a strip block never comes out empty: the strip layout, then lots on its longest side whatever its setback (no vacancy draw)
-        const built = () => out.some((l) => l.buildings.length)
-        if (strip && !p.holes.length && !built()) {
-          if (fabric !== 'strip') { fabric = 'strip'; out = layoutPiece(p.poly, sides, fabric, ctx) }
-          if (!built()) out = stripLots(p.poly, sides, { ...STRIP_PARAMS.strip!(ctx.rng.lots), sides: () => [sides.findIndex((s) => s.chord === longest)] }, ctx.rng.lots).map((l) => buildLot(l, 'strip', ctx))
-        }
-        if (k === 0 && style !== 'plaza') style = fabric
-        emit(block, district, fabric, ctx, out)
-      })
+      /** every piece laid out with its drawn fabric, or `fb` for all of them (the sparse-block fallback) */
+      const lay = (fb?: BlockStyle) => {
+        let st: BlockStyle = 'rows', grounds = false
+        const res = pieces.map((p, k): [BlockStyle, LotOut[]] => {
+          if (!rim && p.holes.length) { st = 'plaza'; grounds = true; return ['plaza', [{ poly: p.poly, kind: 'plaza', buildings: [] }]] }
+          const sides = sidesOf(p.poly, p.setbacks)
+          const longest = sides.reduce((b, s) => (dist(...s.chord) > dist(...b.chord) ? s : b)).chord
+          const box = fitBox(p.poly, longest)
+          const fits = (f: BlockStyle) => { const m = MIN_FIT[f]; return !m || (box.w >= m[0] && box.d >= m[1]) || (box.w >= m[1] && box.d >= m[0]) }
+          // a strip block with a fit box 80 m deep or more is a strip, sheds or bigbox, a third each (the draw only there)
+          const deep = !fb && strip && Math.min(box.w, box.d) >= 80
+          const pick = deep ? fabricRng.pick(['sheds', 'bigbox', 'strip'] as const) : 'strip'
+          let fabric: BlockStyle = fb ?? (strip ? (fits(pick) ? pick : 'strip') : forceStyle ?? chooseFabric(ctx.zone, dc, fabricCell(params.seed, cc), fabricRng, fits))
+          // R39: a ground-side block gets a built front; a piece around a plaza hole needs a fabric that builds every side (terrace keeps two)
+          if (home && rim && !strip && !forceStyle && (WHOLE.has(fabric) || fabric === 'terrace')) fabric = 'perimeter'
+          if (p.holes.length && (!STRIP_PARAMS[fabric] || fabric === 'terrace')) fabric = 'perimeter'
+          let out = p.holes.length
+            ? stripLots(p.poly, sides, STRIP_PARAMS[fabric]!(ctx.rng.lots), ctx.rng.lots, p.holes).map((l) => buildLot(l, fabric, ctx))
+            : layoutPiece(p.poly, sides, fabric, ctx)
+          // a strip block never comes out empty: the strip layout, then lots on its longest side whatever its setback (no vacancy draw); a fallback piece takes the latter too
+          const built = () => out.some((l) => l.buildings.length)
+          if ((strip || fb) && !p.holes.length && !built()) {
+            if (!fb && fabric !== 'strip') { fabric = 'strip'; out = layoutPiece(p.poly, sides, fabric, ctx) }
+            if (!built()) out = stripLots(p.poly, sides, { ...STRIP_PARAMS.strip!(ctx.rng.lots), sides: () => [sides.findIndex((s) => s.chord === longest)] }, ctx.rng.lots).map((l) => buildLot(l, 'strip', ctx))
+          }
+          if (k === 0 && st !== 'plaza') st = fabric
+          return [fabric, out]
+        })
+        // the footprint area emit will keep (dry, accepted)
+        const area = res.reduce((t, [, out]) => t + out.reduce((u, l) => u + l.buildings.reduce((v, b) => {
+          const fp = ccw(b.footprint)
+          return v + (!inWater(terrain, ringCentroid(fp)) && accepted(fp) ? Math.abs(ringArea(fp)) : 0)
+        }, 0), 0), 0)
+        return { res, st, grounds, area }
+      }
+      let laid = lay()
+      // a block of 0.5 ha or more under 10 % built reads as a hole in the city: lay it out again as sheds (industrial, docks) or rows, keep the fuller one
+      const blockArea = Math.abs(ringArea(block.footprint))
+      if (!forceStyle && !laid.grounds && blockArea >= 5000 && laid.area < 0.1 * blockArea) {
+        const again = lay(ctx.zone === 'industrial' ? 'sheds' : 'rows')
+        if (again.area > laid.area) laid = again
+      }
+      for (const [fabric, out] of laid.res) emit(block, district, fabric, ctx, out)
+      style = laid.st
     }
     outBlocks.push({ ...block, style, alleys, flags: { ...block.flags, ...(mega ? { megablock: mega.id } : {}), ...(home ? { arcology: home.id } : {}) } })
   }
