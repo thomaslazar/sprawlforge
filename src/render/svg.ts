@@ -135,6 +135,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   const shoreD = shoreSegments.join(' ')
 
   out.push('<defs>')
+  out.push(`<pattern id="podium-hatch" patternUnits="userSpaceOnUse" width="2" height="2" patternTransform="rotate(45)"><rect width="2" height="2" fill="${theme.building.podiumBase}"/><rect width="2" height="0.3" fill="${theme.building.podium}"/></pattern>`)
   for (const deg of parkingGroups(model).keys())
     out.push(`<pattern id="parking-${deg}" patternUnits="userSpaceOnUse" width="2.5" height="2.5" patternTransform="rotate(${deg})"><rect width="0.3" height="2.5" fill="${theme.lot.stripe}"/></pattern>`)
   out.push(`<path id="water-shape" d="${waterD}" fill-rule="evenodd"/>`)
@@ -216,7 +217,10 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
 
   const hive = hiveBuildingIds(model)
   const strip = stripBuildingIds(model)
-  const generic = hive.size || strip.size ? model.buildings.filter((b) => !hive.has(b.id) && !strip.has(b.id)) : model.buildings
+  const notLandmark = hive.size || strip.size ? model.buildings.filter((b) => !hive.has(b.id) && !strip.has(b.id)) : model.buildings
+  // podiums (A19) are hatched, drawn in one path in both modes; their towers follow as ordinary building fill
+  const podiums = notLandmark.filter((b) => b.shape === 'A19')
+  const generic = podiums.length ? notLandmark.filter((b) => b.shape !== 'A19') : notLandmark
   if (interactive) {
     const byDistrict = new Map<string, string[]>()
     for (const b of generic) {
@@ -238,13 +242,15 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
     }
   }
 
-  // podium/roof towers are solid darker masses; every other detail ring stays an outline
+  if (podiums.length)
+    out.push(`<path data-podiums="1" d="${podiums.map((b) => ringD(b.footprint)).join(' ')}" fill="url(#podium-hatch)" stroke="${theme.building.stroke}" stroke-width="1"/>`)
+  // podium/roof towers are solid in the building fill; every other detail ring stays an outline
   const isTower = (b: { shape: string }) => b.shape === 'A19' || b.shape === 'E3' || b.shape === 'E5'
   const ringsD = (bs: typeof model.buildings) => bs.flatMap((b) => (b.details ?? []).map(ringD)).join(' ')
   const towerD = ringsD(model.buildings.filter(isTower))
   const detailD = ringsD(model.buildings.filter((b) => !isTower(b)))
   if (towerD)
-    out.push(`<path data-towers="1" d="${towerD}" fill="${theme.building.tower}" stroke="${theme.building.stroke}" stroke-width="0.5" vector-effect="non-scaling-stroke"/>`)
+    out.push(`<path data-towers="1" d="${towerD}" fill="${theme.building.fill}" stroke="${theme.building.stroke}" stroke-width="0.5" vector-effect="non-scaling-stroke"/>`)
   if (detailD)
     out.push(`<path data-details="1" d="${detailD}" fill="none" stroke="${theme.building.stroke}" stroke-width="0.5" vector-effect="non-scaling-stroke"/>`)
 
