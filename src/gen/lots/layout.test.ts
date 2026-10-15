@@ -172,6 +172,13 @@ describe('layoutPiece', () => {
       if (bs.length === 2) expect(gapBox(bs[0].footprint, bs[1].footprint)).toBeGreaterThanOrEqual(20 - 1e-6)
     }
   })
+  it('plaza: a fit box of 20-31 m a side still holds one pavilion, 16 m up to the side less 4 m', () => {
+    for (const [w, d] of [[20, 20], [24, 31], [31, 26]]) for (let s = 0; s < 10; s++) {
+      const pc = rectPoly(0, 0, w, d), bs = layoutPiece(pc, sidesOf(pc, pc.map(() => 7.5)), 'plaza', ctx(s, 'corp')).flatMap((l) => l.buildings)
+      expect(bs.length, `${w}x${d} seed ${s}`).toBe(1)
+      const x = boxOf(bs[0].footprint); expect(x.x1 - x.x0).toBeLessThanOrEqual(w - 4 + 1e-6); expect(x.y1 - x.y0).toBeLessThanOrEqual(d - 4 + 1e-6)
+    }
+  })
   it('bigbox and sheds halls stay within 120 m a side on a 300 x 100 m piece', () => {
     const pc = rectPoly(0, 0, 300, 100)
     for (const f of ['bigbox', 'sheds'] as const) for (let s = 0; s < 10; s++) {

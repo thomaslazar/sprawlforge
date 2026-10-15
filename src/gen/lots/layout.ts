@@ -369,8 +369,8 @@ export function layoutPiece(piece: Pt[], sides: Side[], fabric: BlockStyle, ctx:
       return whole(piece, fabric, ctx, scatter(f, Math.min(8, Math.max(2, Math.round(f.w * f.d / 3000))), () => { const s = Math.min(r.int(24, 36), cap); return [s, s] }, ['A2', 'A11', 'A12', 'A13', 'A14'], ctx, 12))
     }
     case 'plaza': {
-      // user review: 1-2 pavilions up to half the fit box a side, so a corp plaza reads as built, not as a park with a gazebo
-      const f = fit(), hw = Math.floor(0.5 * f.w), hd = Math.floor(0.5 * f.d)
+      // user review: 1-2 pavilions up to half the fit box a side, so a corp plaza reads as built, not as a park with a gazebo; 16 m at least while 4 m stay free (any box of 20 m holds one)
+      const f = fit(), top = (v: number) => Math.min(Math.floor(v) - 4, Math.max(16, Math.floor(0.5 * v))), hw = top(f.w), hd = top(f.d)
       return whole(piece, fabric, ctx, scatter(f, r.int(1, 2), () => (hw < 16 || hd < 16 ? null : [r.int(16, hw), r.int(16, hd)]), ['A11', 'A12', 'A14', 'A17', 'A21', 'A22', 'A23'], ctx))
     }
     case 'podium': { // user review: 0.45-0.65 of the fit box a side (40 m floor, 90 m cap), anywhere in it on the 2 m grid; the rest plaza, green in residential
