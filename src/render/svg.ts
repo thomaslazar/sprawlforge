@@ -245,7 +245,7 @@ export function renderSector(model: SectorModel, theme: Theme, opts: RenderOpts 
   if (podiums.length)
     out.push(`<path data-podiums="1" d="${podiums.map((b) => ringD(b.footprint)).join(' ')}" fill="url(#podium-hatch)" stroke="${theme.building.stroke}" stroke-width="1"/>`)
   // podium/roof towers are solid in the building fill; every other detail ring stays an outline
-  const isTower = (b: { shape: string }) => b.shape === 'A19' || b.shape === 'E3' || b.shape === 'E5'
+  const isTower = (b: { shape: string }) => b.shape === 'A19' || b.shape === 'E3' || b.shape === 'E5' || b.shape === 'B1T'
   const ringsD = (bs: typeof model.buildings) => bs.flatMap((b) => (b.details ?? []).map(ringD)).join(' ')
   const towerD = ringsD(model.buildings.filter(isTower))
   const detailD = ringsD(model.buildings.filter((b) => !isTower(b)))

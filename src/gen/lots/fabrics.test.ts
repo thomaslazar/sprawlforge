@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mulberry32 } from '../rng'
-import { FABRIC_WEIGHTS, chooseFabric, densityClass, sheetZone } from './fabrics'
+import { FABRIC_WEIGHTS, chooseFabric, densityClass, fabricRow, sheetZone } from './fabrics'
 
 describe('fabrics', () => {
   it('fabric weights sum to 100', () => { for (const [k, row] of Object.entries(FABRIC_WEIGHTS)) expect(row.reduce((a, [, w]) => a + w, 0), k).toBe(100) })
@@ -15,12 +15,19 @@ describe('fabrics', () => {
     expect(hit / 2000).toBeGreaterThanOrEqual(0.74)
   })
   it('fallback walks down the row, finally rows', () => {
-    expect(chooseFabric('corp', 'dense', 0.01, mulberry32(1), (f) => f !== 'podium')).toBe('perimeter') // by weight: shophouse 45, tower-park 20, podium 15, perimeter 10
+    expect(chooseFabric('corp', 'dense', 0.01, mulberry32(1), (f) => f !== 'podium')).toBe('plaza') // by weight: shophouse 45, tower-park 20, podium 15, plaza 10, blockfill 10
     expect(chooseFabric('corp', 'dense', 0.01, mulberry32(1), (f) => f === 'rows')).toBe('rows')
   })
   it('sheet zones', () => {
     expect(sheetZone('slum', 'sparse')).toBe('fringe'); expect(sheetZone('slum', 'packed')).toBe('mixed')
     expect(sheetZone('entertainment', 'sparse')).toBe('mixed'); expect(sheetZone('entertainment', 'dense')).toBe('commerce')
     expect(sheetZone('docks', 'dense')).toBe('industrial'); expect(densityClass(0.35)).toBe('dense'); expect(densityClass(0.65)).toBe('packed')
+  })
+  it('blockfill weighs 25 in packed and 10 in dense mixed, commerce and corp, never sparse (user review)', () => {
+    expect(fabricRow('commerce', 'packed')).toBe('commerce packed'); expect(fabricRow('corp', 'dense')).toBe('corp'); expect(fabricRow('mixed', 'packed')).toBe('mixed packed')
+    for (const [z, dc, w] of [['mixed', 'packed', 25], ['commerce', 'packed', 25], ['corp', 'packed', 25], ['mixed', 'dense', 10], ['commerce', 'dense', 10], ['corp', 'dense', 10], ['mixed', 'sparse', 0]] as const) {
+      const row = FABRIC_WEIGHTS[fabricRow(z, dc)]
+      expect(row.find(([f]) => f === 'blockfill')?.[1] ?? 0, `${z} ${dc}`).toBe(w)
+    }
   })
 })

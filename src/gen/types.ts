@@ -138,7 +138,7 @@ export interface District {
 }
 
 export type BlockStyle = 'perimeter' | 'terrace' | 'shophouse' | 'rows' | 'zeilen' | 'detached' | 'villas'
-  | 'tower-park' | 'podium' | 'bigbox' | 'sheds' | 'plaza' | 'garage' | 'strip' | 'megablock' | 'compound'
+  | 'tower-park' | 'podium' | 'bigbox' | 'sheds' | 'plaza' | 'garage' | 'strip' | 'megablock' | 'compound' | 'blockfill'
 
 export type LotKind = 'building' | 'parking' | 'plaza' | 'yard' | 'green' | 'pool'
 export interface Lot { id: string; blockId: string; poly: Pt[]; kind: LotKind; buildingIds: string[] }

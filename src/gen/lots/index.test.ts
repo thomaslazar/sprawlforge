@@ -17,7 +17,7 @@ const resDistrict: District = {
 }
 const bigBlock = (id: string, x = 500, y = 500): Block => ({ id, districtId: 'D04', poly: rectPoly(x, y, 200, 200), footprint: rectPoly(x, y, 200, 200), style: 'rows', alleys: [], flags: {} })
 const street = (x0: number, y0: number, x1: number, y1: number): Road => ({ id: `S${x0}`, class: 'street', points: [{ x: x0, y: y0 }, { x: x1, y: y1 }], width: 9, name: null })
-const FABRICS: BlockStyle[] = ['perimeter', 'terrace', 'shophouse', 'rows', 'zeilen', 'detached', 'villas', 'tower-park', 'podium', 'bigbox', 'sheds', 'plaza', 'garage']
+const FABRICS: BlockStyle[] = ['perimeter', 'terrace', 'shophouse', 'rows', 'zeilen', 'detached', 'villas', 'tower-park', 'podium', 'bigbox', 'sheds', 'plaza', 'garage', 'blockfill']
 
 describe('fillLots', () => {
   it('every building has a lot and every lot its block', () => {

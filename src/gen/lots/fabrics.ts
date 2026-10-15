@@ -24,9 +24,12 @@ export const FABRIC_WEIGHTS: Record<string, Array<[BlockStyle, number]>> = {
   'residential dense': [['perimeter', 15], ['terrace', 32], ['rows', 33], ['zeilen', 15], ['tower-park', 5]],
   'residential packed': [['perimeter', 30], ['terrace', 45], ['zeilen', 15], ['tower-park', 10]],
   'mixed sparse': [['rows', 50], ['detached', 30], ['shophouse', 20]],
-  'mixed dense': [['perimeter', 20], ['shophouse', 40], ['rows', 35], ['podium', 5]],
-  commerce: [['perimeter', 15], ['shophouse', 50], ['podium', 10], ['plaza', 10], ['garage', 5], ['bigbox', 10]],
-  corp: [['podium', 15], ['tower-park', 20], ['perimeter', 10], ['plaza', 10], ['shophouse', 45]], // user review: the freed 45 to shophouse (the row has no rows/terrace)
+  'mixed dense': [['perimeter', 15], ['shophouse', 40], ['rows', 30], ['podium', 5], ['blockfill', 10]],
+  'mixed packed': [['perimeter', 10], ['shophouse', 40], ['rows', 20], ['podium', 5], ['blockfill', 25]],
+  commerce: [['perimeter', 5], ['shophouse', 50], ['podium', 10], ['plaza', 10], ['garage', 5], ['bigbox', 10], ['blockfill', 10]],
+  'commerce packed': [['shophouse', 40], ['podium', 10], ['plaza', 10], ['garage', 5], ['bigbox', 10], ['blockfill', 25]], // the row has 15 perimeter only: the other 10 from shophouse
+  corp: [['podium', 15], ['tower-park', 20], ['plaza', 10], ['shophouse', 45], ['blockfill', 10]], // user review: the freed 45 to shophouse (no rows/terrace in the row); blockfill 10 from perimeter
+  'corp packed': [['podium', 15], ['tower-park', 20], ['plaza', 10], ['shophouse', 30], ['blockfill', 25]], // blockfill 25: perimeter's 10 and 15 from shophouse
   industrial: [['bigbox', 50], ['sheds', 35], ['rows', 15]],
   fringe: [['detached', 40], ['villas', 15], ['sheds', 25], ['rows', 20]],
 }
@@ -34,7 +37,7 @@ export const FABRIC_WEIGHTS: Record<string, Array<[BlockStyle, number]>> = {
 /** R21 minimum fit box [w, d] of whole-block fabrics */
 export const MIN_FIT: Partial<Record<BlockStyle, [number, number]>> = {
   zeilen: [40, 24], 'tower-park': [50, 50], podium: [40, 40], bigbox: [50, 40],
-  sheds: [40, 30], plaza: [20, 20], garage: [66, 46],
+  sheds: [40, 30], plaza: [20, 20], garage: [66, 46], blockfill: [30, 30],
 }
 
 /** R20: unsmoothed value of the 500 m lattice cell holding p, in [0, 1) */
@@ -43,11 +46,15 @@ export function fabricCell(seed: number, p: Pt): number {
 }
 
 /** R20-R21. Draw order: next() picks cell-vs-fresh (< 0.6 = cell), a second next() only when fresh. */
+/** the R19 row of a sheet zone and density class (blockfill split packed mixed, commerce and corp off their dense rows) */
+export function fabricRow(zone: SheetZone, dc: DensityClass): string {
+  if (zone === 'residential') return `residential ${dc}`
+  if (zone === 'mixed') return `mixed ${dc}`
+  return (zone === 'commerce' || zone === 'corp') && dc === 'packed' ? `${zone} packed` : zone
+}
+
 export function chooseFabric(zone: SheetZone, dc: DensityClass, cell: number, rng: Rng, fits: (f: BlockStyle) => boolean): BlockStyle {
-  const key = zone === 'residential' || zone === 'mixed'
-    ? `${zone} ${dc === 'sparse' ? 'sparse' : zone === 'mixed' ? 'dense' : dc}`
-    : zone
-  const row = FABRIC_WEIGHTS[key]
+  const row = FABRIC_WEIGHTS[fabricRow(zone, dc)]
   const u = (rng.next() < 0.6 ? cell : rng.next()) * 100
   let acc = 0
   let drawn = row.length - 1

@@ -20,7 +20,7 @@ describe('shapes', () => {
     }
   })
   it('every template is counter-clockwise, ≥ 3 m per edge and ≥ 6 m wide at its min size', () => {
-    for (const [id, s] of Object.entries(SHAPES)) if (id !== 'A15' && id !== 'A16') {
+    for (const [id, s] of Object.entries(SHAPES)) if (id !== 'A15' && id !== 'A16' && !id.startsWith('B')) { // B1/B1T: block masses follow their piece (blockfill)
       for (const seed of [1, 2]) {
         const f = fitShape(id, { origin: { x: 0, y: 0 }, angle: 0, w: s.minW, d: s.minD }, mulberry32(seed)).footprint
         expect(ringArea(f), id).toBeGreaterThan(0); expect(minNonArcEdge(f), id).toBeGreaterThanOrEqual(3); expect(widthOk(f, 6), id).toBe(true)

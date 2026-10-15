@@ -3,9 +3,9 @@ import { pointInRings, ringArea, ringCentroid, simplifyPolyline, type Pt } from 
 import type { Rng } from '../rng'
 import type { BlockStyle, LotKind } from '../types'
 import { compositeChance, makeComposite } from './composites'
-import { boxRing, fitBox, holds, type FitBox } from './fitbox'
+import { boxRing, fitBox, holds, widthOk, type FitBox } from './fitbox'
 import type { Side } from './setback'
-import { chooseShape, cornerShape, fitShape, sizeShape, type DensityClass, type SheetZone } from './shapes'
+import { chooseShape, cornerShape, fitShape, placeBoxes, sizeShape, type DensityClass, type SheetZone } from './shapes'
 import { STRIP_PARAMS, simpleParts, stripLots, type StripLot } from './strips'
 import { sidesOf } from './setback'
 import { insetOrLargest } from '../streets/lots'
@@ -234,6 +234,62 @@ function sheds(piece: Pt[], chord: [Pt, Pt], fabric: BlockStyle, ctx: BlockCtx):
   return out
 }
 
+/** a counter-clockwise ring with its edges under 3 m cut away at a convex end (the cut stays inside); arc runs keep theirs */
+function trimShortEdges(r0: Pt[]): Pt[] {
+  const r = r0.slice()
+  const turn = (i: number) => { const n = r.length, a = r[(i + n - 1) % n], b = r[i], c = r[(i + 1) % n]; return Math.atan2((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x), (b.x - a.x) * (c.x - b.x) + (b.y - a.y) * (c.y - b.y)) }
+  const arc = (i: number) => Math.abs(turn(i)) <= (15.5 * Math.PI) / 180
+  for (let guard = r0.length; guard > 0 && r.length > 4; guard--) {
+    const n = r.length
+    const i = r.findIndex((p, k) => dist(p, r[(k + 1) % n]) < 3 && !(arc(k) && arc((k + 1) % n)) && (turn(k) > 0 || turn((k + 1) % n) > 0))
+    if (i < 0) break
+    r.splice(turn(i) > 0 ? i : (i + 1) % n, 1)
+  }
+  return r
+}
+
+/**
+ * User review (D10): a dense core block as one built mass. The piece is cut by 2-6 lines across it, perpendicular to its
+ * longest side, 15-45 m apart, into unequal masses (party walls); a mass under 60 m2, narrower than 8 m or a triangle merges
+ * into its neighbour (its cut goes). Masses over 900 m2 get 1-3 lightwells 6-14 m, over 2500 m2 one courtyard 14-30 m
+ * (4 m in, 4 m apart, 2 m grid), drawn as details; in packed corp/commerce a block carries 1-2 towers 20-30 m on its
+ * largest mass (shape 'B1T') with probability 0.3. Draw order: lots: cut count, spacings, tower chance, tower count;
+ * shapes: per mass lightwell or courtyard count and sizes and positions, then the towers.
+ */
+function blockfill(piece: Pt[], chord: [Pt, Pt], ctx: BlockCtx): LotOut[] {
+  const r = ctx.rng.lots, ang = Math.atan2(chord[1].y - chord[0].y, chord[1].x - chord[0].x), c = Math.cos(ang), sn = Math.sin(ang)
+  const toF = (p: Pt): Pt => ({ x: p.x * c + p.y * sn, y: -p.x * sn + p.y * c })
+  const fromF = (p: Pt): Pt => ({ x: p.x * c - p.y * sn, y: p.x * sn + p.y * c })
+  const F = piece.map(toF), x0 = Math.min(...F.map((p) => p.x)), x1 = Math.max(...F.map((p) => p.x)), y0 = Math.min(...F.map((p) => p.y)) - 1, y1 = Math.max(...F.map((p) => p.y)) + 1
+  const n = r.int(2, 6), cuts: number[] = []
+  for (let x = x0 + 15 + 30 * r.next(); cuts.length < n && x < x1 - 15; x += 15 + 30 * r.next()) cuts.push(x)
+  const ok = (m: Pt[]) => m.length > 3 && ringArea(m) >= 60 && widthOk(m, 8)
+  const massesOf = (cs: number[]) => {
+    const xs = [x0 - 1, ...cs, x1 + 1]
+    return xs.slice(1).flatMap((b, i) => intersection([ring(piece)], [ring([{ x: xs[i], y: y0 }, { x: b, y: y0 }, { x: b, y: y1 }, { x: xs[i], y: y1 }].map(fromF))])
+      .flatMap((pg) => simpleParts(ccw(unring(pg[0])))).map((poly) => ({ band: i, poly })))
+  }
+  let cs = cuts, ms = massesOf(cs)
+  for (let bad = ms.find((m) => !ok(m.poly)); bad && cs.length; bad = ms.find((m) => !ok(m.poly))) { // each pass drops a cut: bounded by n
+    const drop = Math.min(bad.band, cs.length - 1) // band i lies between cut i - 1 and cut i: merge it across cut i, the last band across the last cut
+    cs = cs.filter((_, k) => k !== drop)
+    ms = massesOf(cs)
+  }
+  const towered = (ctx.zone === 'corp' || ctx.zone === 'commerce') && ctx.density === 'packed' && r.chance(0.3)
+  const nt = towered ? r.int(1, 2) : 0
+  const big = ms.reduce((b, m, i) => (ringArea(m.poly) > ringArea(ms[b].poly) ? i : b), 0)
+  const rs = ctx.rng.shapes
+  return ms.map((m, i): LotOut => {
+    if (!ok(m.poly)) return { poly: m.poly, kind: fillerOf('blockfill', ctx.zone, 'interior'), buildings: [] }
+    const fp = trimShortEdges(m.poly), local = fp.map(toF), a = ringArea(fp)
+    const boxes = i === big && nt ? placeBoxes(local, nt, () => { const t = rs.int(20, 30); return [t, t] }, 4, 6, rs)
+      : a > 2500 ? placeBoxes(local, 1, () => [2 * rs.int(7, 15), 2 * rs.int(7, 15)], 4, 4, rs)
+        : a > 900 ? placeBoxes(local, rs.int(1, 3), () => [2 * rs.int(3, 7), 2 * rs.int(3, 7)], 4, 4, rs) : []
+    const details = boxes.map(([x, y, w, d]) => [{ x, y }, { x: x + w, y }, { x: x + w, y: y + d }, { x, y: y + d }].map(fromF))
+    return { poly: m.poly, kind: lotKind(m.poly, [fp], fillerOf('blockfill', ctx.zone, 'interior')), buildings: [{ shape: i === big && nt ? 'B1T' : 'B1', footprint: fp, details }] }
+  })
+}
+
 const REAR = new Set<BlockStyle>(['perimeter', 'terrace', 'shophouse', 'rows'])
 const REAR_SHAPES = ['A1', 'A2', 'A3', 'A20']
 /** inset by d and simplified at 1 m (the offset leaves slivers and doubled vertices), or null when the inset is gone or point-reflected */
@@ -301,6 +357,7 @@ export function layoutPiece(piece: Pt[], sides: Side[], fabric: BlockStyle, ctx:
       const w = side(f.w), d = side(f.d), x = 2 * r.int(0, Math.floor((f.w - w) / 2)), y = 2 * r.int(0, Math.floor((f.d - d) / 2))
       return whole(piece, fabric, ctx, [{ shape: 'A19', ...fitShape('A19', sub(f, x, y, w, d), ctx.rng.shapes) }], ctx.zone === 'residential' ? 'interior' : 'margin')
     }
+    case 'blockfill': return blockfill(piece, chord, ctx)
     case 'bigbox': return bigbox(piece, chord, fabric, ctx)
     case 'sheds': return whole(piece, fabric, ctx, sheds(piece, chord, fabric, ctx))
     case 'garage': {

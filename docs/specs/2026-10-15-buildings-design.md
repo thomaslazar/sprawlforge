@@ -235,6 +235,7 @@ Rarity weights: common 1, uncommon 0.35, rare 0.08.
 export const GENERATOR_VERSION = 10
 export type BlockStyle = 'perimeter' | 'terrace' | 'shophouse' | 'rows' | 'zeilen' | 'detached' | 'villas'
   | 'tower-park' | 'podium' | 'bigbox' | 'sheds' | 'plaza' | 'garage' | 'strip' | 'megablock' | 'compound'
+  | 'blockfill' // user review: dense cores as one built mass split by party walls ('B1', 'B1T' with towers)
 export type LotKind = 'building' | 'parking' | 'plaza' | 'yard' | 'green' | 'pool'
 export interface Lot { id: string; blockId: string; poly: Pt[]; kind: LotKind; buildingIds: string[] } // id 'LOT00001'
 // Building gains: shape: string ('A1'..'A23' | 'E1'..'E6' | 'hive' | 'F1'..'F23'), lotId: string, details?: Pt[][]

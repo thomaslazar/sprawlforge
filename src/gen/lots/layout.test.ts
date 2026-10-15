@@ -11,7 +11,7 @@ import type { SheetZone } from './shapes'
 const piece = rectPoly(0, 0, 160, 120)
 const sides = sidesOf(piece, piece.map(() => 7.5))
 const ctx = (seed: number, zone: SheetZone): BlockCtx => ({ zone, density: densityClass(0.5), rng: { lots: mulberry32(seed), shapes: mulberry32(seed + 1000), composites: mulberry32(seed + 2000) } })
-const FABRICS = ['perimeter', 'terrace', 'shophouse', 'rows', 'zeilen', 'detached', 'villas', 'tower-park', 'podium', 'bigbox', 'sheds', 'plaza', 'garage', 'strip'] as const
+const FABRICS = ['perimeter', 'terrace', 'shophouse', 'rows', 'zeilen', 'detached', 'villas', 'tower-park', 'podium', 'bigbox', 'sheds', 'plaza', 'garage', 'strip', 'blockfill'] as const
 const gapBox = (a: Pt[], b: Pt[]) => { const p = boxOf(a), q = boxOf(b); return Math.hypot(Math.max(0, p.x0 - q.x1, q.x0 - p.x1), Math.max(0, p.y0 - q.y1, q.y0 - p.y1)) }
 
 describe('layoutPiece', () => {
@@ -67,6 +67,25 @@ describe('layoutPiece', () => {
       if (f !== 'perimeter') continue
       const sparse = layoutPiece(piece, sides, f, { ...ctx(s, 'residential'), density: 'sparse' }).flatMap((l) => l.buildings)
       expect(sparse.every((b) => fromSides(ringCentroid(b.footprint)) < 30), `sparse seed ${s}`).toBe(true)
+    }
+  })
+  it('blockfill: unequal masses fill the piece, lightwells inside them (user review)', () => {
+    const P = (...a: number[][]): Pt[] => a.map(([x, y]) => ({ x, y }))
+    const odd = P([0, 0], [150, 10], [170, 90], [60, 130], [-10, 70])
+    for (const pc of [rectPoly(0, 0, 150, 110), odd]) for (let s = 0; s < 10; s++) {
+      const out = layoutPiece(pc, sidesOf(pc, pc.map(() => 7.5)), 'blockfill', { ...ctx(s, 'corp'), density: 'packed' })
+      const bs = out.flatMap((l) => l.buildings)
+      expect(bs.length, `seed ${s}`).toBeGreaterThanOrEqual(2)
+      expect(bs.reduce((t, b) => t + ringArea(b.footprint), 0) / ringArea(pc), `seed ${s}`).toBeGreaterThanOrEqual(0.85)
+      expect(pairOverlapMax(bs.map((b) => b.footprint))).toBeLessThanOrEqual(0.5)
+      const widths = bs.map((b) => Math.round(ringArea(b.footprint)))
+      expect(new Set(widths).size, `seed ${s}`).toBe(widths.length) // unequal masses
+      for (const b of bs) {
+        expect(['B1', 'B1T']).toContain(b.shape)
+        for (const d of b.details) { expect(insideRing(d, b.footprint, 0.05)).toBe(true); for (const p of d) expect(distToRing(p, b.footprint)).toBeGreaterThanOrEqual(4 - 0.05) }
+        if (b.shape === 'B1' && ringArea(b.footprint) > 900) expect(b.details.length, `seed ${s}`).toBeGreaterThanOrEqual(0)
+      }
+      for (const l of out) for (const b of l.buildings) expect(insideRing(b.footprint, l.poly, 0.05)).toBe(true)
     }
   })
   it('continuous fronts touch', () => {

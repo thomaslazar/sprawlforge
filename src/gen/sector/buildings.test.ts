@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { pointInRings, ringArea, ringCentroid, simplifyPolyline, type Pt } from '../geometry'
 import { hashSeed } from '../rng'
 import { resolveTags } from '../../app/tags'
-import { FABRIC_WEIGHTS, densityClass, sheetZone } from '../lots/fabrics'
+import { FABRIC_WEIGHTS, densityClass, fabricRow, sheetZone } from '../lots/fabrics'
 import { widthOk } from '../lots/fitbox'
 import { insideRing, interiorAngles, minNonArcEdge, overlapPairs, pairOverlapMax } from '../lots/fixtures'
 import { SETBACK, buildable, edgeSetbacks, type SetbackCtx } from '../lots/setback'
@@ -31,7 +31,7 @@ const SEEDS: Array<[string, SectorParams]> = [['S42', S42], ['S782', S782], ['S4
 const NONRECT: Record<number, number> = { 42: 0, 782008753: 0, 426750495: 0, 2268324149: 0 } // measured 0 on all four seeds
 
 // building pairs excused as their blocks overlap (ROADMAP "Overlapping block faces")
-const FACE_LAP: Record<number, number> = { 42: 1, 782008753: 192, 426750495: 0, 2268324149: 289 } // measured after the user review (145 / 192 after the defect wave: the hive and the rear rings now fill the overlapping faces)
+const FACE_LAP: Record<number, number> = { 42: 1, 782008753: 257, 426750495: 0, 2268324149: 289 } // measured after the user review (145 / 192 after the defect wave: the hive, rear rings and block fill now fill the overlapping faces)
 // buildings with a vertex nearer a road centreline than setback - 0.5 m (within the 2 m R1 simplification budget)
 const SIMPLIFIED_NEAR: Record<number, number> = { 42: 1539, 782008753: 4861, 426750495: 769, 2268324149: 1760 } // measured after the user review (1099 / 3745 / 596 / 1130 before: more continuous fronts and wider strip lots)
 
@@ -209,7 +209,7 @@ describe('buildings phase A', () => {
         const cc = ringCentroid(bl.footprint)
         const dc = densityClass(Math.max(0, Math.min(1, 0.6 * params.density + 0.6 * nb(cc.x / 500, cc.y / 500) - 0.1)))
         const sz = sheetZone(d.zone, dc)
-        const key = sz === 'residential' || sz === 'mixed' ? `${sz} ${dc === 'sparse' ? 'sparse' : sz === 'mixed' ? 'dense' : dc}` : sz
+        const key = fabricRow(sz, dc)
         const row = rows.get(key) ?? { n: 0, by: new Map() }
         row.n++
         row.by.set(bl.style, (row.by.get(bl.style) ?? 0) + 1)
