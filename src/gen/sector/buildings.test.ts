@@ -31,9 +31,9 @@ const SEEDS: Array<[string, SectorParams]> = [['S42', S42], ['S782', S782], ['S4
 const NONRECT: Record<number, number> = { 42: 0, 782008753: 0, 426750495: 0, 2268324149: 0 } // measured 0 on all four seeds
 
 // building pairs excused as their blocks overlap (ROADMAP "Overlapping block faces")
-const FACE_LAP: Record<number, number> = { 42: 1, 782008753: 140, 426750495: 0, 2268324149: 184 } // measured after the user review (variation round; S42 1226 to 1228 after the open-grounds ruling)
+const FACE_LAP: Record<number, number> = { 42: 1, 782008753: 149, 426750495: 0, 2268324149: 184 } // measured after the user review (variation round; S782 140 to 149 after the plaza/strip fix round re-rolls)
 // buildings with a vertex nearer a road centreline than setback - 0.5 m (within the 2 m R1 simplification budget)
-const SIMPLIFIED_NEAR: Record<number, number> = { 42: 1228, 782008753: 3818, 426750495: 621, 2268324149: 1266 } // measured after the user review (variation round; S42 1226 to 1228 after the open-grounds ruling)
+const SIMPLIFIED_NEAR: Record<number, number> = { 42: 1235, 782008753: 3814, 426750495: 620, 2268324149: 1266 } // measured after the user review (variation round; plaza/strip fix round: S42 1228 to 1235, S782 3818 to 3814, S426 621 to 620)
 
 const cache = new Map<number, SectorModel>()
 const gen = (p: SectorParams): SectorModel => {
@@ -173,6 +173,11 @@ describe('buildings phase A', () => {
     const ls = m.buildings.filter((b) => strips.has(b.blockId)).map((b) => longSide(b.footprint)).sort((p, q) => p - q)
     expect(ls.length).toBeGreaterThan(20)
     expect(ls[Math.floor(ls.length / 2)]).toBeGreaterThanOrEqual(28)
+  }, 300000)
+
+  it.each([['S42', S42], ['S782', S782]] as const)('%s strip, sheds and bigbox blocks of 3000 m2 or more are never empty', (_, p) => {
+    const m = gen(p), built = new Set(m.buildings.map((b) => b.blockId))
+    none('empty strip/sheds/bigbox blocks', m.blocks.filter((b) => ['strip', 'sheds', 'bigbox'].includes(b.style) && Math.abs(ringArea(b.footprint)) >= 3000 && !built.has(b.id)).map((b) => `${b.id} ${b.style}`))
   }, 300000)
 
   describe('road strips', () => {

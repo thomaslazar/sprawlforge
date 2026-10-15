@@ -50,6 +50,11 @@ describe('stripLots', () => {
   it('a block narrower than the strip depth', () => {
     expect(run(rectPoly(0, 0, 100, 12), 6).filter((l) => !l.filler).length).toBeLessThanOrEqual(1)
   })
+  it('a wide-frontage sliver thinner than D is cut along its front, not one slab', () => {
+    const lots = run(rectPoly(0, 0, 300, 11), 4, { depth: 20, width: [15, 60], wide: true, gap: [3, 3], sides: () => [0] }).filter((l) => !l.filler)
+    expect(lots.length).toBeGreaterThanOrEqual(4)
+    for (const l of lots) { const b = boxOf(l.poly); expect(b.x1 - b.x0).toBeLessThanOrEqual(75 + 1e-6); expect(b.y1 - b.y0).toBeLessThanOrEqual(11 + 1e-6) }
+  })
   it('gaps become filler lots', () => {
     const lots = run(rectPoly(0, 0, 100, 60), 7, { ...P, gap: [3, 5] })
     expect(lots.filter((l) => l.filler).length).toBeGreaterThan(1)

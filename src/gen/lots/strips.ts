@@ -57,13 +57,16 @@ function depthAt(r: Pt[]): number {
 
 /** R5-R9, R12: strips of depth D behind the sides, corner lots, merge, interior filler. Pieces are counter-clockwise; `holes` edges become outward-facing sides. */
 export function stripLots(piece: Pt[], sides: Side[], p: StripParams, rng: Rng, holes: Pt[][] = []): StripLot[] {
-  const D = p.depth
+  let D = p.depth
   const holeSides = holes.map((h) => sidesOf(ringArea(h) > 0 ? [...h].reverse() : h))
   const all = [...sides, ...holeSides.flat()]
   const chosen = new Set(p.sides ? p.sides(all) : all.map((_, i) => i))
   const chordLen = (s: Side) => dist(s.chord[0], s.chord[1])
-  // ponytail: a piece thinner than D (probed from its longest edge only) gets one whole lot, no strips; in-between widths are left to the clipper
-  if (!holes.length && depthAt(piece) < D) {
+  // ponytail: a piece thinner than D (probed from its longest edge only) gets one whole lot, no strips (wide ones under 8 m only); in-between widths are left to the clipper
+  const thin = holes.length ? Infinity : depthAt(piece)
+  // wide (highway strip) frontages: a sliver 8 m deep or more is cut along its front at its own depth, not built as one long slab
+  if (p.wide && thin < D && thin >= 8) D = thin
+  if (thin < D) {
     const side = all.reduce((b, s, i) => (chordLen(s) > chordLen(all[b]) ? i : b), 0)
     const chord = all[side].chord
     return [{ poly: piece, chord, side, ...(holds(fitBox(piece, chord), 6, 8) ? {} : { filler: true }) }]

@@ -193,9 +193,15 @@ export function fillLots(
         // R39: a ground-side block gets a built front; a piece around a plaza hole needs a fabric that builds every side (terrace keeps two)
         if (home && rim && !strip && !forceStyle && (WHOLE.has(fabric) || fabric === 'terrace')) fabric = 'perimeter'
         if (p.holes.length && (!STRIP_PARAMS[fabric] || fabric === 'terrace')) fabric = 'perimeter'
-        const out = p.holes.length
+        let out = p.holes.length
           ? stripLots(p.poly, sides, STRIP_PARAMS[fabric]!(ctx.rng.lots), ctx.rng.lots, p.holes).map((l) => buildLot(l, fabric, ctx))
           : layoutPiece(p.poly, sides, fabric, ctx)
+        // a strip block never comes out empty: the strip layout, then lots on its longest side whatever its setback (no vacancy draw)
+        const built = () => out.some((l) => l.buildings.length)
+        if (strip && !p.holes.length && !built()) {
+          if (fabric !== 'strip') { fabric = 'strip'; out = layoutPiece(p.poly, sides, fabric, ctx) }
+          if (!built()) out = stripLots(p.poly, sides, { ...STRIP_PARAMS.strip!(ctx.rng.lots), sides: () => [sides.findIndex((s) => s.chord === longest)] }, ctx.rng.lots).map((l) => buildLot(l, 'strip', ctx))
+        }
         if (k === 0 && style !== 'plaza') style = fabric
         emit(block, district, fabric, ctx, out)
       })
