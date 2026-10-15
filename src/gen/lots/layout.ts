@@ -68,9 +68,9 @@ function building(allowed: string[], fit: FitBox, mode: 'continuous' | 'detached
   let box = id ? (mode === 'whole' ? fit : sizeShape(id, fit, mode, rng.shapes)) : null
   let shape = id
   if (!id || !box) {
-    // strip: highway slivers run 9-12 m deep; keep up to 10 m of their depth and build down to 8 m
+    // strip: highway slivers run 9-12 m deep; keep up to 10 m of their depth and build down to 8 m, and no narrower than 8 m
     const w = Math.floor(0.85 * fit.w), d = fabric === 'strip' ? Math.min(Math.floor(fit.d), Math.max(10, Math.floor(0.85 * fit.d))) : Math.floor(0.85 * fit.d)
-    shape = 'A1'; box = w >= 6 && d >= (fabric === 'strip' ? 8 : 10) ? { ...fit, w, d } : null
+    shape = 'A1'; box = w >= (fabric === 'strip' ? 8 : 6) && d >= (fabric === 'strip' ? 8 : 10) ? { ...fit, w, d } : null
   }
   const comp = rng.composites.chance(compositeChance(fabric, zone)) ? makeComposite(fit, zone, density, CONTINUOUS.has(fabric), rng.composites) : null
   return comp ?? (box && shape ? { shape, ...fitShape(shape, box, rng.shapes) } : null)

@@ -3,7 +3,7 @@ import { boxOf, ringArea, ringCentroid, type Pt } from '../geometry'
 import { mulberry32 } from '../rng'
 import { fitBox } from './fitbox'
 import { distToRing, insideRing, pairOverlapMax, rectPoly } from './fixtures'
-import { VACANT, layoutPiece, lotKind, type BlockCtx } from './layout'
+import { VACANT, buildLot, layoutPiece, lotKind, type BlockCtx } from './layout'
 import { sidesOf } from './setback'
 import { densityClass } from './fabrics'
 import type { DensityClass, SheetZone } from './shapes'
@@ -177,6 +177,13 @@ describe('layoutPiece', () => {
       const pc = rectPoly(0, 0, w, d), bs = layoutPiece(pc, sidesOf(pc, pc.map(() => 7.5)), 'plaza', ctx(s, 'corp')).flatMap((l) => l.buildings)
       expect(bs.length, `${w}x${d} seed ${s}`).toBe(1)
       const x = boxOf(bs[0].footprint); expect(x.x1 - x.x0).toBeLessThanOrEqual(w - 4 + 1e-6); expect(x.y1 - x.y0).toBeLessThanOrEqual(d - 4 + 1e-6)
+    }
+  })
+  it('strip: the A1 fallback builds nothing under 8 m wide', () => {
+    // a 9 m deep sliver fits no shape: the fallback keeps 9 m of depth and 0.85 of the width (7 m off a 9 m front, 6 m off 8 m)
+    for (const w of [8, 9, 10]) for (let s = 0; s < 40; s++) {
+      const lot = rectPoly(0, 0, w, 9), out = buildLot({ poly: lot, chord: [lot[0], lot[1]], side: 0 }, 'strip', ctx(s, 'industrial'))
+      for (const b of out.buildings) { const x = boxOf(b.footprint); expect(Math.min(x.x1 - x.x0, x.y1 - x.y0), `${w} m seed ${s} ${b.shape}`).toBeGreaterThanOrEqual(8 - 1e-6) }
     }
   })
   it('bigbox and sheds halls stay within 120 m a side on a 300 x 100 m piece', () => {
