@@ -182,23 +182,40 @@ export function stripLots(piece: Pt[], sides: Side[], p: StripParams, rng: Rng, 
 
   // R9: what the lots leave of the piece, one filler per leftover polygon
   let rest = difference(pieceGeom, ...laid.map((l) => [ring(l.poly)] as Geom))
-  // same clipper2-js collinear miss as in trim: a leftover larger than piece minus lots is wrong (0.2 % of the piece allowed for lots that overlap a little)
-  if (area(rest) > Math.abs(ringArea(piece)) * 1.002 - holes.reduce((t, h) => t + Math.abs(ringArea(h)), 0) - laid.reduce((t, l) => t + Math.abs(ringArea(l.poly)), 0) + 1) rest = difference(pieceGeom, ...laid.map((l) => [ring(shrunk(l.poly))] as Geom))
-  const push = (ringPts: [number, number][]) => {
-    const r = unring(ringPts)
-    if (Math.abs(ringArea(r)) >= 1) out.push({ poly: ringArea(r) < 0 ? r.reverse() : r, chord: longest(r), side: -1, filler: true })
-  }
+  // same clipper2-js collinear miss as in trim: a leftover larger than piece - holes - lots + the lots' measured overlap with each other and with the holes (+ 5 m2) is wrong
+  let lap = 0
+  for (let i = 0; i < laid.length; i++) for (let j = i + 1; j < laid.length; j++) if (overlaps(laid[i].box, laid[j].box)) lap += area(intersection([ring(laid[i].poly)], [ring(laid[j].poly)]))
+  for (const l of laid) for (const h of holes) if (overlaps(l.box, boxOf(h))) lap += area(intersection([ring(l.poly)], [ring(h)]))
+  const want = Math.abs(ringArea(piece)) - holes.reduce((t, h) => t + Math.abs(ringArea(h)), 0) - laid.reduce((t, l) => t + Math.abs(ringArea(l.poly)), 0) + lap
   // a ring-shaped leftover (holes) is cut by the extended sides of the hole box, in the frame of the longest piece edge, into simple pieces
   const [fa, fb] = longest(piece), fu = unit(fa, fb), fn = left(fu)
   const toF = ([x, y]: [number, number]) => ({ x: (x - fa.x) * fu.x + (y - fa.y) * fu.y, y: (x - fa.x) * fn.x + (y - fa.y) * fn.y })
   const fromF = (x: number, y: number): [number, number] => [fa.x + fu.x * x + fn.x * y, fa.y + fu.y * x + fn.y * y]
   const B = 1e5
-  for (const pg of rest) {
-    if (pg.length < 2) { push(pg[0]); continue }
-    const hp = pg.slice(1).flat().map(toF), x0 = Math.min(...hp.map((q) => q.x)), x1 = Math.max(...hp.map((q) => q.x)), y0 = Math.min(...hp.map((q) => q.y)), y1 = Math.max(...hp.map((q) => q.y))
-    const rect = (a: number, b: number, c: number, d: number): Geom => [[fromF(a, c), fromF(b, c), fromF(b, d), fromF(a, d)]]
-    for (const r of [rect(-B, x0, -B, B), rect(x1, B, -B, B), rect(x0, x1, -B, y0), rect(x0, x1, y1, B)]) for (const part of intersection([pg], r)) push(part[0])
+  const fillers = (g: MultiPolygon): StripLot[] => {
+    const res: StripLot[] = []
+    const push = (ringPts: [number, number][]) => {
+      const r = unring(ringPts)
+      if (Math.abs(ringArea(r)) >= 1) res.push({ poly: ringArea(r) < 0 ? r.reverse() : r, chord: longest(r), side: -1, filler: true })
+    }
+    for (const pg of g) {
+      if (pg.length < 2) { push(pg[0]); continue }
+      const hp = pg.slice(1).flat().map(toF), x0 = Math.min(...hp.map((q) => q.x)), x1 = Math.max(...hp.map((q) => q.x)), y0 = Math.min(...hp.map((q) => q.y)), y1 = Math.max(...hp.map((q) => q.y))
+      const rect = (a: number, b: number, c: number, d: number): Geom => [[fromF(a, c), fromF(b, c), fromF(b, d), fromF(a, d)]]
+      for (const r of [rect(-B, x0, -B, B), rect(x1, B, -B, B), rect(x0, x1, -B, y0), rect(x0, x1, y1, B)]) for (const part of intersection([pg], r)) push(part[0])
+    }
+    return res
   }
+  const lotsArea = (l: StripLot[]) => l.reduce((t, x) => t + Math.abs(ringArea(x.poly)), 0)
+  let res = fillers(rest)
+  // a leftover reaching outside the piece is the same miss, whatever its area
+  const spill = (g: MultiPolygon) => area(difference(g, pieceGeom))
+  if (area(rest) > want + 5 || spill(rest) > 0.5) {
+    // the retry stands only when it is nearer the expected area (or no longer spills) and (with holes) its cut pieces add up to its own area (the clipper can also lose the cuts)
+    const alt = difference(pieceGeom, ...laid.map((l) => [ring(shrunk(l.poly))] as Geom))
+    if (Math.abs(area(alt) - want) < Math.abs(area(rest) - want) || spill(rest) > 0.5 && spill(alt) <= 0.5) { const r2 = fillers(alt); if (!holes.length || lotsArea(r2) >= 0.98 * area(alt)) res = r2 }
+  }
+  out.push(...res)
   return out
 }
 

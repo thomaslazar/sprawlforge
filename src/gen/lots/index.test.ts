@@ -51,7 +51,7 @@ describe('fillLots', () => {
     const sts = [street(100, 100, 400, 100), street(400, 100, 400, 400), street(400, 400, 100, 400), street(100, 400, 100, 100)]
     const out = fillLots([resDistrict], [block], base, dryTerrain, sts, { arcologies: [arc], megablocks: [] })
     expect(out.buildings.length).toBeGreaterThan(0)
-    for (const b of out.buildings) for (const p of b.footprint) expect(distToRing(p, plaza) >= 5.5 || !pointInRings(p, [plaza]) ? 1 : 0).toBe(1)
+    for (const b of out.buildings) for (const p of b.footprint) expect(distToRing(p, plaza)).toBeGreaterThanOrEqual(5.5)
     for (const b of out.buildings) for (const p of b.footprint) expect(pointInRings(p, [plaza])).toBe(false)
     const polys = out.lots.map((l) => l.poly)
     const over = (r: Pt[]) => intersection([r.map((p) => [p.x, p.y] as [number, number])], [plaza.map((p) => [p.x, p.y] as [number, number])]).reduce((t, pg) => t + Math.abs(ringArea(pg[0].slice(0, -1).map(([x, y]) => ({ x, y })))), 0)
@@ -62,7 +62,21 @@ describe('fillLots', () => {
     const area = (g: [number, number][][][]) => g.reduce((t, pg) => t + Math.abs(ringArea(pg[0].slice(0, -1).map(([x, y]) => ({ x, y })))), 0)
     const ring = (r: Pt[]) => r.map((p) => [p.x, p.y] as [number, number])
     const free = difference([ring(buildable(block.footprint, [7.5, 7.5, 7.5, 7.5])[0])], [ring(plaza)])
-    const covered = intersection(free, ...[]) && area(polys.flatMap((p) => intersection(free, [ring(p)])))
+    const covered = area(polys.flatMap((p) => intersection(free, [ring(p)])))
     expect(covered / area(free)).toBeGreaterThanOrEqual(0.9)
+  })
+  it('a tight piece takes a smaller plaza clearance and the lots still face it', () => {
+    const block: Block = { ...bigBlock('B0', 100, 100), poly: rectPoly(100, 100, 140, 140), footprint: rectPoly(100, 100, 140, 140) }
+    const plaza = circleRing({ x: 170, y: 170 }, 30, 8)
+    const arc = { id: 'A01', name: '', design: 'rings', angle: 0, center: { x: 170, y: 170 }, radius: 20, footprint: [], plaza, ringRoadId: '', access: 'boulevard', detail: { count: 0, twist: 0 } } as never
+    const sts = [street(100, 100, 240, 100), street(240, 100, 240, 240), street(240, 240, 100, 240), street(100, 240, 100, 100)]
+    const out = fillLots([resDistrict], [block], base, dryTerrain, sts, { arcologies: [arc], megablocks: [] })
+    expect(out.buildings.length).toBeGreaterThan(0)
+    // the plaza's octagon reaches 30 m out; the 125 m buildable leaves room for only 2 or 4 m of clearance, never 6
+    const clear = Math.min(...out.buildings.flatMap((b) => b.footprint.map((p) => distToRing(p, plaza))))
+    expect(clear).toBeGreaterThanOrEqual(2 - 0.5)
+    expect(clear).toBeLessThan(6 + 0.5 + 20)
+    expect(out.lots.some((l) => l.poly.some((p) => distToRing(p, plaza) < 7))).toBe(true)
+    for (const b of out.buildings) for (const p of b.footprint) expect(pointInRings(p, [plaza])).toBe(false)
   })
 })
