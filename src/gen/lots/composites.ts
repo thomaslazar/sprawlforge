@@ -52,7 +52,13 @@ function pickBody(rng: Rng, ids: string[], wlo: number, whi: number, dlo: number
 }
 
 interface Plan { body: Body; bx: number; by: number; outer: Pt[][]; inner: Pt[][] }
-type Planner = (rng: Rng, gw: number, gd: number, continuous: boolean) => Plan | null
+type Planner = (rng: Rng, gw: number, gd: number, cont: { w: number; d: number } | null) => Plan | null
+
+/** R24 continuous: the body spans the exact fit width (party walls touch), depth 0.9-1.0 of the fit, aspect not enforced */
+function contBody(rng: Rng, ids: string[], c: { w: number; d: number }): Body | null {
+  const id = ids[0], s = SHAPES[id], d = Math.min(c.d, Math.max(Math.round(c.d * (0.9 + 0.1 * rng.next())), Math.min(s.minD, c.d)))
+  return c.w >= s.minW && d >= s.minD ? { id, w: c.w, d } : null
+}
 
 const PLAN: Record<Id, Planner> = {
   E1(rng, gw, gd) { // corner tower, about half outside, at a front corner
@@ -70,8 +76,8 @@ const PLAN: Record<Id, Planner> = {
     const x0 = rng.chance(0.5) ? 0 : body.w - aw
     return { body, bx: 0, by, outer: [rect(x0, by - oy, x0 + aw, by + 2)], inner: [] }
   },
-  E3(rng, gw, gd, continuous) { // two roof towers, one per half of the body
-    const body = pickBody(rng, COMPOSITES.E3.bodies, continuous ? gw : 30, gw, 10, gd)
+  E3(rng, gw, gd, cont) { // two roof towers, one per half of the body
+    const body = cont ? contBody(rng, COMPOSITES.E3.bodies, cont) : pickBody(rng, COMPOSITES.E3.bodies, 30, gw, 10, gd)
     if (!body) return null
     const smax = Math.floor(Math.min(14, body.d - 4, body.w / 2 - 4) / 2) * 2
     const s1 = even(rng, 6, smax), s2 = even(rng, 6, smax)
@@ -91,12 +97,12 @@ const PLAN: Record<Id, Planner> = {
     const arc = Array.from({ length: 13 }, (_, i) => { const a = Math.PI * (1 - i / 12); return P(cx + R * Math.cos(a), by - R * Math.sin(a)) })
     return { body, bx: 0, by, outer: [[...arc, P(cx + R, by + 2), P(cx - R, by + 2)]], inner: [] }
   },
-  E5(rng, gw, gd) { // stepped squares 0.8 and 0.6 of the side, in one corner with a 2 m margin
-    const body = pickBody(rng, COMPOSITES.E5.bodies, 10, gw, 10, gd)
+  E5(rng, gw, gd, cont) { // stepped squares 0.8 and 0.6 of the side, in one corner with a 2 m margin
+    const body = cont ? contBody(rng, COMPOSITES.E5.bodies, cont) : pickBody(rng, COMPOSITES.E5.bodies, 10, gw, 10, gd)
     if (!body) return null
     const side = Math.min(body.w, body.d), s1 = Math.min(2 * Math.round(0.4 * side), Math.floor((side - 2) / 2) * 2), s2 = Math.max(6, Math.min(2 * Math.round(0.3 * side), s1 - 2))
     if (s2 > s1 - 2) return null
-    const c = rng.int(0, 3), sq = (s: number) => { const x = c & 1 ? body.w - 2 - s : 2, y = c & 2 ? body.d - 2 - s : 2; return rect(x, y, x + s, y + s) }
+    const c = rng.int(0, 3), sq = (s: number) => { const x = c & 1 ? Math.floor((body.w - 2 - s) / 2) * 2 : 2, y = c & 2 ? Math.floor((body.d - 2 - s) / 2) * 2 : 2; return rect(x, y, x + s, y + s) }
     return { body, bx: 0, by: 0, outer: [], inner: [sq(s1), sq(s2)] }
   },
   E6(rng, gw, gd) { // head building flush on a short end of a hall lying along the box width
@@ -121,7 +127,7 @@ export function makeComposite(fit: FitBox, zone: SheetZone, density: DensityClas
   while (open.length) {
     const id = rng.weighted(open.map((k) => [k, COMPOSITES[k].rarity] as const))
     open.splice(open.indexOf(id), 1)
-    const plan = PLAN[id](rng, gw, gd, continuous)
+    const plan = PLAN[id](rng, gw, gd, continuous ? { w: fit.w, d: fit.d } : null)
     if (!plan) continue
     const { body, bx, by } = plan
     const b = fitShape(body.id, { origin: P(bx, by), angle: 0, w: body.w, d: body.d }, rng)

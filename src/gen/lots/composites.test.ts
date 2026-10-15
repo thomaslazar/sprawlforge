@@ -23,6 +23,16 @@ describe('composites', () => {
   it('continuous fabrics take only E3 and E5', () => {
     for (let s = 0; s < 300; s++) { const c = makeComposite(box60x40, 'corp', 'packed', true, mulberry32(s)); if (c) expect(['E3', 'E5']).toContain(c.shape) }
   })
+  it('continuous composites span the full fit width', () => {
+    const fit = { origin: { x: 3, y: 2 }, angle: 0.7, w: 37.6, d: 21.4 }, [a, b] = boxRing(fit)
+    let made = 0
+    for (let s = 0; s < 300; s++) {
+      const c = makeComposite(fit, 'corp', 'packed', true, mulberry32(s)); if (!c) continue
+      made++
+      for (const q of [a, b]) expect(Math.min(...c.footprint.map((p) => Math.hypot(p.x - q.x, p.y - q.y)))).toBeLessThan(0.05)
+    }
+    expect(made).toBeGreaterThan(50)
+  })
   it('outside parts union rectilinearly; inside parts are details', () => {
     const e6 = firstWith('E6'), e3 = firstWith('E3')
     expect(interiorAngles(e6.footprint).every((a) => near90or270(a))).toBe(true); expect(e3.details).toHaveLength(2)
