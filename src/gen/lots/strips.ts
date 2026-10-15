@@ -193,3 +193,6 @@ export function stripLots(piece: Pt[], sides: Side[], p: StripParams, rng: Rng, 
   }
   return out
 }
+
+/** the lot rings of a piece's own sides (shared with phase B; the lot pass itself uses stripLots for the chords) */
+export const frontageLots = (piece: Pt[], p: StripParams, rng: Rng): Pt[][] => stripLots(piece, sidesOf(piece), p, rng).map((l) => l.poly)

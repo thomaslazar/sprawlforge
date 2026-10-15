@@ -111,3 +111,6 @@ export const firstWith = (id: keyof typeof COMPOSITES) => {
   }
   throw new Error(`no ${id} composite within 1000 seeds`)
 }
+
+/** every vertex of inner lies inside outer or within tol of its edge */
+export const insideRing = (inner: Pt[], outer: Pt[], tol: number): boolean => inner.every((p) => insideOrOn(p, outer, tol))

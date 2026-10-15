@@ -140,6 +140,9 @@ export interface District {
 export type BlockStyle = 'rows' | 'courtyard' | 'plaza' | 'sheds' | 'megablock' | 'strip' | 'compound'
   | 'perimeter' | 'terrace' | 'shophouse' | 'zeilen' | 'detached' | 'villas' | 'tower-park' | 'podium' | 'bigbox' | 'garage'
 
+export type LotKind = 'building' | 'parking' | 'plaza' | 'yard' | 'green' | 'pool'
+export interface Lot { id: string; blockId: string; poly: Pt[]; kind: LotKind; buildingIds: string[] }
+
 export interface Block {
   id: string
   districtId: string
