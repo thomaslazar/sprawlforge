@@ -1,4 +1,14 @@
-import { Clipper, Clipper64, ClipType, FillRule, type Path64, type Paths64 } from 'clipper2-js'
+import { Clipper, Clipper64, ClipType, FillRule, InternalClipper, Point64, type Path64, type Paths64 } from 'clipper2-js'
+
+// clipper2-js 1.2.4 ports C#'s struct Point64 as a shared object: getIntersectPoint returns an edge END
+// (the input vertex's own point) when t <= 0 or >= 1, and addNewIntersectNode then moves that point in
+// place, so an input vertex walks onto another's scanline. A ring whose vertices all end up on one y sends
+// getCurrYMaximaVertex round it forever (the seed-42 default-params hang). Hand out a copy instead.
+const getIntersectPoint = InternalClipper.getIntersectPoint
+InternalClipper.getIntersectPoint = (a, b, c, d) => {
+  const r = getIntersectPoint(a, b, c, d)
+  return r.ip === a || r.ip === b ? { ip: new Point64(r.ip.x, r.ip.y), success: r.success } : r
+}
 
 export type Ring = [number, number][]
 export type Polygon = Ring[]
