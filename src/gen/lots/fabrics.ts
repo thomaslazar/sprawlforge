@@ -42,13 +42,13 @@ export function fabricCell(seed: number, p: Pt): number {
   return hashSeed(seed, 'fabric', Math.floor(p.x / 500), Math.floor(p.y / 500)) / 2 ** 32
 }
 
-/** R20-R21. Draw order: next() picks cell-vs-fresh (>= 0.4 = cell), a second next() only when fresh. */
+/** R20-R21. Draw order: next() picks cell-vs-fresh (< 0.6 = cell), a second next() only when fresh. */
 export function chooseFabric(zone: SheetZone, dc: DensityClass, cell: number, rng: Rng, fits: (f: BlockStyle) => boolean): BlockStyle {
   const key = zone === 'residential' || zone === 'mixed'
     ? `${zone} ${dc === 'sparse' ? 'sparse' : zone === 'mixed' ? 'dense' : dc}`
     : zone
   const row = FABRIC_WEIGHTS[key]
-  const u = (rng.next() >= 0.4 ? cell : rng.next()) * 100
+  const u = (rng.next() < 0.6 ? cell : rng.next()) * 100
   let acc = 0
   let drawn = row.length - 1
   for (let i = 0; i < row.length; i++) { acc += row[i][1]; if (u < acc) { drawn = i; break } }
