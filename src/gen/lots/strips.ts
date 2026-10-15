@@ -153,7 +153,7 @@ export function stripLots(piece: Pt[], sides: Side[], p: StripParams, rng: Rng, 
       let poly: Pt[] | null = raw
       const rb = boxOf(raw)
       const hit = prior.filter((l) => overlaps(l.box, rb)).map((l) => l.poly)
-      if (front.length > 2 || hit.length || s <= a0 + EPS || e >= a1 - EPS) poly = trim(raw, hit) // plain quad unless it spans a vertex, touches a trim or ends a side (a slanted neighbour edge cuts it)
+      if (front.length > 2 || hit.length || holes.some((h) => overlaps(boxOf(h), rb)) || s <= a0 + EPS || e >= a1 - EPS) poly = trim(raw, hit) // plain quad unless it spans a vertex, touches a trim or a hole's box, or ends a side (a slanted neighbour edge cuts it)
       if (!poly) return null
       const chord: [Pt, Pt] = [front[0], front[front.length - 1]]
       return { s, e, gap, poly, chord, ok: gap ? false : holds(fitBox(poly, chord), 6, 8) }
@@ -182,8 +182,8 @@ export function stripLots(piece: Pt[], sides: Side[], p: StripParams, rng: Rng, 
 
   // R9: what the lots leave of the piece, one filler per leftover polygon
   let rest = difference(pieceGeom, ...laid.map((l) => [ring(l.poly)] as Geom))
-  // same clipper2-js collinear miss as in trim: a leftover larger than piece minus lots (overlaps < 1 m2) is wrong
-  if (area(rest) > Math.abs(ringArea(piece)) - holes.reduce((t, h) => t + Math.abs(ringArea(h)), 0) - laid.reduce((t, l) => t + Math.abs(ringArea(l.poly)), 0) + 1) rest = difference(pieceGeom, ...laid.map((l) => [ring(shrunk(l.poly))] as Geom))
+  // same clipper2-js collinear miss as in trim: a leftover larger than piece minus lots is wrong (0.2 % of the piece allowed for lots that overlap a little)
+  if (area(rest) > Math.abs(ringArea(piece)) * 1.002 - holes.reduce((t, h) => t + Math.abs(ringArea(h)), 0) - laid.reduce((t, l) => t + Math.abs(ringArea(l.poly)), 0) + 1) rest = difference(pieceGeom, ...laid.map((l) => [ring(shrunk(l.poly))] as Geom))
   const push = (ringPts: [number, number][]) => {
     const r = unring(ringPts)
     if (Math.abs(ringArea(r)) >= 1) out.push({ poly: ringArea(r) < 0 ? r.reverse() : r, chord: longest(r), side: -1, filler: true })

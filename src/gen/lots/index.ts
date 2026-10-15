@@ -1,4 +1,4 @@
-import { difference, intersection, type Geom } from '../clip'
+import { difference, type Geom } from '../clip'
 import { pointInRings, ringArea, ringCentroid, simplifyPolyline, type Pt } from '../geometry'
 import { hashSeed, mulberry32 } from '../rng'
 import { inWater } from '../sector/bridges'
@@ -9,9 +9,10 @@ import { fractalNoise2D } from '../terrain/noise'
 import type { Arcology, Block, BlockStyle, Compound, District, Lot, Building, Megablock, Road, SectorParams, Terrain } from '../types'
 import { MIN_FIT, chooseFabric, densityClass, fabricCell, sheetZone } from './fabrics'
 import { fitBox, widthOk } from './fitbox'
-import { compoundLots, megablockLots } from './landmarks'
-import { fillerOf, layoutPiece, type BlockCtx, type LotOut } from './layout'
-import { buildable, edgeSetbacks, pieceSetbacks, sidesOf, type SetbackCtx } from './setback'
+import { compoundLots, megablockLots, outset } from './landmarks'
+import { buildLot, fillerOf, layoutPiece, type BlockCtx, type LotOut } from './layout'
+import { STRIP_PARAMS, stripLots } from './strips'
+import { SETBACK, buildable, edgeSetbacks, pieceSetbacks, sidesOf, type SetbackCtx } from './setback'
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
 const toRing = (p: Pt[]) => p.map((q) => [q.x, q.y] as [number, number])
@@ -29,23 +30,12 @@ function simplified(fp: Pt[]): Pt[] {
   return s.length >= 3 ? s : f
 }
 
-/** R22: the face minus its non-ring arcology plazas, hole-free (a ring with a hole is split by a line through the hole along the face's long axis) */
+/** R22: the face minus the plazas that touch or cross its boundary (a plaza wholly inside stays a hole of the piece, see `holesIn`); outer rings only */
 function cutPlazas(fp: Pt[], plazas: Pt[][]): Pt[][] {
-  const hit = plazas.filter((pl) => pl.some((p) => pointInRings(p, [fp])) || fp.some((p) => pointInRings(p, [pl])) || pointInRings(ringCentroid(pl), [fp]))
-  if (!hit.length) return [fp]
-  const out: Pt[][] = []
-  for (const pg of difference([toRing(fp)], ...hit.map((pl) => [toRing(pl)] as Geom))) {
-    if (pg.length === 1) { out.push(fromRing(pg[0])); continue }
-    const o = fromRing(pg[0]), c = ringCentroid(fromRing(pg[1]))
-    const e = o.reduce((b, p, i) => (dist(p, o[(i + 1) % o.length]) > dist(b[0], b[1]) ? [p, o[(i + 1) % o.length]] : b), [o[0], o[1]])
-    const l = dist(e[0], e[1]) || 1, u = { x: (e[1].x - e[0].x) / l, y: (e[1].y - e[0].y) / l }, n = { x: -u.y, y: u.x }, B = 1e5
-    for (const s of [1, -1]) {
-      const half = [[-B, 0], [B, 0], [B, s * B], [-B, s * B]].map(([a, b]) => ({ x: c.x + u.x * a + n.x * b, y: c.y + u.y * a + n.y * b }))
-      for (const q of intersection([toRing(o)], [toRing(half)])) out.push(fromRing(q[0]))
-    }
-  }
-  return out
+  const hit = plazas.filter((pl) => !inside(pl, fp) && (pl.some((p) => pointInRings(p, [fp])) || fp.some((p) => pointInRings(p, [pl])) || pointInRings(ringCentroid(pl), [fp])))
+  return hit.length ? difference([toRing(fp)], ...hit.map((pl) => [toRing(pl)] as Geom)).map((pg) => fromRing(pg[0])) : [fp]
 }
+const inside = (inner: Pt[], outer: Pt[]) => inner.every((p) => pointInRings(p, [outer]))
 
 /** per-vertex turn of a ring is <= 15.5 degrees (an arc point) */
 function smoothAt(ring: Pt[], i: number): boolean {
@@ -139,10 +129,20 @@ export function fillLots(
     // R22 cut, R1 simplify, R2 setbacks, R3 buildable
     const home = landmarks?.arcologies.find((a) => a.access !== 'ring' && pointInRings(a.center, [block.footprint]))
     const sctx: SetbackCtx = { index, highway, terrain, sizeM, grounds: plazas }
-    const pieces: Array<{ poly: Pt[]; setbacks: number[] }> = []
+    const pieces: Array<{ poly: Pt[]; setbacks: number[]; holes: Pt[][] }> = []
     for (const cut of cutPlazas(ccw(simplified(block.footprint)), plazas)) {
       const fp = ccw(cut), sb = edgeSetbacks(fp, sctx)
-      for (const poly of buildable(fp, sb)) pieces.push({ poly, setbacks: pieceSetbacks(poly, fp, sb) })
+      for (const poly0 of buildable(fp, sb)) {
+        // a plaza clear of the piece edge stays a hole the lots face, 6 m (the ground setback) out, less where the piece is too tight; one reaching the edge is cut out
+        const covered = (pl: Pt[], d: number) => difference([toRing(ccw(outset(ccw(pl), d + 1.5)))], [toRing(poly0)]).length === 0 // 1.5 m to spare: the clipper misreads a hole that nearly touches its piece
+        const grounds = plazas.map((pl) => ccw(outset(ccw(pl), [SETBACK.ground, 4, 2, 0].find((d) => covered(pl, d)) ?? SETBACK.ground)))
+          .filter((h) => h.some((p) => pointInRings(p, [poly0])) || poly0.some((p) => pointInRings(p, [h])))
+        const polys = grounds.length ? difference([toRing(poly0)], ...grounds.map((h) => [toRing(h)] as Geom)) : [[[...toRing(poly0), toRing(poly0)[0]]]]
+        for (const pg of polys) {
+          const poly = ccw(fromRing(pg[0]))
+          if (ringArea(poly) >= 200) pieces.push({ poly, setbacks: pieceSetbacks(poly, fp, sb), holes: pg.slice(1).map((r) => ccw(fromRing(r))) })
+        }
+      }
     }
     const strip = !mega && isStripBlock(block, highway, frontage)
     let style: BlockStyle = 'rows'
@@ -151,7 +151,7 @@ export function fillLots(
     if (mega) {
       // the piece holding the centre, else the biggest; a block with no piece at all lots its footprint
       const fallback = ccw(block.footprint)
-      const all = pieces.length ? pieces : [{ poly: fallback, setbacks: [] as number[] }]
+      const all = pieces.length ? pieces : [{ poly: fallback, setbacks: [] as number[], holes: [] as Pt[][] }]
       const area = (p: { poly: Pt[] }) => Math.abs(ringArea(p.poly))
       const main = all.find((p) => pointInRings(mega.center, [p.poly])) ?? all.reduce((b, p) => (area(p) > area(b) ? p : b))
       const radius = mega.core.length ? mega.core.reduce((t, p) => t + dist(p, mega.center), 0) / mega.core.length : 100
@@ -171,8 +171,12 @@ export function fillLots(
         let fabric: BlockStyle = strip ? 'strip' : forceStyle ?? chooseFabric(ctx.zone, dc, fabricCell(params.seed, cc), fabricRng, fits)
         // R39: a ground-side block gets a built front
         if (home && !strip && !forceStyle && WHOLE.has(fabric)) fabric = 'perimeter'
+        if (p.holes.length && !STRIP_PARAMS[fabric]) fabric = 'perimeter'
+        const out = p.holes.length
+          ? stripLots(p.poly, sides, STRIP_PARAMS[fabric]!(ctx.rng.lots), ctx.rng.lots, p.holes).map((l) => buildLot(l, fabric, ctx))
+          : layoutPiece(p.poly, sides, fabric, ctx)
         if (k === 0) style = fabric
-        emit(block, district, fabric, ctx, layoutPiece(p.poly, sides, fabric, ctx))
+        emit(block, district, fabric, ctx, out)
       })
     }
     outBlocks.push({ ...block, style, alleys, flags: { ...block.flags, ...(mega ? { megablock: mega.id } : {}), ...(home ? { arcology: home.id } : {}) } })

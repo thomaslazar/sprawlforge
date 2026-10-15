@@ -35,7 +35,7 @@ function coreAt(c: Pt, r: number, theta: number, aspect: number, rect: boolean):
 }
 
 /** the core pushed out by d (octagon and rectangle only: every edge moves d along its normal) */
-const outset = (core: Pt[], d: number): Pt[] => {
+export const outset = (core: Pt[], d: number): Pt[] => {
   const n = core.length
   return core.map((p, i) => {
     const a = core[(i + n - 1) % n], b = core[(i + 1) % n], u = { x: (p.x - a.x) / dist(a, p), y: (p.y - a.y) / dist(a, p) }, v = { x: (b.x - p.x) / dist(p, b), y: (b.y - p.y) / dist(p, b) }

@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { Pt } from '../geometry'
 import type { Block, BlockStyle, District, Road, SectorParams } from '../types'
-import { dryTerrain, rectPoly } from './fixtures'
+import { buildable } from './setback'
+import { dryTerrain, pairOverlapMax, rectPoly, circleRing, distToRing } from './fixtures'
+import { ringArea, pointInRings } from '../geometry'
+import { difference, intersection } from '../clip'
 import { fillLots } from './index'
 
 const base: SectorParams = {
@@ -40,5 +43,26 @@ describe('fillLots', () => {
   it('is deterministic', () => {
     const run = () => fillLots([resDistrict], [bigBlock('D04')], base, dryTerrain, [street(0, 500, 900, 500)])
     expect(run()).toEqual(run())
+  })
+  it('a non-ring arcology plaza is a hole the lots face', () => {
+    const block: Block = { ...bigBlock('B0', 100, 100), poly: rectPoly(100, 100, 300, 300), footprint: rectPoly(100, 100, 300, 300) }
+    const plaza = circleRing({ x: 250, y: 250 }, 30, 8)
+    const arc = { id: 'A01', name: '', design: 'rings', angle: 0, center: { x: 250, y: 250 }, radius: 20, footprint: [], plaza, ringRoadId: '', access: 'boulevard', detail: { count: 0, twist: 0 } } as never
+    const sts = [street(100, 100, 400, 100), street(400, 100, 400, 400), street(400, 400, 100, 400), street(100, 400, 100, 100)]
+    const out = fillLots([resDistrict], [block], base, dryTerrain, sts, { arcologies: [arc], megablocks: [] })
+    expect(out.buildings.length).toBeGreaterThan(0)
+    for (const b of out.buildings) for (const p of b.footprint) expect(distToRing(p, plaza) >= 5.5 || !pointInRings(p, [plaza]) ? 1 : 0).toBe(1)
+    for (const b of out.buildings) for (const p of b.footprint) expect(pointInRings(p, [plaza])).toBe(false)
+    const polys = out.lots.map((l) => l.poly)
+    const over = (r: Pt[]) => intersection([r.map((p) => [p.x, p.y] as [number, number])], [plaza.map((p) => [p.x, p.y] as [number, number])]).reduce((t, pg) => t + Math.abs(ringArea(pg[0].slice(0, -1).map(([x, y]) => ({ x, y })))), 0)
+    for (const r of [...polys, ...out.buildings.map((b) => b.footprint)]) expect(over(r)).toBeLessThanOrEqual(0.5)
+    expect(out.lots.some((l) => l.poly.some((p) => distToRing(p, plaza) < 7))).toBe(true)
+    for (const [x, y] of [[250, 110], [250, 390], [110, 250], [390, 250]]) expect(out.lots.some((l) => pointInRings({ x, y }, [l.poly]) || l.poly.some((p) => Math.hypot(p.x - x, p.y - y) < 40))).toBe(true)
+    expect(pairOverlapMax(polys)).toBeLessThanOrEqual(0.5)
+    const area = (g: [number, number][][][]) => g.reduce((t, pg) => t + Math.abs(ringArea(pg[0].slice(0, -1).map(([x, y]) => ({ x, y })))), 0)
+    const ring = (r: Pt[]) => r.map((p) => [p.x, p.y] as [number, number])
+    const free = difference([ring(buildable(block.footprint, [7.5, 7.5, 7.5, 7.5])[0])], [ring(plaza)])
+    const covered = intersection(free, ...[]) && area(polys.flatMap((p) => intersection(free, [ring(p)])))
+    expect(covered / area(free)).toBeGreaterThanOrEqual(0.9)
   })
 })
