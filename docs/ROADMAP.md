@@ -65,6 +65,17 @@ core (clipping, insetting, filling non-rectangular shapes).
    bisection replaced by field streamlines + planar-graph faces; original
    spec `docs/specs/2026-08-06-organic-streets-design.md`).
 
+## Water rework from the ground up (user, 2026-10-15)
+
+The current water (terrain v2 coast + river + lakes) is boring and looks the
+same every time: one curved coast, one meandering band, round lakes. Redo
+it as its own round with a brainstorm first — estuaries and deltas, bays
+and headlands, braided or forked rivers, canals and docks basins, islands
+that are not blobs, wetlands, reservoirs/dams, varied shore types (cliff,
+beach, quay, mudflat), and seed-to-seed variety as the acceptance test.
+Everything downstream (bridges, highway water exits, shore zoning, piers,
+lots on the waterline) reattaches to the new waterline model.
+
 ## Deferred (explicit v1 excludes — do not forget)
 
 - **Structural editing** — moving walls/roads/buildings by hand. v1 is
