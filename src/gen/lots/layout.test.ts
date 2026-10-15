@@ -56,6 +56,19 @@ describe('layoutPiece', () => {
       expect(out[0].kind).toBe(rest)
     }
   })
+  it('dense frontage blocks lot their interior in rear rings; sparse ones keep one ring (user review)', () => {
+    const fromSides = (c: Pt) => Math.min(c.x, c.y, 160 - c.x, 120 - c.y)
+    for (const f of ['perimeter', 'terrace', 'shophouse', 'rows'] as const) for (let s = 0; s < 5; s++) {
+      const dense = layoutPiece(piece, sides, f, ctx(s, 'residential'))
+      const bs = dense.flatMap((l) => l.buildings)
+      expect(bs.some((b) => fromSides(ringCentroid(b.footprint)) >= 30), `${f} seed ${s}`).toBe(true)
+      expect(pairOverlapMax(dense.map((l) => l.poly)), `${f} seed ${s}`).toBeLessThanOrEqual(0.5)
+      for (const l of dense) { expect(insideRing(l.poly, piece, 0.05)).toBe(true); for (const b of l.buildings) expect(insideRing(b.footprint, l.poly, 0.05)).toBe(true) }
+      if (f !== 'perimeter') continue
+      const sparse = layoutPiece(piece, sides, f, { ...ctx(s, 'residential'), density: 'sparse' }).flatMap((l) => l.buildings)
+      expect(sparse.every((b) => fromSides(ringCentroid(b.footprint)) < 30), `sparse seed ${s}`).toBe(true)
+    }
+  })
   it('continuous fronts touch', () => {
     for (let s = 0; s < 10; s++) {
       const fronts = layoutPiece(piece, sides, 'perimeter', ctx(s, 'residential')).flatMap((l) => l.buildings).map((b) => boxOf(b.footprint)).filter((b) => Math.abs(b.y0) < 1e-6).sort((a, b) => a.x0 - b.x0)
@@ -65,7 +78,7 @@ describe('layoutPiece', () => {
   })
   it('terrace builds on two antiparallel sides and leaves green', () => {
     for (let s = 0; s < 10; s++) {
-      const out = layoutPiece(piece, sides, 'terrace', ctx(s, 'residential'))
+      const out = layoutPiece(piece, sides, 'terrace', { ...ctx(s, 'residential'), density: 'sparse' }) // dense ones lot their interior (rear rings)
       const bs = out.flatMap((l) => l.buildings)
       expect(bs.length).toBeGreaterThan(0)
       for (const b of bs) { const x = boxOf(b.footprint); expect(x.y1 <= 12.01 || x.y0 >= 107.99, `seed ${s}`).toBe(true) }

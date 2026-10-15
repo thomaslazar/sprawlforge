@@ -81,7 +81,7 @@ export function fillLots(
       const p = parts[i]
       if (!p.dirty || p.buildings.length) continue
       const pb = boxOf(p.poly)
-      const hit = parts.filter((q, j) => j !== i && (!q.dirty || j < i) && boxesMeet(boxOf(q.poly), pb)).map((q) => [toRing(q.poly)] as Geom)
+      const hit = parts.filter((q, j) => j !== i && (!q.dirty || j < i || q.buildings.length > 0) && boxesMeet(boxOf(q.poly), pb)).map((q) => [toRing(q.poly)] as Geom)
       if (!hit.length) continue
       const rest = difference([toRing(p.poly)], ...hit)
       const fixed = rest.some((pg) => pg.length > 1) ? [] : rest.flatMap((pg) => simpleParts(ccw(fromRing(pg[0]))))

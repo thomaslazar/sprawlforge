@@ -1,17 +1,20 @@
 import { difference, intersection, type Geom } from '../clip'
-import { pointInRings, ringArea, ringCentroid, type Pt } from '../geometry'
+import { pointInRings, ringArea, ringCentroid, simplifyPolyline, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import type { BlockStyle, LotKind } from '../types'
 import { compositeChance, makeComposite } from './composites'
 import { boxRing, fitBox, holds, type FitBox } from './fitbox'
 import type { Side } from './setback'
 import { chooseShape, cornerShape, fitShape, sizeShape, type DensityClass, type SheetZone } from './shapes'
-import { STRIP_PARAMS, stripLots, type StripLot } from './strips'
+import { STRIP_PARAMS, simpleParts, stripLots, type StripLot } from './strips'
+import { sidesOf } from './setback'
+import { insetOrLargest } from '../streets/lots'
 
 /*
  * Draw order (rng.lots / rng.shapes / rng.composites), fixed per fabric:
  * - strip fabrics: lots: depth, gap (once per block), then stripLots' own draws, then per lot (villas only) the pool
- *   chance and up to 12 pool tries. Per lot, shapes: chooseShape, sizeShape, (fitShape mirror); composites: chance, then
+ *   chance and up to 12 pool tries; in dense/packed perimeter, terrace, shophouse and rows the interior leftover then draws per
+ *   rear ring gap, depth and stripLots' draws (rearRings), its lots' shapes as `building`. Per lot, shapes: chooseShape, sizeShape, (fitShape mirror); composites: chance, then
  *   makeComposite's draws. A composite wins over the drawn shape.
  * - zeilen: lots: twist sign, twist size, first offset, one spacing per further line; shapes: fitShape per slab.
  * - tower-park / plaza: lots: n, then per try size (w, d), x, y; shapes: chooseShape on a successful placement, fitShape.
@@ -95,12 +98,12 @@ function widen(fit: FitBox, lot: StripLot): FitBox {
 }
 
 /** per-lot step: corner rule (R26) -> shape -> size -> fit -> composite chance -> filler kind; also used for megablock rings */
-export function buildLot(lot: StripLot, fabric: BlockStyle, ctx: BlockCtx): LotOut {
+export function buildLot(lot: StripLot, fabric: BlockStyle, ctx: BlockCtx, shapes?: string[]): LotOut {
   const filler = (w: Parameters<typeof fillerOf>[2]) => fillerOf(fabric, ctx.zone, w)
   const none = (w: Parameters<typeof fillerOf>[2]): LotOut => ({ poly: lot.poly, kind: filler(w), buildings: [] })
   if (lot.filler) return none(lot.side < 0 ? 'interior' : 'gap')
   let fit = fitBox(lot.poly, lot.chord)
-  if (CONTINUOUS.has(fabric)) fit = widen(fit, lot)
+  if (CONTINUOUS.has(fabric) && !shapes) fit = widen(fit, lot)
   let b: Bld | null = null
   let direct = false
   const quad = lot.corner !== undefined ? cornerQuad(lot) : null
@@ -110,7 +113,7 @@ export function buildLot(lot: StripLot, fabric: BlockStyle, ctx: BlockCtx): LotO
     else if (c.id && c.id !== 'A4') { b = { shape: c.id, footprint: c.footprint!, details: [] }; direct = true }
     else if (!c.id && !c.fit) return none('corner')
   }
-  if (!direct) b = building(ALLOWED[fabric] ?? ['A1'], fit, MODE[fabric] ?? 'gapped', fabric, ctx)
+  if (!direct) b = shapes ? building(shapes, fit, 'gapped', fabric, ctx) : building(ALLOWED[fabric] ?? ['A1'], fit, MODE[fabric] ?? 'gapped', fabric, ctx)
   if (!b) return none('interior')
   return { poly: lot.poly, kind: lotKind(lot.poly, [b.footprint], filler('interior')), buildings: [b] }
 }
@@ -231,12 +234,52 @@ function sheds(piece: Pt[], chord: [Pt, Pt], fabric: BlockStyle, ctx: BlockCtx):
   return out
 }
 
+const REAR = new Set<BlockStyle>(['perimeter', 'terrace', 'shophouse', 'rows'])
+const REAR_SHAPES = ['A1', 'A2', 'A3', 'A20']
+/** inset by d and simplified at 1 m (the offset leaves slivers and doubled vertices), or null when the inset is gone or point-reflected */
+const insetBy = (r: Pt[], d: number): Pt[] | null => {
+  const q = insetOrLargest(r, d)
+  if (!q || q.length < 3 || ringArea(ccw(q)) <= 1 || !q.every((p) => pointInRings(p, [r]))) return null
+  const c = ccw(q), s = simplifyPolyline([...c, c[0]], 1).slice(0, -1)
+  const parts = simpleParts(s.length >= 3 ? s : c)
+  return parts.length ? parts.reduce((b, p) => (ringArea(p) > ringArea(b) ? p : b)) : null
+}
+/**
+ * User review (D7): in dense and packed blocks the interior left by the frontage strips is lotted again behind a 4 m lane,
+ * ring after ring (depth 10-16, frontage 8-20, gap 2-4, A1/A2/A3/A20 sized 'gapped'), while the leftover holds a
+ * 20 x 20 m box and 600 m2; the last leftover is yard (green in residential). The lane stays unlotted.
+ */
+function rearRings(leftover: Pt[], fabric: BlockStyle, ctx: BlockCtx): LotOut[] {
+  const yard = (poly: Pt[]): LotOut => ({ poly, kind: ctx.zone === 'residential' ? 'green' : 'yard', buildings: [] })
+  const out: LotOut[] = []
+  let rest = [ccw(leftover)]
+  for (let ring = 0; ring < 6 && rest.length; ring++) { // ponytail: 6 rings bound the loop; a 600 m2 floor ends it long before
+    const next: Pt[][] = []
+    for (const poly of rest) {
+      const inner = Math.abs(ringArea(poly)) >= 600 && holds(fitBox(poly, longestEdge(poly)), 20, 20) ? insetBy(poly, 4) : null
+      if (!inner) { out.push(yard(poly)); continue }
+      const r = ctx.rng.lots, g = r.int(2, 4)
+      for (const l of stripLots(inner, sidesOf(inner), { depth: r.int(10, 16), width: [8, 20], gap: [g, g] }, r)) {
+        if (l.filler && l.side < 0) { next.push(l.poly); continue }
+        out.push(buildLot({ ...l, corner: undefined }, fabric, ctx, REAR_SHAPES))
+      }
+    }
+    rest = next
+  }
+  for (const poly of rest) out.push(yard(poly))
+  return out
+}
+const longestEdge = (r: Pt[]): [Pt, Pt] => r.map((p, i): [Pt, Pt] => [p, r[(i + 1) % r.length]]).reduce((b, e) => (dist(...e) > dist(...b) ? e : b))
+
 /** §3.4 / R13-R15, R23-R30 for every fabric but megablock and compound */
 export function layoutPiece(piece: Pt[], sides: Side[], fabric: BlockStyle, ctx: BlockCtx): LotOut[] {
   const strips = STRIP_PARAMS[fabric]
   if (strips) {
     const rng = ctx.rng.lots
-    return stripLots(piece, sides, strips(rng), rng).flatMap((l) => {
+    const lots = stripLots(piece, sides, strips(rng), rng)
+    const rear = REAR.has(fabric) && ctx.density !== 'sparse'
+    return lots.flatMap((l) => {
+      if (rear && l.filler && l.side < 0) return rearRings(l.poly, fabric, ctx)
       const o = buildLot(l, fabric, ctx)
       return [o, ...(fabric === 'villas' ? pool(o, l.chord, rng) : [])]
     })
