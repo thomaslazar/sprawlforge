@@ -27,5 +27,9 @@ describe('fitbox', () => {
     const b = fitBox([...rectPoly(0, 0, 20, 30)].reverse(), [{ x: 0, y: 0 }, { x: 20, y: 0 }])
     expect(b.w * b.d).toBeGreaterThanOrEqual(19 * 30)
   })
+  it('fit box of a straight-ended lot at a non-integer offset keeps its exact width', () => {
+    const b = fitBox(rectPoly(0.37, 0.61, 23.4, 17.3), [{ x: 0.37, y: 0.61 }, { x: 23.77, y: 0.61 }])
+    expect(Math.abs(b.w - 23.4)).toBeLessThan(0.01); expect(Math.abs(b.d - 17.3)).toBeLessThan(0.01)
+  })
   it('widthOk', () => { expect(widthOk(rectPoly(0, 0, 6, 20), 6)).toBe(true); expect(widthOk(rectPoly(0, 0, 5, 20), 6)).toBe(false) })
 })

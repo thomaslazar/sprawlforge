@@ -22,6 +22,28 @@ describe('layoutPiece', () => {
       expect(pairOverlapMax(out.filter((l) => l.kind !== 'pool').map((l) => l.poly)), f).toBeLessThanOrEqual(0.5)
     }
   })
+  it('non-rectangular pieces keep buildings inside their lots and lots inside the piece', () => {
+    const P = (...a: number[][]): Pt[] => a.map(([x, y]) => ({ x, y }))
+    const trap = P([0, 0], [160, 0], [160 - 120 / Math.tan((70 * Math.PI) / 180), 120], [0, 120]) // one 70 degree end
+    const reflex = P([0, 0], [160, 0], [160, 60], [90, 60], [90, 120], [0, 120])
+    for (const pc of [trap, reflex]) for (const f of FABRICS) for (let s = 0; s < 5; s++) {
+      const out = layoutPiece(pc, sidesOf(pc, pc.map(() => 7.5)), f, ctx(s, f === 'bigbox' || f === 'sheds' ? 'industrial' : 'residential'))
+      for (const l of out) { expect(insideRing(l.poly, pc, 0.05), f).toBe(true); for (const b of l.buildings) expect(insideRing(b.footprint, l.poly, 0.05), `${f} ${b.shape}`).toBe(true) }
+    }
+  })
+  it('perimeter 90 degree corners carry an A4', () => {
+    for (let s = 0; s < 5; s++) {
+      const a4 = layoutPiece(piece, sides, 'perimeter', ctx(s, 'residential')).flatMap((l) => l.buildings).filter((b) => b.shape === 'A4')
+      expect(a4.length, `seed ${s}`).toBe(4)
+    }
+  })
+  it('podium keeps a 40 m floor on a small piece', () => {
+    const small = rectPoly(0, 0, 42, 42)
+    for (let s = 0; s < 5; s++) {
+      const b = layoutPiece(small, sidesOf(small, small.map(() => 7.5)), 'podium', ctx(s, 'corp'))[0].buildings[0], x = boxOf(b.footprint)
+      expect(x.x1 - x.x0, `seed ${s}`).toBeGreaterThanOrEqual(40 - 1e-6); expect(x.y1 - x.y0).toBeGreaterThanOrEqual(40 - 1e-6)
+    }
+  })
   it('continuous fronts touch', () => {
     for (let s = 0; s < 10; s++) {
       const fronts = layoutPiece(piece, sides, 'perimeter', ctx(s, 'residential')).flatMap((l) => l.buildings).map((b) => boxOf(b.footprint)).filter((b) => Math.abs(b.y0) < 1e-6).sort((a, b) => a.x0 - b.x0)

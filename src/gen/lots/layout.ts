@@ -6,7 +6,7 @@ import { compositeChance, makeComposite } from './composites'
 import { boxRing, fitBox, holds, type FitBox } from './fitbox'
 import type { Side } from './setback'
 import { chooseShape, cornerShape, fitShape, sizeShape, type DensityClass, type SheetZone } from './shapes'
-import { stripLots, type StripLot, type StripParams } from './strips'
+import { STRIP_PARAMS, stripLots, type StripLot } from './strips'
 
 /*
  * Draw order (rng.lots / rng.shapes / rng.composites), fixed per fabric:
@@ -41,32 +41,6 @@ const HALLS = ['A1', 'A2', 'A3', 'A18']
 const ALLOWED: Partial<Record<BlockStyle, string[]>> = {
   perimeter: ['A1', 'A2', 'A3', 'A20'], terrace: ['A1'], shophouse: ['A1', 'A3'], detached: ['A1', 'A2', 'A4', 'A20'],
   rows: ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8', 'A10', 'A17', 'A20', 'A23'], villas: ['A1', 'A2', 'A4', 'A5', 'A6', 'A7', 'A10', 'A20'], strip: ['A1', 'A20'],
-}
-
-/** R13: the longest side and the longest side within 25 degrees of antiparallel to it with chord >= 40 m */
-const terraceSides = (s: Side[]): number[] => {
-  const len = (x: Side) => dist(x.chord[0], x.chord[1])
-  const dir = (x: Side) => Math.atan2(x.chord[1].y - x.chord[0].y, x.chord[1].x - x.chord[0].x)
-  const i = s.reduce((b, x, k) => (len(x) > len(s[b]) ? k : b), 0)
-  let j = -1
-  s.forEach((x, k) => {
-    const a = Math.abs(dir(x) - dir(s[i]) - Math.PI) % (2 * Math.PI)
-    if (k !== i && len(x) >= 40 && Math.min(a, 2 * Math.PI - a) <= (25 * Math.PI) / 180 && (j < 0 || len(x) > len(s[j]))) j = k
-  })
-  return j < 0 ? [i] : [i, j]
-}
-
-const r1 = (lo: number, hi: number) => (r: Rng) => r.int(lo, hi)
-const gap = (lo: number, hi: number) => (r: Rng): [number, number] => { const g = r.int(lo, hi); return [g, g] }
-/** §3.4: depth and gap drawn per block, frontage kept as the table's range */
-export const STRIP_PARAMS: Partial<Record<BlockStyle, (rng: Rng) => StripParams>> = {
-  perimeter: (r) => ({ depth: r1(14, 20)(r), width: [10, 18], gap: null }),
-  terrace: (r) => ({ depth: r1(10, 12)(r), width: [6, 8], gap: null, sides: terraceSides }),
-  shophouse: (r) => ({ depth: r1(20, 30)(r), width: [6, 8], gap: null }),
-  rows: (r) => { const d = r1(15, 30)(r); return { depth: d, width: [12, 30], gap: gap(2, 6)(r) } },
-  detached: (r) => ({ depth: r1(25, 35)(r), width: [20, 30], gap: null }),
-  villas: (r) => ({ depth: r1(30, 40)(r), width: [25, 45], gap: null }),
-  strip: (r) => { const d = r1(10, 14)(r); return { depth: d, width: [10, 16], gap: gap(2, 4)(r), sides: (s) => s.flatMap((x, i) => (x.setback === 7.5 ? [i] : [])) } },
 }
 
 /** R30 */
@@ -280,7 +254,7 @@ export function layoutPiece(piece: Pt[], sides: Side[], fabric: BlockStyle, ctx:
       return whole(piece, fabric, ctx, scatter(f, r.int(0, 2), () => (hw < 16 || hd < 16 ? null : [r.int(16, hw), r.int(16, hd)]), ['A11', 'A12', 'A14', 'A17', 'A21', 'A22', 'A23'], ctx))
     }
     case 'podium': {
-      const f = fit(), w = Math.floor(0.9 * f.w), d = Math.floor(0.9 * f.d)
+      const f = fit(), floor = (v: number) => Math.min(v, Math.max(40, Math.floor(0.9 * v))), w = floor(f.w), d = floor(f.d) // 40 m floor: A19 needs it
       return whole(piece, fabric, ctx, [{ shape: 'A19', ...fitShape('A19', sub(f, Math.floor((f.w - w) / 2), Math.floor((f.d - d) / 2), w, d), ctx.rng.shapes) }], 'margin')
     }
     case 'bigbox': return bigbox(piece, chord, fabric, ctx)

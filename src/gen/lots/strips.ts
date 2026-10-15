@@ -1,7 +1,8 @@
-import { difference, intersection, type Geom } from '../clip'
-import { boxOf, ringArea, type Box, type Pt } from '../geometry'
+import { difference, intersection, type Geom, type MultiPolygon } from '../clip'
+import { boxOf, ringArea, ringCentroid, type Box, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import { fitBox, holds } from './fitbox'
+import type { BlockStyle } from '../types'
 import { sidesOf, type Side } from './setback'
 
 export interface StripParams { depth: number; width: [number, number]; gap: [number, number] | null; sides?: (s: Side[]) => number[] }
@@ -20,6 +21,8 @@ const miter = (n1: Pt, n2: Pt, k: number): Pt => {
 }
 const ring = (p: Pt[]) => p.map((q) => [q.x, q.y] as [number, number])
 const unring = (r: [number, number][]): Pt[] => r.slice(0, -1).map(([x, y]) => ({ x, y }))
+const area = (g: MultiPolygon): number => g.reduce((t, pg) => t + Math.abs(ringArea(unring(pg[0]))) - pg.slice(1).reduce((h, r) => h + Math.abs(ringArea(unring(r))), 0), 0)
+const shrunk = (p: Pt[]): Pt[] => { const c = ringCentroid(p); return p.map((q) => ({ x: c.x + (q.x - c.x) * 0.9995, y: c.y + (q.y - c.y) * 0.9995 })) }
 const overlaps = (a: Box, b: Box) => a.x0 < b.x1 - 0.01 && b.x0 < a.x1 - 0.01 && a.y0 < b.y1 - 0.01 && b.y0 < a.y1 - 0.01
 const longest = (r: Pt[]): [Pt, Pt] => {
   let best: [Pt, Pt] = [r[0], r[1 % r.length]]
@@ -71,7 +74,10 @@ export function stripLots(piece: Pt[], sides: Side[], p: StripParams, rng: Rng, 
 
   /** the piece-clipped part of poly not covered by `hit`, largest outer ring, counter-clockwise; null when nothing is left */
   const trim = (poly: Pt[], hit: Pt[][]): Pt[] | null => {
+    // clipper2-js misses when an operand edge runs collinear with a piece edge (corner lots, slanted ends): an
+    // intersection larger than its operand is the tell; retry with the operand pulled 0.05 % towards its centroid
     let g = intersection([ring(poly)], pieceGeom)
+    if (area(g) > Math.abs(ringArea(poly)) + 0.01) g = intersection([ring(shrunk(poly))], pieceGeom)
     if (hit.length && g.length) g = difference(g, ...hit.map((h) => [ring(h)] as Geom))
     let best: Pt[] | null = null, ba = 1
     for (const pg of g) { const r = unring(pg[0]), a = Math.abs(ringArea(r)); if (a >= ba) { best = ringArea(r) < 0 ? r.reverse() : r; ba = a } }
@@ -147,7 +153,7 @@ export function stripLots(piece: Pt[], sides: Side[], p: StripParams, rng: Rng, 
       let poly: Pt[] | null = raw
       const rb = boxOf(raw)
       const hit = prior.filter((l) => overlaps(l.box, rb)).map((l) => l.poly)
-      if (front.length > 2 || hit.length) poly = trim(raw, hit) // plain quad unless it spans a vertex or touches a trim
+      if (front.length > 2 || hit.length || s <= a0 + EPS || e >= a1 - EPS) poly = trim(raw, hit) // plain quad unless it spans a vertex, touches a trim or ends a side (a slanted neighbour edge cuts it)
       if (!poly) return null
       const chord: [Pt, Pt] = [front[0], front[front.length - 1]]
       return { s, e, gap, poly, chord, ok: gap ? false : holds(fitBox(poly, chord), 6, 8) }
@@ -175,7 +181,9 @@ export function stripLots(piece: Pt[], sides: Side[], p: StripParams, rng: Rng, 
   }
 
   // R9: what the lots leave of the piece, one filler per leftover polygon
-  const rest = difference(pieceGeom, ...laid.map((l) => [ring(l.poly)] as Geom))
+  let rest = difference(pieceGeom, ...laid.map((l) => [ring(l.poly)] as Geom))
+  // same clipper2-js collinear miss as in trim: a leftover larger than piece minus lots (overlaps < 1 m2) is wrong
+  if (area(rest) > Math.abs(ringArea(piece)) - holes.reduce((t, h) => t + Math.abs(ringArea(h)), 0) - laid.reduce((t, l) => t + Math.abs(ringArea(l.poly)), 0) + 1) rest = difference(pieceGeom, ...laid.map((l) => [ring(shrunk(l.poly))] as Geom))
   const push = (ringPts: [number, number][]) => {
     const r = unring(ringPts)
     if (Math.abs(ringArea(r)) >= 1) out.push({ poly: ringArea(r) < 0 ? r.reverse() : r, chord: longest(r), side: -1, filler: true })
@@ -194,5 +202,31 @@ export function stripLots(piece: Pt[], sides: Side[], p: StripParams, rng: Rng, 
   return out
 }
 
-/** the lot rings of a piece's own sides (shared with phase B; the lot pass itself uses stripLots for the chords) */
-export const frontageLots = (piece: Pt[], p: StripParams, rng: Rng): Pt[][] => stripLots(piece, sidesOf(piece), p, rng).map((l) => l.poly)
+/** R13: the longest side and the longest side within 25 degrees of antiparallel to it with chord >= 40 m */
+const terraceSides = (s: Side[]): number[] => {
+  const len = (x: Side) => dist(x.chord[0], x.chord[1])
+  const dir = (x: Side) => Math.atan2(x.chord[1].y - x.chord[0].y, x.chord[1].x - x.chord[0].x)
+  const i = s.reduce((b, x, k) => (len(x) > len(s[b]) ? k : b), 0)
+  let j = -1
+  s.forEach((x, k) => {
+    const a = Math.abs(dir(x) - dir(s[i]) - Math.PI) % (2 * Math.PI)
+    if (k !== i && len(x) >= 40 && Math.min(a, 2 * Math.PI - a) <= (25 * Math.PI) / 180 && (j < 0 || len(x) > len(s[j]))) j = k
+  })
+  return j < 0 ? [i] : [i, j]
+}
+
+const r1 = (lo: number, hi: number) => (r: Rng) => r.int(lo, hi)
+const gap = (lo: number, hi: number) => (r: Rng): [number, number] => { const g = r.int(lo, hi); return [g, g] }
+/** §3.4: depth and gap drawn per block, frontage kept as the table's range */
+export const STRIP_PARAMS: Partial<Record<BlockStyle, (rng: Rng) => StripParams>> = {
+  perimeter: (r) => ({ depth: r1(14, 20)(r), width: [10, 18], gap: null }),
+  terrace: (r) => ({ depth: r1(10, 12)(r), width: [6, 8], gap: null, sides: terraceSides }),
+  shophouse: (r) => ({ depth: r1(20, 30)(r), width: [6, 8], gap: null }),
+  rows: (r) => { const d = r1(15, 30)(r); return { depth: d, width: [12, 30], gap: gap(2, 6)(r) } },
+  detached: (r) => ({ depth: r1(25, 35)(r), width: [20, 30], gap: null }),
+  villas: (r) => ({ depth: r1(30, 40)(r), width: [25, 45], gap: null }),
+  strip: (r) => { const d = r1(10, 14)(r); return { depth: d, width: [10, 16], gap: gap(2, 4)(r), sides: (s) => s.flatMap((x, i) => (x.setback === 7.5 ? [i] : [])) } },
+}
+
+/** the lot rings of a piece's own sides for a strip fabric (phase B) */
+export const frontageLots = (piece: Pt[], fabric: BlockStyle, rng: Rng): Pt[][] => stripLots(piece, sidesOf(piece), STRIP_PARAMS[fabric]!(rng), rng).map((l) => l.poly)

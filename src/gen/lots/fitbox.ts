@@ -34,25 +34,26 @@ export function fitBox(lot: Pt[], chord: [Pt, Pt]): FitBox {
   /** best box over grid points of `step`, x0 in r0 and x1 in r1 (grid offsets from minX) */
   const search = (step: number, r0: [number, number], r1: [number, number]) => {
     const lo = Math.max(minX, r0[0]), hi = Math.min(maxX, r1[1])
-    const samples: { x: number; g: number; s: [number, number] | null }[] = []
+    const samples: { x: number; g: number; v?: number; s: [number, number] | null }[] = []
     const K = Math.floor((hi - minX) / step + 1e-9)
     for (let k = Math.ceil((lo - minX) / step - 1e-9); k <= K; k++) samples.push({ x: clamp(minX + k * step), g: k, s: null })
     for (const p of q) for (const x of [p.x - EPS, p.x + EPS]) if (x >= lo && x <= hi && x > minX && x < maxX) samples.push({ x, g: -1, s: null })
+    for (const v of new Set([minX, maxX, ...q.map((p) => p.x)])) if (v >= lo - 1e-9 && v <= hi + 1e-9) samples.push({ x: clamp(v), g: -1, v, s: null }) // exact vertex ends: straight-ended lots keep their full width
     samples.sort((a, b) => a.x - b.x)
     for (const s of samples) s.s = section(s.x)
     let best = { area: 0, w: 0, d: 0, x0: 0, front: 0 }
     for (let i = 0; i < samples.length; i++) {
       const a = samples[i]
-      const x0 = minX + a.g * step
-      if (a.g < 0 || x0 < r0[0] - 1e-9 || x0 > r0[1] + 1e-9 || !a.s) continue
+      const x0 = a.v ?? minX + a.g * step
+      if ((a.g < 0 && a.v === undefined) || x0 < r0[0] - 1e-9 || x0 > r0[1] + 1e-9 || !a.s) continue
       let front = -Infinity, back = Infinity
       for (let j = i; j < samples.length; j++) {
         const c = samples[j]
         if (!c.s) break
         front = Math.max(front, c.s[0]); back = Math.min(back, c.s[1])
         if (back <= front) break
-        const x1 = minX + c.g * step
-        if (c.g < 0 || x1 <= x0 || x1 < r1[0] - 1e-9 || x1 > r1[1] + 1e-9) continue
+        const x1 = c.v ?? minX + c.g * step
+        if ((c.g < 0 && c.v === undefined) || x1 <= x0 || x1 < r1[0] - 1e-9 || x1 > r1[1] + 1e-9) continue
         const w = x1 - x0, d = back - front, area = w * d
         if (area > best.area + 1e-9 || (Math.abs(area - best.area) <= 1e-9 && w > best.w)) best = { area, w, d, x0, front }
       }
