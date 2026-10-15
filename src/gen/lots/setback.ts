@@ -112,8 +112,10 @@ export function pieceSetbacks(piece: Pt[], footprint: Pt[], setbacks: number[]):
     const b = piece[(j + 1) % piece.length]
     const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
     const k = f.ring.findIndex((p, k) => {
-      const nk = inward(dirOf(p, f.ring[(k + 1) % f.ring.length]))
-      return Math.abs((m.x - p.x) * nk.x + (m.y - p.y) * nk.y - f.vals[k]) <= 0.05
+      const q = f.ring[(k + 1) % f.ring.length]
+      const dk = dirOf(p, q), nk = inward(dk)
+      const along = (m.x - p.x) * dk.x + (m.y - p.y) * dk.y // coincident offset lines of other edges must not match
+      return Math.abs((m.x - p.x) * nk.x + (m.y - p.y) * nk.y - f.vals[k]) <= 0.05 && along >= -0.05 && along <= Math.hypot(q.x - p.x, q.y - p.y) + 0.05
     })
     return k < 0 ? undefined : f.vals[k]
   })

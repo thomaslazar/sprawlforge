@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { ringArea } from '../geometry'
 import type { Road, Terrain } from '../types'
 import { RoadIndex } from '../streets/trace'
-import { buildable, edgeSetbacks, sidesOf, type SetbackCtx } from './setback'
+import { buildable, edgeSetbacks, pieceSetbacks, sidesOf, type SetbackCtx } from './setback'
 import { circleRing, distToRing, dryTerrain, expectBox, rectPoly } from './fixtures'
 
 const road = (id: string, cls: Road['class'], points: Road['points']): Road => ({ id, class: cls, points, width: 9, name: null })
@@ -41,5 +41,24 @@ describe('setback per side', () => {
   it('sides break at 25° and at a class change', () => {
     const s = sidesOf(rectPoly(0, 0, 100, 60), [7.5, 7.5, 12, 7.5])
     expect(s.map((x) => x.setback)).toEqual([7.5, 7.5, 12, 7.5]); expect(sidesOf(circleRing({ x: 0, y: 0 }, 100, 72))).toHaveLength(1)
+  })
+  const bent = (deg: number, s1: number, s2: number) => {
+    const a = (deg * Math.PI) / 180
+    const p2 = { x: 100 + 100 * Math.cos(a), y: 100 * Math.sin(a) }
+    return sidesOf([{ x: 0, y: 0 }, { x: 100, y: 0 }, p2, { x: p2.x, y: 300 }, { x: 0, y: 300 }], [s1, s2, 7.5, 7.5, 7.5])
+  }
+  it('sides: a class change splits a near-straight chain', () => {
+    const s = bent(10, 7.5, 12)
+    expect(s).toHaveLength(5); expect(s.slice(0, 2).map((x) => x.setback)).toEqual([7.5, 12])
+  })
+  it('sides: 24° bend stays one side, 26° splits', () => {
+    expect(bent(24, 7.5, 7.5)).toHaveLength(4)
+    expect(bent(26, 7.5, 7.5)).toHaveLength(5)
+  })
+  it('pieceSetbacks: coincident offset lines resolve by extent', () => {
+    // y = 7.5 is the offset line of edge 0 (setback 7.5) and of edge 2 (setback 12)
+    const fp = [{ x: 0, y: 0 }, { x: 50, y: 0 }, { x: 50, y: -4.5 }, { x: 100, y: -4.5 }, { x: 100, y: 60 }, { x: 0, y: 60 }]
+    const piece = [{ x: 10, y: 7.5 }, { x: 40, y: 7.5 }, { x: 90, y: 7.5 }, { x: 90, y: 50 }, { x: 10, y: 50 }]
+    expect(pieceSetbacks(piece, fp, [7.5, 7.5, 12, 7.5, 7.5, 7.5]).slice(0, 2)).toEqual([7.5, 12])
   })
 })
