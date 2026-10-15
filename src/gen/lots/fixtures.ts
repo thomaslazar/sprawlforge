@@ -70,6 +70,21 @@ export const pairOverlapMax = (polys: Pt[][]): number => {
   return max
 }
 
+/** index pairs whose intersection exceeds `min` m2, with the area (x-sorted sweep over the boxes) */
+export const overlapPairs = (polys: Pt[][], min: number): Array<[number, number, number]> => {
+  const boxes = polys.map(boxOf), out: Array<[number, number, number]> = []
+  const order = polys.map((_, i) => i).sort((i, j) => boxes[i].x0 - boxes[j].x0)
+  const ring = (p: Pt[]) => p.map((q) => [q.x, q.y] as [number, number])
+  for (let ii = 0; ii < order.length; ii++) for (let jj = ii + 1; jj < order.length; jj++) {
+    const i = order[ii], j = order[jj], a = boxes[i], b = boxes[j]
+    if (b.x0 >= a.x1) break
+    if (a.y0 >= b.y1 || b.y0 >= a.y1) continue
+    const area = intersection([ring(polys[i])], [ring(polys[j])]).reduce((s, poly) => s + Math.abs(ringArea(poly[0].slice(0, -1).map(([x, y]) => ({ x, y })))), 0)
+    if (area > min) out.push([i, j, area])
+  }
+  return out
+}
+
 /** length of a lot's chord */
 export const frontage = (lot: { chord: [Pt, Pt] }): number => Math.hypot(lot.chord[1].x - lot.chord[0].x, lot.chord[1].y - lot.chord[0].y)
 

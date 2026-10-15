@@ -22,7 +22,8 @@ const miter = (n1: Pt, n2: Pt, k: number): Pt => {
 const ring = (p: Pt[]) => p.map((q) => [q.x, q.y] as [number, number])
 const unring = (r: [number, number][]): Pt[] => r.slice(0, -1).map(([x, y]) => ({ x, y }))
 const area = (g: MultiPolygon): number => g.reduce((t, pg) => t + Math.abs(ringArea(unring(pg[0]))) - pg.slice(1).reduce((h, r) => h + Math.abs(ringArea(unring(r))), 0), 0)
-const shrunk = (p: Pt[]): Pt[] => { const c = ringCentroid(p); return p.map((q) => ({ x: c.x + (q.x - c.x) * 0.9995, y: c.y + (q.y - c.y) * 0.9995 })) }
+const scaled = (p: Pt[], f: number): Pt[] => { const c = ringCentroid(p); return p.map((q) => ({ x: c.x + (q.x - c.x) * f, y: c.y + (q.y - c.y) * f })) }
+const shrunk = (p: Pt[]): Pt[] => scaled(p, 0.9995)
 const overlaps = (a: Box, b: Box) => a.x0 < b.x1 - 0.01 && b.x0 < a.x1 - 0.01 && a.y0 < b.y1 - 0.01 && b.y0 < a.y1 - 0.01
 const longest = (r: Pt[]): [Pt, Pt] => {
   let best: [Pt, Pt] = [r[0], r[1 % r.length]]
@@ -80,7 +81,12 @@ export function stripLots(piece: Pt[], sides: Side[], p: StripParams, rng: Rng, 
     // intersection larger than its operand is the tell; retry with the operand pulled 0.05 % towards its centroid
     let g = intersection([ring(poly)], pieceGeom)
     if (area(g) > Math.abs(ringArea(poly)) + 0.01) g = intersection([ring(shrunk(poly))], pieceGeom)
-    if (hit.length && g.length) g = difference(g, ...hit.map((h) => [ring(h)] as Geom))
+    if (hit.length && g.length) {
+      const g0 = g
+      g = difference(g0, ...hit.map((h) => [ring(h)] as Geom))
+      // a lot that touches the operand's edge can come back as a hole of it (S2268 B4605 corner pair): grow the lots 0.05 % so they cross it
+      if (g.some((pg) => pg.length > 1)) g = difference(g0, ...hit.map((h) => [ring(scaled(h, 1.0005))] as Geom))
+    }
     let best: Pt[] | null = null, ba = 1
     for (const pg of g) { const r = unring(pg[0]), a = Math.abs(ringArea(r)); if (a >= ba) { best = ringArea(r) < 0 ? r.reverse() : r; ba = a } }
     return best
@@ -104,7 +110,8 @@ export function stripLots(piece: Pt[], sides: Side[], p: StripParams, rng: Rng, 
       if ((theta * 180) / Math.PI >= CORNER_MAX) return
       const t = D / Math.tan(theta / 2)
       const p1 = atArc(A.slice().reverse(), t), p2 = atArc(B, t), m = miter(left(da), left(db), D)
-      const poly = trim([v, p2, { x: v.x + m.x, y: v.y + m.y }, p1], laid.map((l) => l.poly).filter((l) => overlaps(boxOf(l), boxOf([v, p2, p1]))))
+      const quad = [v, p2, { x: v.x + m.x, y: v.y + m.y }, p1], qb = boxOf(quad)
+      const poly = trim(quad, laid.filter((l) => overlaps(l.box, qb)).map((l) => l.poly)) // the whole quad's box: the inner point reaches past the corner's
       trimE.set(a, t); trimS.set(b, t)
       if (!poly) return
       lay({ poly, chord: dist(p1, v) >= dist(v, p2) ? [p1, v] : [v, p2], side: a, corner: (theta * 180) / Math.PI })

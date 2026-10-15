@@ -82,5 +82,13 @@ describe('stripLots', () => {
       expect(out, `seed ${seed}`).toBeLessThan(0.05)
     }
   })
+  it('two corner lots on a short side do not overlap', () => {
+    // S2268 B4605 (shophouse, D 20): the second corner quad's inner point reached past its corner's box, and the clipper
+    // returned the first corner lot as a hole touching the second's outline
+    const piece = ([[2354.336, 1948.742], [2285.621, 1993.321], [2253.711, 2007.34], [2222.775, 1966.311], [2239.467, 1953.724], [2251.628, 1980.427], [2252.145, 1981.674], [2254.255, 1983.784], [2257.011, 1984.926], [2259.995, 1984.926], [2262.751, 1983.784], [2264.861, 1981.674], [2266.003, 1978.918], [2266.003, 1975.934], [2264.861, 1973.177], [2264.767, 1973.083], [2251.737, 1944.472], [2315.096, 1896.7]] as const).map(([x, y]) => ({ x, y }))
+    const sb = piece.map((_, i) => (i < 2 || i === piece.length - 1 ? 12 : 7.5))
+    const lots = stripLots(piece, sidesOf(piece, sb), { depth: 20, width: [6, 8], gap: null }, mulberry32(1))
+    expect(lots.filter((l) => l.corner !== undefined).length).toBeGreaterThanOrEqual(5)
+    expect(pairOverlapMax(lots.map((l) => l.poly))).toBeLessThanOrEqual(0.5)
+  })
 })
-

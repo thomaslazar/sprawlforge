@@ -236,6 +236,12 @@ are one round of their own, after the building pass:
   `src/gen/sector/perf.test.ts` is red at `PERF_SLACK=1` and skipped on CI.
   Floor: Clipper2 (`src/gen/clip.ts`) in the lot pass and face clipping, plus tracing.
   Measure on a laptop and profile before optimizing.
+- **Overlapping block faces** — some block footprints overlap each other
+  (already on main), so the lot pass fills both and their buildings overlap:
+  S42 B0716/B0749; S2268 B2407/B2428, B2410/B2422, B2107/B2117, B2105/B2116;
+  S782 B15212/B15230, B15212/B15235, B13906/B13907, B6313/B6330 (and smaller
+  ones). Arcology / boulevard re-cuts are the suspects. The sector building
+  test excuses these pairs and ratchets their count per seed.
 - **Shore steer disagrees with the prune** — the arterial shore steer, the
   singularity stop and the 15 m water anchor disagree: a steered walker
   parked 20-25 m short of the bank is pruned (P3 seed 42 6 km: prune 26 > 20 after phase 3, 27 before,
