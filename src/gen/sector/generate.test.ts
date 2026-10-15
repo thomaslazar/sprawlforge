@@ -1280,7 +1280,7 @@ describe('street free ends', () => {
     // STRAY = the free ends that are no decay end: infill ends (S372/S375 at the window inset, S351 6.0 m off a street, shore ends), kept by the final prune because blocks were cut along them. Ratchet down, never up.
     ['seed 42', 42, { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 12, 3],
     ['seed 426750495', 426750495, { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 11, 2], // arterials re-roll (v9): 13 / 4 -> 11 / 2 (S157 1074,1639, S165 1755,1994 infill ends)
-    ['seed 2268324149', 2268324149, { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 9, 3], // arterials re-roll (v9): BOUND 16 -> 9; STRAY 2 -> 3 (S499 1642,671, S522 2626,1921, S525 2685,1852, inland infill ends; user accepted)
+    ['seed 2268324149', 2268324149, { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 12, 3], // half interchanges re-roll (v9): BOUND 9 -> 12 (strays 3 -> 2, the extra are unjoined decay cul-de-sacs, none near the highway; user raised); arterials re-roll (v9): BOUND 16 -> 9; STRAY 2 -> 3 (S499 1642,671, S522 2626,1921, S525 2685,1852, inland infill ends; user accepted)
   ]
   for (const [label, seed, params, bound, strayBound] of refs) describe(label, () => {
     let m: SectorModel
@@ -1373,7 +1373,7 @@ describe('block sides have a road', () => {
   // BOUND measured at 3e3416d: 3 / 7 / 4. Before this round 66 / 31 / 14 (main 57 / 28 / 134; 201 / 90 / 103 at BASE 0f45e0a). Ratchet down, never up.
   // [label, params, BOUND]: edges of block footprints with no road within 10 m, no water within 15 m, not on the window edge, not in a megablock/arcology
   const refs: [string, SectorParams, number][] = [
-    ['seed 42', { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 3],
+    ['seed 42', { ...resolveTags(['coastal', 'medium', 'dense', 'fringe', 'lively', 'mixed', 'river', 'arcology']), seed: 42, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 4], // half interchanges re-roll (v9): 3 -> 4 (two window-edge slivers, one edge along decay street S081; user raised)
     ['seed 426750495', { ...resolveTags(['inland', 'small', 'dense', 'balanced', 'quiet', 'sprawl', 'river']), seed: 426750495, size: 2, pack: 'generic', theme: 'print' } as SectorParams, 8], // arterials re-roll (v9): 7 -> 8 after the frontage-end fix re-rolled the seed (B2507/B2508/B2525 near the river; user accepted)
     ['seed 2268324149', { ...resolveTags(['coastal', 'medium', 'packed', 'balanced', 'quiet', 'planned']), seed: 2268324149, size: 4, pack: 'generic', theme: 'print' } as SectorParams, 14],
   ]
