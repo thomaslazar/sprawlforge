@@ -1,6 +1,6 @@
 import { expect } from 'vitest'
 // test helpers for the lot pass (not production code)
-import type { Pt } from '../geometry'
+import { pointInRings, type Pt } from '../geometry'
 import type { Terrain } from '../types'
 import { distToPolyline } from '../terrain/rivers'
 
@@ -27,3 +27,16 @@ export const expectBox = (ring: Pt[], box: { x0: number; y0: number; x1: number;
   expect(Math.abs(Math.max(...xs) - box.x1)).toBeLessThanOrEqual(tol)
   expect(Math.abs(Math.max(...ys) - box.y1)).toBeLessThanOrEqual(tol)
 }
+
+/** circular-arc points from a to b (both included) with total angle `degrees`, bulging to the left of a -> b ('inward' for a counter-clockwise lot) */
+export const arc = (a: Pt, b: Pt, degrees: number, n: number, _side: 'inward'): Pt[] => {
+  const th = (degrees * Math.PI) / 180, L = Math.hypot(b.x - a.x, b.y - a.y), r = L / 2 / Math.sin(th / 2)
+  const u = { x: (b.x - a.x) / L, y: (b.y - a.y) / L }, nrm = { x: -u.y, y: u.x }
+  const c = { x: (a.x + b.x) / 2 + nrm.x * (r * Math.cos(th / 2) * -1), y: (a.y + b.y) / 2 + nrm.y * (r * Math.cos(th / 2) * -1) }
+  return Array.from({ length: n }, (_, i) => {
+    const f = -th / 2 + (th * i) / (n - 1)
+    return { x: c.x + r * (Math.sin(f) * u.x + Math.cos(f) * nrm.x), y: c.y + r * (Math.sin(f) * u.y + Math.cos(f) * nrm.y) }
+  })
+}
+
+export const insideOrOn = (p: Pt, ring: Pt[], tol: number): boolean => pointInRings(p, [ring]) || distToRing(p, ring) <= tol
