@@ -315,7 +315,7 @@ export function levelAt(segments: HighwaySegment[], t: number): HighwayLevel {
 // ------------------------------------------------------ crossings & cuts
 
 /** distance from p to the polyline plus the arc-length fraction of the nearest point */
-function nearestT(p: Pt, line: Pt[]): { dist: number; t: number } {
+export function nearestT(p: Pt, line: Pt[]): { dist: number; t: number } {
   const total = polylineLength(line) || 1
   let best = Infinity
   let bestT = 0
