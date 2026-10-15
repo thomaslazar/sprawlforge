@@ -108,16 +108,24 @@ export function sidesOf(piece: Pt[], edgeSetback?: number[]): Side[] {
 /** setback of each piece edge: the footprint edge whose offset line holds its midpoint (±0.05 m); bisector joins take the previous edge's */
 export function pieceSetbacks(piece: Pt[], footprint: Pt[], setbacks: number[]): number[] {
   const f = ccw(footprint, setbacks)
+  const fn = f.ring.length
   const res: (number | undefined)[] = piece.map((a, j) => {
     const b = piece[(j + 1) % piece.length]
     const m = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
-    const k = f.ring.findIndex((p, k) => {
-      const q = f.ring[(k + 1) % f.ring.length]
-      const dk = dirOf(p, q), nk = inward(dk)
-      const along = (m.x - p.x) * dk.x + (m.y - p.y) * dk.y // coincident offset lines of other edges must not match
-      return Math.abs((m.x - p.x) * nk.x + (m.y - p.y) * nk.y - f.vals[k]) <= 0.05 && along >= -0.05 && along <= Math.hypot(q.x - p.x, q.y - p.y) + 0.05
+    // an offset line runs past its edge's span where a bisector join extends it: by the larger adjacent setback at each end
+    let best = -1, bestGap = Infinity
+    f.ring.forEach((p, k) => {
+      const q = f.ring[(k + 1) % fn]
+      const dk = dirOf(p, q), nk = inward(dk), len = Math.hypot(q.x - p.x, q.y - p.y)
+      if (Math.abs((m.x - p.x) * nk.x + (m.y - p.y) * nk.y - f.vals[k]) > 0.05) return
+      const along = (m.x - p.x) * dk.x + (m.y - p.y) * dk.y
+      const lo = -Math.max(f.vals[k], f.vals[(k + fn - 1) % fn]) - 0.05
+      const hi = len + Math.max(f.vals[k], f.vals[(k + 1) % fn]) + 0.05
+      if (along < lo || along > hi) return
+      const gap = Math.max(0, -along, along - len) // distance to the un-extended span; ties keep the first
+      if (gap < bestGap) { best = k; bestGap = gap }
     })
-    return k < 0 ? undefined : f.vals[k]
+    return best < 0 ? undefined : f.vals[best]
   })
   const n = res.length
   for (let pass = 0; pass < 2; pass++) for (let j = 0; j < n; j++) if (res[j] === undefined) res[j] = res[(j + n - 1) % n]

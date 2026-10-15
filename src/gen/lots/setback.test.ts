@@ -61,4 +61,12 @@ describe('setback per side', () => {
     const piece = [{ x: 10, y: 7.5 }, { x: 40, y: 7.5 }, { x: 90, y: 7.5 }, { x: 90, y: 50 }, { x: 10, y: 50 }]
     expect(pieceSetbacks(piece, fp, [7.5, 7.5, 12, 7.5, 7.5, 7.5]).slice(0, 2)).toEqual([7.5, 12])
   })
+  it('pieceSetbacks: an offset line extended past a reflex vertex still matches its edge', () => {
+    // reflex vertex (95, 50): the 5 m edge (setback 7.5) meets the 50 m edge (setback 12)
+    const fp = [{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 50 }, { x: 95, y: 50 }, { x: 95, y: 100 }, { x: 0, y: 100 }]
+    const sb = [7.5, 5, 7.5, 12, 7.5, 7.5]
+    const piece = [{ x: 7.5, y: 7.5 }, { x: 95, y: 7.5 }, { x: 95, y: 42.5 }, { x: 87.5, y: 42.5 }, { x: 83, y: 38 }, { x: 83, y: 92.5 }, { x: 7.5, y: 92.5 }]
+    // edge 2 (y = 42.5) runs to x = 87.5, 12.5 m past the 5 m edge's span; edge 3 is the bisector join (previous value)
+    expect(pieceSetbacks(piece, fp, sb)).toEqual([7.5, 5, 7.5, 7.5, 12, 7.5, 7.5])
+  })
 })
