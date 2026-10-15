@@ -302,6 +302,16 @@ are one round of their own, after the building pass:
   styled sliders/selects/buttons). Inline styles should survive only where
   values are computed at runtime (e.g. the map transform).
 
+- **Browser and node models differ slightly** (found 2026-10-15) — the same
+  params give ~1 % more buildings in the browser build than under vite-node
+  (seed 42: 10166 vs 10043; block styles identical). Deterministic within
+  each platform. Likely float/clipper differences between esbuild output and
+  node; find the first diverging stage and pin it.
+
+- **Lot pass perf** (2026-10-15) — the lot pass took seed 42 from ~5 s to
+  ~10 s (fitBox search, strip trimming, road clearance per piece). Not a gate
+  while the building passes keep changing; revisit once they settle.
+
 - **Click a building to see its type** (user, 2026-10-15) — tapping a
   building shows what it is (shape id, fabric/block style, lot kind, maybe
   the composite it belongs to). Needs per-building hit targets in the SVG
