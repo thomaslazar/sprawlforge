@@ -1,6 +1,7 @@
 import { expect } from 'vitest'
 // test helpers for the lot pass (not production code)
-import { pointInRings, type Pt } from '../geometry'
+import { boxOf, pointInRings, ringArea, type Pt } from '../geometry'
+import { intersection } from '../clip'
 import type { Terrain } from '../types'
 import { distToPolyline } from '../terrain/rivers'
 
@@ -40,3 +41,32 @@ export const arc = (a: Pt, b: Pt, degrees: number, n: number, _side: 'inward'): 
 }
 
 export const insideOrOn = (p: Pt, ring: Pt[], tol: number): boolean => pointInRings(p, [ring]) || distToRing(p, ring) <= tol
+
+/** w x h L with a bite x bite notch at the top right corner, counter-clockwise */
+export const lShape = (w: number, h: number, bite: number): Pt[] => [
+  { x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h - bite }, { x: w - bite, y: h - bite }, { x: w - bite, y: h }, { x: 0, y: h },
+]
+
+/** n points of a circular arc around c, from angle 0 to `degrees` (counter-clockwise, bulging away from c) */
+export const arcSide = (c: Pt, r: number, degrees: number, n: number): Pt[] =>
+  Array.from({ length: n }, (_, i) => {
+    const a = (degrees * Math.PI / 180 * i) / (n - 1)
+    return { x: c.x + r * Math.cos(a), y: c.y + r * Math.sin(a) }
+  })
+
+/** largest intersection area over all pairs of polygons */
+export const pairOverlapMax = (polys: Pt[][]): number => {
+  const boxes = polys.map(boxOf)
+  let max = 0
+  for (let i = 0; i < polys.length; i++) for (let j = i + 1; j < polys.length; j++) {
+    const a = boxes[i], b = boxes[j]
+    if (a.x0 >= b.x1 || b.x0 >= a.x1 || a.y0 >= b.y1 || b.y0 >= a.y1) continue
+    const ring = (p: Pt[]) => p.map((q) => [q.x, q.y] as [number, number])
+    const area = intersection([ring(polys[i])], [ring(polys[j])]).reduce((s, poly) => s + Math.abs(ringArea(poly[0].slice(0, -1).map(([x, y]) => ({ x, y })))), 0)
+    max = Math.max(max, area)
+  }
+  return max
+}
+
+/** length of a lot's chord */
+export const frontage = (lot: { chord: [Pt, Pt] }): number => Math.hypot(lot.chord[1].x - lot.chord[0].x, lot.chord[1].y - lot.chord[0].y)
