@@ -211,6 +211,24 @@ statement).
 - **Tags**: a `green` axis (barren / some / leafy) so the user can ask for it,
   the way density and corp dominance are asked for today.
 
+## Transit round (user, 2026-10-15) — next pass after the building pass
+
+A railway station without tracks looks wrong, so rail and public transport
+are one round of their own, after the building pass:
+
+- **Railway**: one line through the sector the way the highway is traced
+  (enters and leaves at the window edge, bridges over water, cut and
+  embankment where it crosses streets), a main station near the centre,
+  a rail yard with parallel sidings in industrial, level crossings or
+  bridges at arterials. Large sectors may get a second line (S-Bahn).
+- **Trams**: on some arterials, drawn as a thin paired line in the road,
+  with stops; a depot in industrial.
+- **Metro**: no tunnels drawn; entrances as small stair markers on the
+  sidewalk (a POI type), clustered in the centre.
+- **Landmarks that need the network** (main station, rail yard, mag-lev
+  terminal) move here from the building pass.
+- **Metroplex link** later: lines continue between sectors.
+
 ## Street generator follow-ups (from tensor-streets, §14)
 
 - **Perf budget unverified** — target 4 km ≤ 1.5 s, 6 km ≤ 4 s on a laptop
@@ -224,7 +242,10 @@ statement).
   5 of 6 singularity stops are such walkers; arterial A006 lost 790 m).
 - **Steer-outrun highway dead ends** — 16 of 200 swept coastal 2 km cases
   (of the 18 that still stop inside the window) end on concave coasts
-  (lookahead 300 m against the turn room).
+  (lookahead 300 m against the turn room). User (2026-10-15, seed
+  3218087163 `coastal,small,dense,balanced,lively,sprawl,river,lakes`): a
+  highway that ends on water with no far shore should bridge the water to
+  the window edge instead of stopping.
 - **Unwelded lake-shore street ends** on seeds 19, 20, 24; the lake test
   does not run on them.
 - **Infill streets are a crutch** — they split blocks the tracer leaves
