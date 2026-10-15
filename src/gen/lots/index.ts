@@ -8,7 +8,7 @@ import { isStripBlock, megablockOf, ringArcologyOf } from '../streets/lots'
 import { fractalNoise2D } from '../terrain/noise'
 import type { Arcology, Block, BlockStyle, Compound, District, Lot, Building, Megablock, Road, SectorParams, Terrain } from '../types'
 import { MIN_FIT, chooseFabric, densityClass, fabricCell, sheetZone } from './fabrics'
-import { fitBox, widthOk } from './fitbox'
+import { accepted, fitBox } from './fitbox'
 import { compoundLots, megablockLots, outset } from './landmarks'
 import { buildLot, fillerOf, layoutPiece, type BlockCtx, type LotOut } from './layout'
 import { STRIP_PARAMS, stripLots } from './strips'
@@ -20,7 +20,6 @@ const fromRing = (r: [number, number][]): Pt[] => r.slice(0, -1).map(([x, y]) =>
 const ccw = (r: Pt[]) => (ringArea(r) < 0 ? [...r].reverse() : r)
 const dist = (a: Pt, b: Pt) => Math.hypot(b.x - a.x, b.y - a.y)
 const WHOLE = new Set<BlockStyle>(Object.keys(MIN_FIT) as BlockStyle[])
-const ARC_TURN = (15.5 * Math.PI) / 180
 const MIN_LOT_AREA = 0.5
 
 /** R1: simplifyFace, then Douglas-Peucker at 2 m on the closed ring */
@@ -36,18 +35,6 @@ function cutPlazas(fp: Pt[], plazas: Pt[][]): Pt[][] {
   return hit.length ? difference([toRing(fp)], ...hit.map((pl) => [toRing(pl)] as Geom)).map((pg) => fromRing(pg[0])) : [fp]
 }
 const inside = (inner: Pt[], outer: Pt[]) => inner.every((p) => pointInRings(p, [outer]))
-
-/** per-vertex turn of a ring is <= 15.5 degrees (an arc point) */
-function smoothAt(ring: Pt[], i: number): boolean {
-  const n = ring.length, a = ring[(i + n - 1) % n], b = ring[i], c = ring[(i + 1) % n]
-  const t = Math.atan2((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x), (b.x - a.x) * (c.x - b.x) + (b.y - a.y) * (c.y - b.y))
-  return Math.abs(t) <= ARC_TURN
-}
-/** the acceptance gate: every non-arc edge >= 3 m, width >= 6 m, area >= 60 m2 */
-function accepted(fp: Pt[]): boolean {
-  if (Math.abs(ringArea(fp)) < 60 || !widthOk(fp, 6)) return false
-  return fp.every((p, i) => dist(p, fp[(i + 1) % fp.length]) >= 3 || (smoothAt(fp, i) && smoothAt(fp, (i + 1) % fp.length)))
-}
 
 export function fillLots(
   districts: District[],
@@ -118,7 +105,8 @@ export function fillLots(
     if (comp) {
       const res = compoundLots(block.footprint, comp.gateToward, ctx, stream('compound-lots', block), roadClearance(ccw(simplifyFace(block.footprint)), sctx))
       // a crescent block's fence centroid can fall in the bay: no compound there (its POI would sit in water)
-      if (res && !inWater(terrain, ringCentroid(res.fence))) {
+      const dry = res ? res.lots.reduce((t, l) => t + l.buildings.filter((b) => !inWater(terrain, ringCentroid(b.footprint))).length, 0) : 0
+      if (res && dry >= 2 && !inWater(terrain, ringCentroid(res.fence))) { // fewer than 2 dry buildings: a normal block
         emit(block, district, 'compound', ctx, res.lots)
         const cid = `CMP${compounds.length + 1}`
         compounds.push({ id: cid, name: '', blockId: block.id, districtId: district.id, center: ringCentroid(res.fence), fence: res.fence, gate: res.gate })

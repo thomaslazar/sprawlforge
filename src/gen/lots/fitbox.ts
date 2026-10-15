@@ -97,3 +97,18 @@ export function widthOk(poly: Pt[], min: number): boolean {
     return t >= min - 1e-9
   })
 }
+
+const ARC_TURN = (15.5 * Math.PI) / 180
+const dist = (a: Pt, b: Pt) => Math.hypot(b.x - a.x, b.y - a.y)
+/** per-vertex turn of a ring is <= 15.5 degrees (an arc point) */
+function smoothAt(ring: Pt[], i: number): boolean {
+  const n = ring.length, a = ring[(i + n - 1) % n], b = ring[i], c = ring[(i + 1) % n]
+  const t = Math.atan2((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x), (b.x - a.x) * (c.x - b.x) + (b.y - a.y) * (c.y - b.y))
+  return Math.abs(t) <= ARC_TURN
+}
+/** the acceptance gate: every non-arc edge >= 3 m, width >= 6 m, area >= 60 m2 */
+export function accepted(fp: Pt[]): boolean {
+  if (Math.abs(ringArea(fp)) < 60 || !widthOk(fp, 6)) return false
+  return fp.every((p, i) => dist(p, fp[(i + 1) % fp.length]) >= 3 || (smoothAt(fp, i) && smoothAt(fp, (i + 1) % fp.length)))
+}
+

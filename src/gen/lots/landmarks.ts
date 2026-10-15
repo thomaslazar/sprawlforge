@@ -3,7 +3,7 @@ import { bboxOf, bspSplit, ringArea, ringCentroid, rotatePt, type Pt } from '../
 import type { Rng } from '../rng'
 import { distToPolyline } from '../terrain/rivers'
 import { clipSegmentToRing, insetOrLargest, longestEdgeAngle } from '../streets/lots'
-import { fitBox, boxRing, holds, widthOk } from './fitbox'
+import { accepted, fitBox, boxRing, holds, widthOk } from './fitbox'
 import { buildLot, type BlockCtx, type LotOut } from './layout'
 import { sidesOf, type Side } from './setback'
 import { STRIP_PARAMS, stripLots } from './strips'
@@ -46,7 +46,7 @@ export const outset = (core: Pt[], d: number): Pt[] => {
 
 /*
  * Draw order: rng (arg): rectangle-or-octagon chance, then the hive BSP's jitters. ctx.rng.lots: perimeter strip depth,
- * stripLots' draws; ctx.rng.shapes/composites inside buildLot for the ring lots. Compound: rng (arg): stripLots' draws (depth is fixed, min(60, fit depth)), then n in 2-4; shapes/composites inside buildLot.
+ * stripLots' draws; ctx.rng.shapes/composites inside buildLot for the ring lots. Compound: rng (arg): stripLots' draws (depth is fixed, min(60, fit depth)), then n in 2-4; shapes/composites inside buildLot, up to 3 draws per lot until one passes.
  */
 
 /** insetOrLargest, minus the point-reflected ring insetRing returns for a piece thinner than 2d (its vertices sit inside, but < d from the boundary) */
@@ -129,11 +129,12 @@ export function compoundLots(footprint: Pt[], gateToward: Pt, ctx: BlockCtx, rng
   for (const l of strips) {
     const yard: LotOut = { poly: l.poly, kind: 'yard', buildings: [] }
     if (l.filler || taken >= want || !holds(fitBox(l.poly, l.chord), 20, 20)) { lots.push(yard); continue }
-    const o = buildLot(l, 'compound', ctx)
-    // a mitered fence bulges at acute block corners: a building crowding it goes back to yard
-    // ... and so does one inside a road's setback strip (the 14 m inset is short of an arterial's or the highway's)
-    const crowds = (b: Pt[]) => b.some((p) => distToPolyline(p, closed) < COMPOUND_CLEAR) || clear.some((c) => clip.intersection([toRing(b)], [toRing(c)]).length > 0)
-    if (!o.buildings.length || o.buildings.some((b) => crowds(b.footprint))) { lots.push(yard); continue }
+    // a mitered fence bulges at acute block corners: a building crowding it fails, as does one inside a road's setback
+    // strip (the 14 m inset is short of an arterial's or the highway's) or one the acceptance gate rejects; 3 draws, then yard
+    const ok = (b: Pt[]) => accepted(b) && !b.some((p) => distToPolyline(p, closed) < COMPOUND_CLEAR) && !clear.some((c) => clip.intersection([toRing(b)], [toRing(c)]).length > 0)
+    let o: LotOut | null = null
+    for (let t = 0; t < 3 && !o; t++) { const c = buildLot(l, 'compound', ctx); if (c.buildings.length && c.buildings.every((b) => ok(ccw(b.footprint)))) o = c }
+    if (!o) { lots.push(yard); continue }
     lots.push(o); taken++
   }
   return taken < 2 ? null : { fence, gate, lots }
