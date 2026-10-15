@@ -161,9 +161,13 @@ const disc = (c: Pt, r: number): Pt[] => {
 
 /**
  * R2 safety net: the strip (rectangle + end discs) of every road segment that comes nearer the piece than its class
- * setback. The buildable minus these keeps every point at least its setback from every centreline, where the per-edge
- * classification misses a road that curves off an edge midpoint or runs along a window edge.
+ * setback less SIMPLIFY_SLACK. The buildable minus these keeps every point at least setback - 2 m from every
+ * centreline, where the per-edge classification misses a road that curves off an edge midpoint or runs along a window
+ * edge. The 2 m are R1's simplification budget: a chord may sit that far inside its road side (T8 allows it); cutting
+ * those too would carve most pieces into disc arcs (P1 +40 %).
  */
+export const SIMPLIFY_SLACK = 2
+
 export function roadClearance(piece: Pt[], ctx: SetbackCtx): Pt[][] {
   const bb = boxOf(piece), closed = [...piece, piece[0]]
   const near = (a: Pt, b: Pt, s: number): boolean => {
@@ -172,7 +176,8 @@ export function roadClearance(piece: Pt[], ctx: SetbackCtx): Pt[][] {
     return Math.min(distToPolyline(a, closed), distToPolyline(b, closed), ...piece.map((p) => distToPolyline(p, [a, b]))) < s - 1e-3
   }
   const out: Pt[][] = []
-  const add = (a: Pt, b: Pt, s: number) => {
+  const add = (a: Pt, b: Pt, s0: number) => {
+    const s = s0 - SIMPLIFY_SLACK
     if (!near(a, b, s)) return
     const n = inward(dirOf(a, b))
     out.push([{ x: a.x - n.x * s, y: a.y - n.y * s }, { x: b.x - n.x * s, y: b.y - n.y * s }, { x: b.x + n.x * s, y: b.y + n.y * s }, { x: a.x + n.x * s, y: a.y + n.y * s }], disc(a, s), disc(b, s))

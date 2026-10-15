@@ -5,7 +5,7 @@ import { RoadIndex } from '../streets/trace'
 import { difference } from '../clip'
 import { boxOf } from '../geometry'
 import { distToPolyline } from '../terrain/rivers'
-import { buildable, edgeSetbacks, pieceSetbacks, roadClearance, sidesOf, type SetbackCtx } from './setback'
+import { SIMPLIFY_SLACK, buildable, edgeSetbacks, pieceSetbacks, roadClearance, sidesOf, type SetbackCtx } from './setback'
 import { circleRing, distToRing, dryTerrain, expectBox, rectPoly } from './fixtures'
 
 const road = (id: string, cls: Road['class'], points: Road['points']): Road => ({ id, class: cls, points, width: 9, name: null })
@@ -91,7 +91,7 @@ describe('setback per side', () => {
     const clear = roadClearance(piece, c)
     expect(clear.length).toBeGreaterThan(0)
     const rest = difference([piece.map((p) => [p.x, p.y] as [number, number])], ...clear.map((r) => [r.map((p) => [p.x, p.y] as [number, number])]))
-    for (const pg of rest) for (const [x, y] of pg[0]) expect(distToPolyline({ x, y }, road)).toBeGreaterThanOrEqual(12 - 0.01)
+    for (const pg of rest) for (const [x, y] of pg[0]) expect(distToPolyline({ x, y }, road)).toBeGreaterThanOrEqual(12 - SIMPLIFY_SLACK - 0.01) // the 2 m R1 budget
     expect(roadClearance(piece, near([{ x: 450, y: 700 }, { x: 650, y: 700 }]))).toEqual([])
     expect(boxOf(rest[0][0].map(([x, y]) => ({ x, y }))).x1).toBeCloseTo(600, 3)
   })
