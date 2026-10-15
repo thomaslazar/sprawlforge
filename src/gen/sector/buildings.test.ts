@@ -163,6 +163,18 @@ describe('buildings phase A', () => {
     })
   })
 
+  it('S42 strip-block buildings read as sheds: median long side >= 28 m', () => {
+    const m = gen(S42), strips = new Set(m.blocks.filter((b) => b.style === 'strip').map((b) => b.id))
+    const longSide = (fp: Pt[]) => Math.max(...Array.from({ length: fp.length }, (_, i) => {
+      const a = fp[i], b = fp[(i + 1) % fp.length], c = Math.hypot(b.x - a.x, b.y - a.y) || 1, ux = (b.x - a.x) / c, uy = (b.y - a.y) / c
+      const t = fp.map((p) => (p.x - a.x) * ux + (p.y - a.y) * uy)
+      return Math.max(...t) - Math.min(...t)
+    }))
+    const ls = m.buildings.filter((b) => strips.has(b.blockId)).map((b) => longSide(b.footprint)).sort((p, q) => p - q)
+    expect(ls.length).toBeGreaterThan(20)
+    expect(ls[Math.floor(ls.length / 2)]).toBeGreaterThanOrEqual(28)
+  }, 300000)
+
   describe('road strips', () => {
     it.each(SEEDS)('lots never overlap a road strip (%s)', (_, params) => {
       const m = gen(params)

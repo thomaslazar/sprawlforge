@@ -5,7 +5,7 @@ import { fitBox, holds } from './fitbox'
 import { difference } from '../clip'
 import { arcSide, frontage, lShape, pairOverlapMax, rectPoly } from './fixtures'
 import { sidesOf } from './setback'
-import { isSimple, simpleParts, stripLots, type StripParams } from './strips'
+import { STRIP_PARAMS, isSimple, simpleParts, stripLots, type StripParams } from './strips'
 
 const P: StripParams = { depth: 16, width: [10, 18], gap: null }
 const run = (piece: ReturnType<typeof rectPoly>, seed: number, p = P) => stripLots(piece, sidesOf(piece), p, mulberry32(seed))
@@ -123,5 +123,15 @@ describe('stripLots', () => {
     }
     expect(mean(true)).toBeGreaterThanOrEqual(26)
     expect(mean(true)).toBeGreaterThan(mean() + 2)
+  })
+  it('highway strip params: lots at least 35 m long on average, depth 14-30', () => {
+    const piece = rectPoly(0, 0, 3000, 60), r = mulberry32(5)
+    const lens: number[] = []
+    for (let k = 0; k < 40; k++) {
+      const p = STRIP_PARAMS.strip!(r)
+      expect(p.depth).toBeGreaterThanOrEqual(14); expect(p.depth).toBeLessThanOrEqual(30)
+      for (const l of stripLots(piece, sidesOf(piece), { ...p, sides: () => [0] }, r)) if (!l.filler && l.corner === undefined) lens.push(Math.hypot(l.chord[1].x - l.chord[0].x, l.chord[1].y - l.chord[0].y))
+    }
+    expect(lens.reduce((t, w) => t + w, 0) / lens.length).toBeGreaterThanOrEqual(35)
   })
 })

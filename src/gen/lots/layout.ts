@@ -139,15 +139,15 @@ function pool(lot: LotOut, chord: [Pt, Pt], rng: Rng): LotOut[] {
 const whole = (piece: Pt[], fabric: BlockStyle, ctx: BlockCtx, bs: Bld[], where: Parameters<typeof fillerOf>[2] = 'interior'): LotOut[] =>
   [{ poly: piece, kind: lotKind(piece, bs.map((b) => b.footprint), fillerOf(fabric, ctx.zone, where)), buildings: bs }]
 
-/** R15: up to 40 tries per building, >= 20 m apart; `size` draws a candidate w x d */
-function scatter(fit: FitBox, n: number, size: () => [number, number] | null, allowed: string[], ctx: BlockCtx): Bld[] {
+/** R15: up to 40 tries per building, >= `spacing` m apart (20; tower-park 12); `size` draws a candidate w x d */
+function scatter(fit: FitBox, n: number, size: () => [number, number] | null, allowed: string[], ctx: BlockCtx, spacing = 20): Bld[] {
   const r = ctx.rng.lots, placed: number[][] = [], out: Bld[] = []
   for (let i = 0; i < n; i++) {
     for (let t = 0; t < 40; t++) {
       const sz = size()
       if (!sz) break
       const [w, d] = sz, x = r.int(0, Math.floor(fit.w - w)), y = r.int(0, Math.floor(fit.d - d))
-      if (placed.some((p) => Math.hypot(Math.max(0, x - p[0] - p[2], p[0] - x - w), Math.max(0, y - p[1] - p[3], p[1] - y - d)) < 20)) continue
+      if (placed.some((p) => Math.hypot(Math.max(0, x - p[0] - p[2], p[0] - x - w), Math.max(0, y - p[1] - p[3], p[1] - y - d)) < spacing)) continue
       const id = chooseShape(allowed, ctx.zone, ctx.density, { ...fit, w, d }, ctx.rng.shapes)
       if (!id) continue
       const dd = id === 'A13' ? Math.round(w * 0.65) : d
@@ -365,7 +365,7 @@ export function layoutPiece(piece: Pt[], sides: Side[], fabric: BlockStyle, ctx:
     case 'zeilen': return whole(piece, fabric, ctx, zeilen(piece, chord, ctx))
     case 'tower-park': {
       const f = fit(), cap = Math.floor(Math.min(f.w, f.d))
-      return whole(piece, fabric, ctx, scatter(f, Math.min(8, Math.max(2, Math.round(f.w * f.d / 3500))), () => { const s = Math.min(r.int(24, 36), cap); return [s, s] }, ['A2', 'A11', 'A12', 'A13', 'A14'], ctx))
+      return whole(piece, fabric, ctx, scatter(f, Math.min(8, Math.max(2, Math.round(f.w * f.d / 3000))), () => { const s = Math.min(r.int(24, 36), cap); return [s, s] }, ['A2', 'A11', 'A12', 'A13', 'A14'], ctx, 12))
     }
     case 'plaza': {
       const f = fit(), hw = Math.floor(0.4 * f.w), hd = Math.floor(0.4 * f.d)

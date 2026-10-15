@@ -186,7 +186,10 @@ export function fillLots(
         const longest = sides.reduce((b, s) => (dist(...s.chord) > dist(...b.chord) ? s : b)).chord
         const box = fitBox(p.poly, longest)
         const fits = (f: BlockStyle) => { const m = MIN_FIT[f]; return !m || (box.w >= m[0] && box.d >= m[1]) || (box.w >= m[1] && box.d >= m[0]) }
-        let fabric: BlockStyle = strip ? 'strip' : forceStyle ?? chooseFabric(ctx.zone, dc, fabricCell(params.seed, cc), fabricRng, fits)
+        // a strip block with a fit box 80 m deep or more is a strip, sheds or bigbox, a third each (the draw only there)
+        const deep = strip && Math.min(box.w, box.d) >= 80
+        const pick = deep ? fabricRng.pick(['sheds', 'bigbox', 'strip'] as const) : 'strip'
+        let fabric: BlockStyle = strip ? (fits(pick) ? pick : 'strip') : forceStyle ?? chooseFabric(ctx.zone, dc, fabricCell(params.seed, cc), fabricRng, fits)
         // R39: a ground-side block gets a built front; a piece around a plaza hole needs a fabric that builds every side (terrace keeps two)
         if (home && rim && !strip && !forceStyle && (WHOLE.has(fabric) || fabric === 'terrace')) fabric = 'perimeter'
         if (p.holes.length && (!STRIP_PARAMS[fabric] || fabric === 'terrace')) fabric = 'perimeter'

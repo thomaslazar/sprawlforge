@@ -164,13 +164,14 @@ describe('layoutPiece', () => {
       for (const b of out.flatMap((l) => l.buildings)) expect(insideRing(b.footprint, yard[0].poly, 0.05)).toBe(true)
     }
   })
-  it('tower-park towers stand 20 m apart', () => {
+  it('tower-park towers stand 12 m apart', () => {
     for (let s = 0; s < 10; s++) {
       const bs = layoutPiece(piece, sides, 'tower-park', ctx(s, 'corp')).flatMap((l) => l.buildings)
       expect(bs.length).toBeGreaterThanOrEqual(2); expect(bs.length).toBeLessThanOrEqual(8)
-      for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) expect(gapBox(bs[i].footprint, bs[j].footprint)).toBeGreaterThanOrEqual(20 - 1e-6)
+      for (let i = 0; i < bs.length; i++) for (let j = i + 1; j < bs.length; j++) expect(gapBox(bs[i].footprint, bs[j].footprint)).toBeGreaterThanOrEqual(12 - 1e-6)
     }
     const count = (w: number, s: number) => { const pc = rectPoly(0, 0, w, w); return layoutPiece(pc, sidesOf(pc, pc.map(() => 7.5)), 'tower-park', ctx(s, 'corp')).flatMap((l) => l.buildings).length }
+    for (let s = 0; s < 5; s++) expect(count(100, s), `100 m ${s}`).toBeGreaterThanOrEqual(2)
     for (let s = 0; s < 5; s++) { expect(count(140, s), `big ${s}`).toBeGreaterThanOrEqual(4); expect(count(65, s), `small ${s}`).toBeLessThanOrEqual(2) }
   })
   it('villas pools sit inside green lots, 3 m clear', () => {
