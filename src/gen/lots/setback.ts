@@ -1,4 +1,4 @@
-import { ringArea, type Pt } from '../geometry'
+import { boxOf, pointInRings, ringArea, segmentsIntersect, type Pt } from '../geometry'
 import { unionPositive } from '../clip'
 import { inWater } from '../sector/bridges'
 import { STRIP_HALF, levelAt, nearestT } from '../streets/highway'
@@ -17,8 +17,29 @@ const dirOf = (a: Pt, b: Pt): Pt => { const l = Math.hypot(b.x - a.x, b.y - a.y)
 /** unit inward normal of a counter-clockwise (ringArea > 0) edge */
 const inward = (d: Pt): Pt => ({ x: -d.y, y: d.x })
 
-/** one setback per edge i -> i+1 (R2): the largest of everything within 2 m of the edge midpoint, else 'other' */
-export function edgeSetbacks(footprint: Pt[], ctx: SetbackCtx): number[] {
+/**
+ * one setback per edge i -> i+1 (R2): the largest of everything within 2 m of the edge midpoint, else 'other'.
+ * With `original` (the unsimplified ring `footprint` was simplified from), an edge between two of its vertices takes the
+ * largest setback of the original edges it replaced: a simplified midpoint can sit up to 2 m off its road and miss it.
+ */
+export function edgeSetbacks(footprint: Pt[], ctx: SetbackCtx, original?: Pt[]): number[] {
+  const own = classify(footprint, ctx)
+  if (!original) return own
+  const o = (ringArea(original) >= 0) === (ringArea(footprint) >= 0) ? original : [...original].reverse()
+  const os = classify(o, ctx), n = o.length
+  const key = (p: Pt) => `${Math.round(p.x * 1000)},${Math.round(p.y * 1000)}` // clipper output sits on the 1 mm grid
+  const at = new Map<string, number>()
+  o.forEach((p, k) => { if (!at.has(key(p))) at.set(key(p), k) })
+  return footprint.map((a, i) => {
+    const ia = at.get(key(a)), ib = at.get(key(footprint[(i + 1) % footprint.length]))
+    if (ia === undefined || ib === undefined || ia === ib) return own[i]
+    let s = -1
+    for (let k = ia; k !== ib; k = (k + 1) % n) s = Math.max(s, os[k])
+    return s
+  })
+}
+
+function classify(footprint: Pt[], ctx: SetbackCtx): number[] {
   const sign = ringArea(footprint) >= 0 ? 1 : -1
   return footprint.map((a, i) => {
     const b = footprint[(i + 1) % footprint.length]
@@ -130,4 +151,45 @@ export function pieceSetbacks(piece: Pt[], footprint: Pt[], setbacks: number[]):
   const n = res.length
   for (let pass = 0; pass < 2; pass++) for (let j = 0; j < n; j++) if (res[j] === undefined) res[j] = res[(j + n - 1) % n]
   return res.map((v) => v ?? SETBACK.other)
+}
+
+/** a 16-gon holding the disc of radius r around c */
+const disc = (c: Pt, r: number): Pt[] => {
+  const R = r / Math.cos(Math.PI / 16)
+  return Array.from({ length: 16 }, (_, k) => ({ x: c.x + R * Math.cos(((k + 0.5) * Math.PI) / 8), y: c.y + R * Math.sin(((k + 0.5) * Math.PI) / 8) }))
+}
+
+/**
+ * R2 safety net: the strip (rectangle + end discs) of every road segment that comes nearer the piece than its class
+ * setback. The buildable minus these keeps every point at least its setback from every centreline, where the per-edge
+ * classification misses a road that curves off an edge midpoint or runs along a window edge.
+ */
+export function roadClearance(piece: Pt[], ctx: SetbackCtx): Pt[][] {
+  const bb = boxOf(piece), closed = [...piece, piece[0]]
+  const near = (a: Pt, b: Pt, s: number): boolean => {
+    if (Math.max(a.x, b.x) < bb.x0 - s || Math.min(a.x, b.x) > bb.x1 + s || Math.max(a.y, b.y) < bb.y0 - s || Math.min(a.y, b.y) > bb.y1 + s) return false
+    if (pointInRings(a, [piece]) || piece.some((p, i) => segmentsIntersect(a, b, p, piece[(i + 1) % piece.length]))) return true
+    return Math.min(distToPolyline(a, closed), distToPolyline(b, closed), ...piece.map((p) => distToPolyline(p, [a, b]))) < s - 1e-3
+  }
+  const out: Pt[][] = []
+  const add = (a: Pt, b: Pt, s: number) => {
+    if (!near(a, b, s)) return
+    const n = inward(dirOf(a, b))
+    out.push([{ x: a.x - n.x * s, y: a.y - n.y * s }, { x: b.x - n.x * s, y: b.y - n.y * s }, { x: b.x + n.x * s, y: b.y + n.y * s }, { x: a.x + n.x * s, y: a.y + n.y * s }], disc(a, s), disc(b, s))
+  }
+  const c = { x: (bb.x0 + bb.x1) / 2, y: (bb.y0 + bb.y1) / 2 }, R = Math.hypot(bb.x1 - bb.x0, bb.y1 - bb.y0) / 2 + SETBACK.arterial
+  ctx.index.forEachInRadius(c, R, (seg) => add(seg.a, seg.b, BY_CLASS[seg.cls]))
+  const hw = ctx.highway
+  if (hw) {
+    const pts = hw.points
+    let total = 0
+    for (let i = 0; i + 1 < pts.length; i++) total += Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y)
+    let acc = 0
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const l = Math.hypot(pts[i + 1].x - pts[i].x, pts[i + 1].y - pts[i].y)
+      add(pts[i], pts[i + 1], hw.segments && levelAt(hw.segments, (acc + l / 2) / (total || 1)) === 'sunken' ? SETBACK.sunken : SETBACK.highway)
+      acc += l
+    }
+  }
+  return out
 }

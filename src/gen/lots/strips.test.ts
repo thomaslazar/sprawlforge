@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { boxOf, ringArea } from '../geometry'
 import { mulberry32 } from '../rng'
 import { fitBox, holds } from './fitbox'
+import { difference } from '../clip'
 import { arcSide, frontage, lShape, pairOverlapMax, rectPoly } from './fixtures'
 import { sidesOf } from './setback'
 import { stripLots, type StripParams } from './strips'
@@ -72,4 +73,14 @@ describe('stripLots', () => {
       expect(Math.hypot(c.x - 200, c.y - 150)).toBeGreaterThan(Math.hypot(mid.x - 200, mid.y - 150)) // fit box lies outward of the hole wall
     }
   })
+  it('a strip lot where the piece is thinner than D stays inside the piece', () => {
+    // S42 B3101: plain quads ran out through the far side of a narrow wedge
+    const notch = [{ x: 0, y: 0 }, { x: 200, y: 0 }, { x: 200, y: 60 }, { x: 60, y: 60 }, { x: 50, y: 12 }, { x: 40, y: 60 }, { x: 0, y: 60 }]
+    const ring = (r: typeof notch) => r.map((p) => [p.x, p.y] as [number, number])
+    for (let seed = 1; seed <= 10; seed++) for (const l of run(notch, seed)) {
+      const out = difference([ring(l.poly)], [ring(notch)]).reduce((t, pg) => t + Math.abs(ringArea(pg[0].slice(0, -1).map(([x, y]) => ({ x, y })))), 0)
+      expect(out, `seed ${seed}`).toBeLessThan(0.05)
+    }
+  })
 })
+

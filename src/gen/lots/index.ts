@@ -12,7 +12,7 @@ import { fitBox, widthOk } from './fitbox'
 import { compoundLots, megablockLots, outset } from './landmarks'
 import { buildLot, fillerOf, layoutPiece, type BlockCtx, type LotOut } from './layout'
 import { STRIP_PARAMS, stripLots } from './strips'
-import { SETBACK, buildable, edgeSetbacks, pieceSetbacks, sidesOf, type SetbackCtx } from './setback'
+import { SETBACK, buildable, edgeSetbacks, pieceSetbacks, roadClearance, sidesOf, type SetbackCtx } from './setback'
 
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
 const toRing = (p: Pt[]) => p.map((q) => [q.x, q.y] as [number, number])
@@ -67,6 +67,7 @@ export function fillLots(
   const plazas = (landmarks?.arcologies ?? []).filter((a) => a.access !== 'ring').map((a) => a.plaza)
   const index = new RoadIndex(100)
   for (const r of roads) if (r.class !== 'highway') index.add(r.id, r.points, r.class)
+  const sctx: SetbackCtx = { index, highway, terrain, sizeM, grounds: plazas }
   const stream = (name: string, block: Block) => mulberry32(hashSeed(params.seed, name, block.id))
 
   const buildings: Building[] = []
@@ -115,7 +116,7 @@ export function fillLots(
     const mega = megablockOf(block, landmarks)
     const comp = mega ? undefined : compoundsIn.find((k) => k.blockId === block.id)
     if (comp) {
-      const res = compoundLots(block.footprint, comp.gateToward, ctx, stream('compound-lots', block))
+      const res = compoundLots(block.footprint, comp.gateToward, ctx, stream('compound-lots', block), roadClearance(ccw(simplifyFace(block.footprint)), sctx))
       // a crescent block's fence centroid can fall in the bay: no compound there (its POI would sit in water)
       if (res && !inWater(terrain, ringCentroid(res.fence))) {
         emit(block, district, 'compound', ctx, res.lots)
@@ -128,16 +129,16 @@ export function fillLots(
 
     // R22 cut, R1 simplify, R2 setbacks, R3 buildable
     const home = landmarks?.arcologies.find((a) => a.access !== 'ring' && pointInRings(a.center, [block.footprint]))
-    const sctx: SetbackCtx = { index, highway, terrain, sizeM, grounds: plazas }
     const pieces: Array<{ poly: Pt[]; setbacks: number[]; holes: Pt[][] }> = []
     for (const cut of cutPlazas(ccw(simplified(block.footprint)), plazas)) {
-      const fp = ccw(cut), sb = edgeSetbacks(fp, sctx)
+      const fp = ccw(cut), sb = edgeSetbacks(fp, sctx, simplifyFace(block.footprint))
       for (const poly0 of buildable(fp, sb)) {
         // a plaza clear of the piece edge stays a hole the lots face, 6 m (the ground setback) out, less where the piece is too tight; one reaching the edge is cut out
         const covered = (pl: Pt[], d: number) => difference([toRing(ccw(outset(ccw(pl), d + 1.5)))], [toRing(poly0)]).length === 0 // 1.5 m to spare: the clipper misreads a hole that nearly touches its piece
         const grounds = plazas.map((pl) => ccw(outset(ccw(pl), [SETBACK.ground, 4, 2, 0].find((d) => covered(pl, d)) ?? SETBACK.ground)))
           .filter((h) => h.some((p) => pointInRings(p, [poly0])) || poly0.some((p) => pointInRings(p, [h])))
-        const polys = grounds.length ? difference([toRing(poly0)], ...grounds.map((h) => [toRing(h)] as Geom)) : [[[...toRing(poly0), toRing(poly0)[0]]]]
+        const clear = roadClearance(poly0, sctx)
+        const polys = grounds.length || clear.length ? difference([toRing(poly0)], ...[...grounds, ...clear].map((h) => [toRing(h)] as Geom)) : [[[...toRing(poly0), toRing(poly0)[0]]]]
         for (const pg of polys) {
           const poly = ccw(fromRing(pg[0]))
           if (ringArea(poly) >= 200) pieces.push({ poly, setbacks: pieceSetbacks(poly, fp, sb), holes: pg.slice(1).map((r) => ccw(fromRing(r))) })

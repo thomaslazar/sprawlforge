@@ -1,5 +1,5 @@
 import { difference, intersection, type Geom, type MultiPolygon } from '../clip'
-import { boxOf, ringArea, ringCentroid, type Box, type Pt } from '../geometry'
+import { boxOf, pointInRings, ringArea, ringCentroid, type Box, type Pt } from '../geometry'
 import type { Rng } from '../rng'
 import { fitBox, holds } from './fitbox'
 import type { BlockStyle } from '../types'
@@ -68,6 +68,8 @@ export function stripLots(piece: Pt[], sides: Side[], p: StripParams, rng: Rng, 
     return [{ poly: piece, chord, side, ...(holds(fitBox(piece, chord), 6, 8) ? {} : { filler: true }) }]
   }
   const pieceGeom: Geom = [ring(piece), ...holes.map(ring)]
+  /** the quad's back corners lie in the piece and no piece vertex lies in the quad (its front is on the piece edge) */
+  const within = (q: Pt[]): boolean => pointInRings(q[2], [piece]) && pointInRings(q[3], [piece]) && !piece.some((v) => pointInRings(v, [shrunk(q)]))
   const out: StripLot[] = []
   const laid: { poly: Pt[]; box: Box }[] = []
   const lay = (l: StripLot) => { out.push(l); laid.push({ poly: l.poly, box: boxOf(l.poly) }) }
@@ -153,7 +155,7 @@ export function stripLots(piece: Pt[], sides: Side[], p: StripParams, rng: Rng, 
       let poly: Pt[] | null = raw
       const rb = boxOf(raw)
       const hit = prior.filter((l) => overlaps(l.box, rb)).map((l) => l.poly)
-      if (front.length > 2 || hit.length || holes.some((h) => overlaps(boxOf(h), rb)) || s <= a0 + EPS || e >= a1 - EPS) poly = trim(raw, hit) // plain quad unless it spans a vertex, touches a trim or a hole's box, or ends a side (a slanted neighbour edge cuts it)
+      if (front.length > 2 || hit.length || holes.some((h) => overlaps(boxOf(h), rb)) || s <= a0 + EPS || e >= a1 - EPS || !within(raw)) poly = trim(raw, hit) // plain quad unless it spans a vertex, touches a trim or a hole's box, ends a side (a slanted neighbour edge cuts it) or leaves the piece (thinner than D there)
       if (!poly) return null
       const chord: [Pt, Pt] = [front[0], front[front.length - 1]]
       return { s, e, gap, poly, chord, ok: gap ? false : holds(fitBox(poly, chord), 6, 8) }
