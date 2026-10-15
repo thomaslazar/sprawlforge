@@ -282,7 +282,7 @@ export function insetByClipping(full: Pt[], d: number): Pt[][] {
   }).filter((r) => r.length >= 3 && Math.abs(ringArea(r)) >= MIN_BLOCK_AREA)
 }
 
-const NOTCH_P: Record<BlockStyle, number> = { plaza: 0.5, courtyard: 0.35, rows: 0.1, sheds: 0, megablock: 0, strip: 0, compound: 0 }
+const NOTCH_P: Partial<Record<BlockStyle, number>> = { plaza: 0.5, courtyard: 0.35, rows: 0.1, sheds: 0, megablock: 0, strip: 0, compound: 0 }
 
 /**
  * Notch to cut from rect `r`: a corner square (L) or a side slot (U), 30-45 %
@@ -589,7 +589,7 @@ export function fillLots(
       plaza: { cell: Math.max(profile.minCell * 1.6, 0.4 * short), gap: 12, fill: 0.6 },
       sheds: { cell: profile.minCell, gap: 10, fill: 0.65 },
       megablock: { cell, gap: 3, fill },
-    }[style as Exclude<BlockStyle, 'strip' | 'compound'>]
+    }[style as 'rows' | 'courtyard' | 'plaza' | 'sheds' | 'megablock']
     // courtyard: only the band between the inset and a deeper inset is buildable
     let inner: Pt[][] = []
     if (style === 'courtyard') {
@@ -622,7 +622,7 @@ export function fillLots(
           { x: r.x + r.w, y: r.y + r.h }, { x: r.x, y: r.y + r.h },
         ]
         // the lot is clipped as a plain rect (fast paths intact), then notched
-        const notch = notchRng.chance(NOTCH_P[style]) ? notchOf(r, notchRng).map((p) => rotatePt(p, theta, c)) : null
+        const notch = notchRng.chance(NOTCH_P[style] ?? 0) ? notchOf(r, notchRng).map((p) => rotatePt(p, theta, c)) : null
         const lot = corners.map((p) => rotatePt(p, theta, c))
 
         // convex: corner tests suffice. Otherwise count the inset edges touching

@@ -70,3 +70,29 @@ export const pairOverlapMax = (polys: Pt[][]): number => {
 
 /** length of a lot's chord */
 export const frontage = (lot: { chord: [Pt, Pt] }): number => Math.hypot(lot.chord[1].x - lot.chord[0].x, lot.chord[1].y - lot.chord[0].y)
+
+/** interior angles in degrees (ring in either orientation) */
+export const interiorAngles = (ring: Pt[]): number[] => {
+  const s = ringArea(ring) >= 0 ? 1 : -1, n = ring.length
+  return ring.map((p, i) => {
+    const a = ring[(i + n - 1) % n], b = ring[(i + 1) % n]
+    const turn = Math.atan2((p.x - a.x) * (b.y - p.y) - (p.y - a.y) * (b.x - p.x), (p.x - a.x) * (b.x - p.x) + (p.y - a.y) * (b.y - p.y))
+    return 180 - (s * turn * 180) / Math.PI
+  })
+}
+
+/** shortest edge whose end vertices are not both arc points (turning <= 15.5 degrees) */
+export const minNonArcEdge = (ring: Pt[]): number => {
+  const n = ring.length
+  const arcPt = interiorAngles(ring).map((a) => Math.abs(180 - a) <= 15.5)
+  let m = Infinity
+  for (let i = 0; i < n; i++) if (!(arcPt[i] && arcPt[(i + 1) % n])) m = Math.min(m, Math.hypot(ring[(i + 1) % n].x - ring[i].x, ring[(i + 1) % n].y - ring[i].y))
+  return m
+}
+
+/** R7 corner lot quad (corner, projection, inner point, projection) for interior angle theta, depth D 16 */
+export const cornerQuad = (thetaDeg: number, D = 16): Pt[] => {
+  const th = (thetaDeg * Math.PI) / 180, t = D / Math.tan(th / 2), m = D / Math.sin(th / 2)
+  return [{ x: 0, y: 0 }, { x: t, y: 0 }, { x: m * Math.cos(th / 2), y: m * Math.sin(th / 2) }, { x: t * Math.cos(th), y: t * Math.sin(th) }]
+}
+export const q90 = cornerQuad(90), q65 = cornerQuad(65), q40 = cornerQuad(40)

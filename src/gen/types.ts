@@ -138,6 +138,7 @@ export interface District {
 }
 
 export type BlockStyle = 'rows' | 'courtyard' | 'plaza' | 'sheds' | 'megablock' | 'strip' | 'compound'
+  | 'perimeter' | 'terrace' | 'shophouse' | 'zeilen' | 'detached' | 'villas' | 'tower-park' | 'podium' | 'bigbox' | 'garage'
 
 export interface Block {
   id: string
