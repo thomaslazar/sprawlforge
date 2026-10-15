@@ -66,6 +66,7 @@ describe('shapes', () => {
     for (let s = 0; s < 60; s++) {
       const { footprint, details } = fitShape('A19', box, mulberry32(s))
       for (const t of details) {
+        // 20-30 m is the longer side; A13 towers are w x 0.65 w
         const b = boxOf(t), c = { x: (b.x0 + b.x1) / 2, y: (b.y0 + b.y1) / 2 }
         expect(Math.max(b.x1 - b.x0, b.y1 - b.y0), `seed ${s}`).toBeLessThanOrEqual(30 + 1e-6)
         expect(Math.max(b.x1 - b.x0, b.y1 - b.y0)).toBeGreaterThanOrEqual(20 - 1e-6)

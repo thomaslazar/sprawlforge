@@ -5,9 +5,13 @@ import { Clipper, Clipper64, ClipType, FillRule, InternalClipper, Point64, type 
 // place, so an input vertex walks onto another's scanline. A ring whose vertices all end up on one y sends
 // getCurrYMaximaVertex round it forever (the seed-42 default-params hang). Hand out a copy instead.
 const getIntersectPoint = InternalClipper.getIntersectPoint
-InternalClipper.getIntersectPoint = (a, b, c, d) => {
-  const r = getIntersectPoint(a, b, c, d)
-  return r.ip === a || r.ip === b ? { ip: new Point64(r.ip.x, r.ip.y), success: r.success } : r
+if (!(getIntersectPoint as { patched?: boolean }).patched) {
+  const patched: typeof getIntersectPoint & { patched?: boolean } = (a, b, c, d) => {
+    const r = getIntersectPoint(a, b, c, d)
+    return r.ip === a || r.ip === b ? { ip: new Point64(r.ip.x, r.ip.y), success: r.success } : r
+  }
+  patched.patched = true
+  InternalClipper.getIntersectPoint = patched
 }
 
 export type Ring = [number, number][]

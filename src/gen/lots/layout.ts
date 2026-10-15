@@ -116,7 +116,7 @@ export function buildLot(lot: StripLot, fabric: BlockStyle, ctx: BlockCtx, shape
   const draw = () => (shapes ? building(shapes, fit, 'gapped', fabric, ctx) : building(ALLOWED[fabric] ?? ['A1'], fit, MODE[fabric] ?? 'gapped', fabric, ctx))
   if (!direct) b = draw()
   // user review: the same shape at the same width as the previous lot on this side is drawn again, once
-  if (!direct && b && avoid && b.shape === avoid.shape && frontWidth(b.footprint, lot.chord) === avoid.w) b = draw()
+  if (!direct && b && avoid && b.shape === avoid.shape && frontWidth(b.footprint, lot.chord) === avoid.w) { const b2 = draw(); if (b2) b = b2 }
   if (!b) return none('interior')
   return { poly: lot.poly, kind: lotKind(lot.poly, [b.footprint], filler('interior')), buildings: [b] }
 }

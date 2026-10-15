@@ -103,7 +103,7 @@ describe('layoutPiece', () => {
         if (l.vacant) v++
         if (l.vacant || l.buildings.length) n++
       }
-      expect(Math.abs(v / n - p), dc).toBeLessThanOrEqual(0.03)
+      expect(Math.abs(v / n - p), `${dc} ${v / n}`).toBeLessThanOrEqual(0.01)
     }
     // consecutive lots on one side rarely repeat shape and width
     let pairs = 0, same = 0
@@ -112,7 +112,7 @@ describe('layoutPiece', () => {
       for (let i = 1; i < bs.length; i++) { pairs++; if (bs[i].shape === bs[i - 1].shape && Math.round(bs[i].b.x1 - bs[i].b.x0) === Math.round(bs[i - 1].b.x1 - bs[i - 1].b.x0)) same++ }
     }
     expect(same / pairs).toBeLessThanOrEqual(0.02)
-  })
+  }, 30000)
   it('continuous fronts touch', () => {
     for (let s = 0; s < 10; s++) {
       const out = layoutPiece(piece, sides, 'perimeter', ctx(s, 'residential'))

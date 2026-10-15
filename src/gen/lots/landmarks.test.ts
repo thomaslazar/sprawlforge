@@ -38,13 +38,16 @@ describe('landmark lots', () => {
   it('compound buildings pass the acceptance gate, 2-4 or no compound', () => {
     // S42 B4701 (CMP3): the gate dropped a building after compoundLots counted it, leaving 1
     const fp = ([[3097.39, 3227.57], [3105.89, 3231.65], [3112.76, 3236.99], [3118.13, 3243.48], [3122.17, 3251.01], [3125.02, 3259.48], [3126.84, 3268.78], [3127.77, 3278.8], [3127.97, 3289.44], [3127.59, 3300.59], [3126.77, 3312.14], [3125.67, 3323.99], [3124.44, 3336.02], [3123.24, 3348.13], [3122.2, 3360.22], [3121.49, 3372.18], [3121.25, 3383.9], [3121.64, 3395.27], [3122.8, 3406.19], [3124.88, 3416.55], [3128.04, 3426.24], [3132.43, 3435.16], [3138.2, 3443.19], [3126.54, 3445.4], [3087.84, 3455.51], [3030.79, 3473.77], [3020.85, 3474.14], [3009.63, 3471.1], [3001.82, 3468.4], [2994.45, 3464.65], [2988.77, 3461.25], [2981.27, 3454.85], [2976.39, 3446.3], [2968.05, 3422.8], [2955.57, 3374.39], [2948.11, 3335.1], [2944.53, 3305.32], [2943.22, 3275.36], [2944.18, 3255.39], [2947.22, 3235.63], [2952.49, 3216.34], [2965.86, 3179.6]] as const).map(([x, y]) => ({ x, y }))
+    let made = 0
     for (let s = 0; s < 20; s++) {
       const c = compoundLots(fp, fp[0], ctx(s, 'corp'), mulberry32(s))
       if (!c) continue
+      made++
       const bs = c.lots.flatMap((l) => l.buildings)
       expect(bs.length, `seed ${s}`).toBeGreaterThanOrEqual(2); expect(bs.length).toBeLessThanOrEqual(4)
       for (const b of bs) expect(accepted(b.footprint), `seed ${s} ${b.shape}`).toBe(true)
     }
+    expect(made).toBeGreaterThan(0)
   })
   it('compound lots stay inside the buildable they are given', () => {
     // S426 B0301: a highway along one side (26 m setback) reaches past the 14 m inset
