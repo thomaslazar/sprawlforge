@@ -4,6 +4,10 @@ import { renderSector } from '../render/svg'
 import { getTheme } from '../render/theme'
 import type { GenRequest, GenResponse } from './genWorker'
 import { KnobPanel } from './KnobPanel'
+import { SHAPE_NAMES } from '../gen/lots/shapes'
+import { useName } from '../gen/lots/uses'
+import { describeAt, type Pick } from './inspect'
+import { t } from './strings'
 import { MapView } from './MapView'
 import { stateFromSearch, stateToSearch, type AppState } from './params'
 import { materializeTags, resolveTags, type Tag } from './tags'
@@ -12,6 +16,8 @@ import { materializeTags, resolveTags, type Tag } from './tags'
 function randomSeed(): number {
   return crypto.getRandomValues(new Uint32Array(1))[0]
 }
+
+const cap = (x: string) => x[0].toUpperCase() + x.slice(1)
 
 export function App() {
   // `applied` drives the visible map + URL. `pendingTags` is the chip
@@ -24,7 +30,9 @@ export function App() {
   const [pendingTags, setPendingTags] = useState<Tag[]>(applied.tags)
   // display-only, session-scoped (no URL persistence): toggling re-renders
   // the SVG from the existing model with pois filtered out — zero regen
-  const [showPois, setShowPois] = useState(true)
+  // off by default until the POI rework (ROADMAP: too many, clustered);
+  // revert to true in that round
+  const [showPois, setShowPois] = useState(false)
   // export-only knob, session-scoped like showPois — never part of the URL
   const [pngScale, setPngScale] = useState(2)
 
@@ -114,6 +122,19 @@ export function App() {
     [visibleModel, params.theme, labelZoom],
   )
 
+  // click-to-inspect popover; Escape or a click on bare ground closes it
+  const [pick, setPick] = useState<{ pick: Pick; at: { x: number; y: number } } | null>(null)
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setPick(null)
+    window.addEventListener('keydown', esc)
+    return () => window.removeEventListener('keydown', esc)
+  }, [])
+  useEffect(() => setPick(null), [model])
+  const onPick = (p: { x: number; y: number }, at: { x: number; y: number }) => {
+    const r = model && describeAt(model, p)
+    setPick(r && (r.building || r.lot || r.arcology || r.megablock) ? { pick: r, at } : null)
+  }
+
   const exportName = `sprawlforge-sector-${params.seed}`
   // ponytail: jspdf pulls ~688kB into the main chunk — defer the whole
   // exports module to the click that actually needs it
@@ -156,8 +177,46 @@ export function App() {
       <MapView
         svg={svg}
         busy={busy}
+        onPick={onPick}
         onZoom={(z) => setLabelZoom(Math.min(8, Math.max(1, 2 ** Math.floor(Math.log2(z)))))}
       />
+      {pick && (
+        <div
+          data-popover
+          style={{
+            position: 'fixed',
+            left: Math.min(pick.at.x + 12, window.innerWidth - 272),
+            top: Math.min(pick.at.y + 12, window.innerHeight - 140),
+            maxWidth: 260,
+            padding: '6px 10px',
+            font: '13px/1.4 system-ui, sans-serif',
+            background: '#fff',
+            color: '#111',
+            border: '1px solid #888',
+            borderRadius: 4,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+            pointerEvents: 'none',
+          }}
+        >
+          {pick.pick.arcology || pick.pick.megablock ? (
+            <>
+              <div><b>{pick.pick.arcology ? t.inspect.arcology : t.inspect.megablock}</b></div>
+              <div>{(pick.pick.arcology ?? pick.pick.megablock)!.name}</div>
+              {pick.pick.arcology && <div>{t.inspect.design}: {pick.pick.arcology.design} · {t.inspect.access}: {pick.pick.arcology.access}</div>}
+            </>
+          ) : (
+            <>
+              <div>
+                <b>{pick.pick.building && pick.pick.block && pick.pick.district ? cap(useName(pick.pick.building, pick.pick.block, pick.pick.district)) : t.inspect.noBuilding}</b>
+              </div>
+              {pick.pick.building && <div>{`${pick.pick.building.shape} ${SHAPE_NAMES[pick.pick.building.shape] ?? ''}`.trim()}</div>}
+              {pick.pick.block && <div>{t.inspect.fabric}: {pick.pick.block.style}</div>}
+              {pick.pick.lot && !pick.pick.building && <div>{t.inspect.lot}: {pick.pick.lot.kind}</div>}
+            </>
+          )}
+          {pick.pick.district && <div>{t.inspect.district}: {pick.pick.district.name} ({pick.pick.district.zone})</div>}
+        </div>
+      )}
     </div>
   )
 }

@@ -42,6 +42,15 @@ export const SHAPES: Record<string, ShapeDef> = {
   B1T: def(null, 8, 8, [COM, CORP], ['packed'], C), // a block mass carrying towers (rendered as towers)
 }
 
+/** display names (spec §3.6/§3.7); ids missing here (hive, F*) show as the bare id */
+export const SHAPE_NAMES: Record<string, string> = {
+  A1: 'rectangle', A2: 'square', A3: 'long slab', A4: 'L', A5: 'U', A6: 'T', A7: 'H', A8: 'comb / E', A9: 'courtyard ring',
+  A10: 'open courtyard C', A11: 'point tower', A12: 'round tower', A13: 'oval tower', A14: 'cross / plus', A15: 'trapezoid corner',
+  A16: 'triangle (flatiron)', A17: 'rounded rectangle', A18: 'hall', A19: 'tower on podium', A20: 'notched rectangle', A21: 'D-shape',
+  A22: 'stadium', A23: 'big-radius rounded rect', B1: 'block mass', B1T: 'block mass with towers',
+  E1: 'corner-tower house', E2: 'house with garage', E3: 'slab with roof towers', E4: 'bay composite', E5: 'stepped tower', E6: 'hall with head building',
+}
+
 /** R25 */
 export const CURVED_OR_SLANTED: ReadonlySet<string> = new Set(['A11', 'A12', 'A13', 'A15', 'A16', 'A17', 'A19', 'A21', 'A22', 'A23', 'B1', 'B1T', 'E4']) // A19: its podium may be a D, stadium or rounded template; E4: the composite with a bay (R25)
 

@@ -64,8 +64,9 @@ if (buildings < 50) fail(`expected a dense map, got ${buildings} buildings`)
 if ((await page.locator('svg path[data-lots]').count()) < 1) fail('expected lot paths')
 if ((await page.locator('svg path[data-details]').count()) < 1) fail('expected a building details path')
 
+// POIs are off by default until the POI rework (ROADMAP); the toggle check below turns them on
 const pois = await page.locator('svg circle[data-id^="P"]').count()
-if (pois < 1) fail('no POIs rendered')
+if (pois !== 0) fail(`POIs rendered by default: ${pois}`)
 
 // cursor-anchored zoom: the world point under the cursor must stay fixed on
 // screen — read the map-viewport's translate/scale transform straight from
@@ -113,19 +114,19 @@ if (Math.abs(parseFloat(baked.width) - afterZoom.zoom * 100) > 0.01)
 await page.goto(`${BASE}/?seed=42&tags=coastal,small&pack=generic&theme=neon`)
 await page.waitForSelector('svg')
 
-// Show POIs toggle: instant display filter, no reroll/regeneration — url
-// stays put and no 'Generating…' busy flip, just the markers vanishing
+// Show POIs toggle (off by default): instant display filter, no reroll/regeneration — url
+// stays put and no 'Generating…' busy flip, just the markers appearing
 const urlBeforePoiToggle = page.url()
 const showPoisToggle = page.getByLabel(/Show POIs/)
 await showPoisToggle.click()
-if ((await page.locator('svg circle[data-id^="P"]').count()) !== 0)
-  fail('unchecking Show POIs did not hide poi markers')
+if ((await page.locator('svg circle[data-id^="P"]').count()) < 1)
+  fail('checking Show POIs did not show poi markers')
 if (page.url() !== urlBeforePoiToggle) fail('toggling Show POIs changed the url')
 if (await page.getByText('Generating…').isVisible().catch(() => false))
   fail('toggling Show POIs triggered a regenerate busy state')
 await showPoisToggle.click()
-if ((await page.locator('svg circle[data-id^="P"]').count()) < 1)
-  fail('rechecking Show POIs did not restore poi markers')
+if ((await page.locator('svg circle[data-id^="P"]').count()) !== 0)
+  fail('unchecking Show POIs did not hide poi markers')
 
 // tag chips reflect the URL on load
 if (!(await page.getByRole('button', { name: 'Coastal', pressed: true }).isVisible()))
@@ -414,6 +415,17 @@ await zoomShot(S42Q, 2707, 1916, 300, 'terrace') // S42 B1012
 await zoomShot(S42Q, 2857, 3244, 300, 'zeilen') // S42 B4601
 await zoomShot(S42Q, 2416, 2571, 300, 'podium') // S42 B2405 (podium blocks hold one building each)
 await zoomShot(S42Q, 2985, 1951, 300, 'bigbox') // S42 B0734 (bigbox blocks hold 1-3 buildings)
+// click-to-inspect: the view is still on S42 B0734 — click its middle building (BLD6679, an A2 at 2981,1975 m)
+{
+  const at = await page.evaluate(() => { const svg = document.querySelector('.map-viewport svg'); const q = new DOMPoint(2981.3, 1974.6).matrixTransform(svg.getScreenCTM()); return { x: q.x, y: q.y } })
+  await page.mouse.click(at.x, at.y)
+  await page.waitForSelector('[data-popover]', { timeout: 3000 }).catch(() => fail('click-building: no popover'))
+  const txt = (await page.locator('[data-popover]').innerText().catch(() => '')) || ''
+  if (!/(A|B|E)\d+/.test(txt) || !txt.includes('bigbox') || !txt.includes('square') || !/factory hall|warehouse|logistics depot|superstore|wholesale market|data centre|mall|multiplex|arena hall/i.test(txt.split('\n')[0])) fail(`click-building: popover text ${JSON.stringify(txt)}`)
+  await page.screenshot({ path: `${OUT}/click-building.png` })
+  await page.keyboard.press('Escape')
+  if ((await page.locator('[data-popover]').count()) !== 0) fail('click-building: Escape did not close the popover')
+}
 await zoomShot('seed=2&tags=coastal,medium,dense,fringe,lively,mixed,river,arcology&pack=generic&theme=print', 2535, 1271, 300, 'villas') // seed 2 B0602 (no villas on S42/S2268/S426)
 await zoomShot('seed=14&tags=coastal,medium,dense,fringe,lively,mixed,river,arcology&pack=generic&theme=print', 3003, 409, 300, 'megablock') // seed 14 B1301
 await zoomShot('seed=2268324149&tags=coastal,medium,packed,balanced,quiet,planned&pack=generic&theme=print', 2824, 1260, 300, 'compound') // S2268 B2707

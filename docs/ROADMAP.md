@@ -154,6 +154,11 @@ lots on the waterline) reattaches to the new waterline model.
 
 ## POI and label rework (needs a brainstorm run — user, 2026-10-13)
 
+**Revert when this round lands:** the "Show POIs" toggle defaults to off
+(`useState(false)` in `src/app/App.tsx`, uicheck expects no POIs on load) since
+2026-10-16 at the user's request; set it back to on once POIs are fewer and
+readable.
+
 A dedicated system, not a fix inside the current layers. Observed on
 print-theme maps: far too many POIs per map, POIs clustered so close that
 their labels write over each other, district labels "all over the place",
@@ -328,6 +333,16 @@ are one round of their own, after the building pass:
   "very boring". Wanted: mixed depths, service roads, gaps and yards,
   drive-ins, occasional big boxes or tower blocks facing the highway.
 
+- **More variety in what buildings actually are** (user, 2026-10-16) — the
+  click popover names a use from fabric × zone × shape (`src/gen/lots/uses.ts`)
+  with two or three names per cell, so whole districts repeat ("too many boat
+  sheds"). Wanted: longer and more specific lists per cell, weights so the
+  plain ones (warehouse, workshop, apartments) dominate and the specific ones
+  (boat shed, cold store, multiplex) stay rare, zone-flavoured extras from the
+  flavor pack, and a per-block or per-street theme so neighbours relate
+  (a row of workshops, not a random draw per building). Ties in with the POI
+  rework and the flavor packs.
+
 - **Parking lot generator** (user, 2026-10-16) — parking lots today are a
   tint with stall stripes every 2.5 m, "rows and rows" with nothing else, and
   the lot is always exactly the building's width. Wanted: a generator that
@@ -372,14 +387,6 @@ are one round of their own, after the building pass:
   first piece, so a multi-piece strip block whose second piece drew sheds
   renders as frontage (M10); eight commit subjects on `spec/buildings` run
   over 72 chars, watch it on the next branch (M11).
-
-- **Click a building to see its type** (user, 2026-10-15) — tapping a
-  building shows what it is (shape id, fabric/block style, lot kind, maybe
-  the composite it belongs to). Needs per-building hit targets in the SVG
-  (today lots and buildings are one `<path>` per kind) plus a small popover.
-  Do it right after the phase A merge: a bigbox block (striped parking +
-  halls, e.g. seed 42 Carbon Terrace) reads like a podium block (hatched
-  podium + towers, Cobalt Terrace).
 
 - **Mobile-friendly generator** (user, 2026-10-15) — the generator UI has
   to work on a phone: touch pan/zoom on the map, knob panel as a drawer or

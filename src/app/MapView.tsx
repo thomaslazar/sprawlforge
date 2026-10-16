@@ -5,16 +5,20 @@ export function MapView({
   svg,
   busy,
   onZoom,
+  onPick,
 }: {
   svg: string
   busy?: boolean
   onZoom?: (zoom: number) => void
+  /** a click (pointer moved < 4 px): map metres under it, plus the client position for the popover */
+  onPick?: (p: { x: number; y: number }, at: { x: number; y: number }) => void
 }) {
   const [view, setView] = useState({ x: 0, y: 0, zoom: 1 })
   const drag = useRef<{ x: number; y: number } | null>(null)
   // drag state itself lives in the ref above (read/written mid-gesture
   // without a re-render); this just flips the cursor style at drag start/end
   const [dragging, setDragging] = useState(false)
+  const down = useRef<{ x: number; y: number } | null>(null)
   // synchronous zoom mirror: wheel handlers read/write it directly, so rapid
   // events compound correctly and the updater below never reads mutable state
   const zoomRef = useRef(1)
@@ -60,6 +64,7 @@ export function MapView({
         }, 150)
       }}
       onPointerDown={(e) => {
+        down.current = { x: e.clientX, y: e.clientY }
         drag.current = { x: e.clientX - view.x, y: e.clientY - view.y }
         setDragging(true)
         e.currentTarget.setPointerCapture(e.pointerId)
@@ -72,11 +77,22 @@ export function MapView({
         const y = e.clientY - drag.current.y
         setView((v) => ({ ...v, x, y }))
       }}
-      onPointerUp={() => {
+      onPointerUp={(e) => {
+        const d0 = down.current
+        down.current = null
+        if (e.button === 0 && d0 && Math.hypot(e.clientX - d0.x, e.clientY - d0.y) < 4) {
+          const svg = e.currentTarget.querySelector('svg')
+          const m = svg?.getScreenCTM()
+          if (svg && m) {
+            const q = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse()) // the viewBox is in metres
+            onPick?.({ x: q.x, y: q.y }, { x: e.clientX, y: e.clientY })
+          }
+        }
         drag.current = null
         setDragging(false)
       }}
       onPointerCancel={() => {
+        down.current = null
         drag.current = null
         setDragging(false)
       }}
