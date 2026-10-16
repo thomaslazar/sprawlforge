@@ -317,6 +317,11 @@ are one round of their own, after the building pass:
   sawtooth; parking stripes aligned per lot without the 5° rounding;
   landmark variants by flavour pack (e.g. shrine instead of church).
 
+- **Template gate rejections (phase A)** (2026-10-15) — the acceptance gate
+  still drops 37-306 buildings per reference seed: E4/rows 22-227, then A1,
+  A15/shophouse, B1/blockfill, E1/detached, A16. The lot falls back to its
+  filler kind. Fix the templates so the gate catches 0.
+
 - **Blocks over water** (2026-10-15) — block cutting lets a block lie in
   water (seed 782008753: B8227, B8232); the lot pass drops every building
   there, so the blocks stay empty. Cut the block by the shore or drop it.

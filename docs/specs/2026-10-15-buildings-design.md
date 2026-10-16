@@ -315,7 +315,11 @@ Measurement (vite-node, dev container, timings unreliable under load; before = m
 
 Gate rejections are not 0: the gate catches mostly E4 (rows) and A1 outputs, so those templates still emit buildings that fail T4-T6 and the lot falls back to its filler. Left for a template fix.
 
+Median area per fabric, lots per kind and area share, fabric mix per sheet zone and P1 timing were not measured in phase A beyond the P1 median (HEAD 8648 ms vs main 4700 ms, idle host, 1.8x). With the plain > 8-vertex filter non-rectilinear reads 1.8-2.5 % (S426 2.50 %), above the 2 % target; the table uses the catalogue exclusion.
+
 Known:
+- Template gate rejections: the gate still drops 37-306 buildings per seed (E4/rows, then A1, A15/shophouse, B1/blockfill, E1/detached, A16); the lot falls back to its filler kind (ROADMAP).
+- Packed draws fewer buildings than dense (12643 / 16813 / 16336 sparse/dense/packed) because packed fabrics are larger masses; the density test compares built coverage (0.2449 / 0.2972 / 0.3111).
 - Browser and node models differ by about 1 % for the same params (ROADMAP).
 - S782 blocks B8227 and B8232 lie over water and stay empty (ROADMAP).
 - The compound scene reads weakly until phase B grounds it.
