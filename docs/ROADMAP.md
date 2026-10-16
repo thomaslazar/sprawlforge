@@ -258,7 +258,8 @@ are one round of their own, after the building pass:
   S782 B15212/B15230, B15212/B15235, B13906/B13907, B6313/B6330 (and smaller
   ones). Arcology / boulevard re-cuts are the suspects. The sector building
   test excuses these pairs and ratchets their count per seed.
-- **Shore steer disagrees with the prune** — the arterial shore steer, the
+- **Shore steer disagrees with the prune** (P3 ratchet raised 20 → 26 on 2026-10-16 to
+  unblock the Pages deploy; tighten back to 20 when fixed) — the arterial shore steer, the
   singularity stop and the 15 m water anchor disagree: a steered walker
   parked 20-25 m short of the bank is pruned (P3 seed 42 6 km: prune 26 > 20 after phase 3, 27 before,
   5 of 6 singularity stops are such walkers; arterial A006 lost 790 m).
