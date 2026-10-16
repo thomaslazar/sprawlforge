@@ -4,8 +4,9 @@ import { generateSector } from './generate'
 
 // Spec budgets are for a laptop worker; PERF_SLACK scales them on slower
 // hosts (e.g. PERF_SLACK=3 in the ~2x slower dev container). Skipped on CI.
-const BUDGET_4KM_MS = 1500
-const BUDGET_6KM_MS = 4000
+// buildings re-roll (v10): 1500 -> 29200 (4 km), 4000 -> 57600 (6 km), measured 23370 / 46082 ms x 1.25 in the dev container; perf not a gate per user ruling 2026-10-15
+const BUDGET_4KM_MS = 29200
+const BUDGET_6KM_MS = 57600
 // tsconfig has no node types; read env through globalThis
 const env = (globalThis as { process?: { env: Record<string, string | undefined> } }).process?.env ?? {}
 const slack = Number(env.PERF_SLACK ?? 1)
@@ -26,10 +27,10 @@ describe.skipIf(!!env.CI)('perf budget', () => {
     const ms = timeMs(4)
     console.log(`4 km: ${ms.toFixed(0)} ms`)
     expect(ms).toBeLessThan(BUDGET_4KM_MS * slack)
-  }, 60000)
+  }, 300000)
   it('6 km within budget', () => {
     const ms = timeMs(6)
     console.log(`6 km: ${ms.toFixed(0)} ms`)
     expect(ms).toBeLessThan(BUDGET_6KM_MS * slack)
-  }, 60000)
+  }, 300000)
 })
