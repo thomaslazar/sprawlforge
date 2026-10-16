@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { boxRing, fitBox, widthOk } from './fitbox'
-import { arc, insideOrOn, rectPoly } from './fixtures'
+import { mulberry32 } from '../rng'
+import { accepted, boxRing, fitBox, widthOk } from './fitbox'
+import { arc, firstWith, insideOrOn, rectPoly } from './fixtures'
 
 describe('fitbox', () => {
   it('fit box', () => {                                           // T2: front arc of 10° bulging into the lot, sagitta 0.437 m
@@ -30,6 +31,13 @@ describe('fitbox', () => {
   it('fit box of a straight-ended lot at a non-integer offset keeps its exact width', () => {
     const b = fitBox(rectPoly(0.37, 0.61, 23.4, 17.3), [{ x: 0.37, y: 0.61 }, { x: 23.77, y: 0.61 }])
     expect(Math.abs(b.w - 23.4)).toBeLessThan(0.01); expect(Math.abs(b.d - 17.3)).toBeLessThan(0.01)
+  })
+  it('a rotated 6 × 10 rectangle passes the gate at any angle', () => {
+    const rng = mulberry32(7)
+    for (let i = 0; i < 50; i++) expect(accepted(boxRing({ origin: { x: 4000 * rng.next(), y: 4000 * rng.next() }, angle: 6.28 * rng.next(), w: 6, d: 10 }))).toBe(true)
+  })
+  it('an E4 bay passes the gate: its short arc edges next to the body front run on from the arc', () => {
+    expect(accepted(firstWith('E4').footprint)).toBe(true)
   })
   it('widthOk', () => { expect(widthOk(rectPoly(0, 0, 6, 20), 6)).toBe(true); expect(widthOk(rectPoly(0, 0, 5, 20), 6)).toBe(false) })
 })

@@ -34,7 +34,7 @@ const NONRECT: Record<number, number> = { 42: 0, 782008753: 0, 426750495: 0, 226
 // building pairs excused as their blocks overlap (ROADMAP "Overlapping block faces")
 const FACE_LAP: Record<number, number> = { 42: 1, 782008753: 149, 426750495: 0, 2268324149: 184 } // measured after the user review (variation round; S782 140 to 149 after the plaza/strip fix round re-rolls)
 // buildings with a vertex nearer a road centreline than setback - 0.5 m (within the 2 m R1 simplification budget)
-const SIMPLIFIED_NEAR: Record<number, number> = { 42: 1321, 782008753: 4107, 426750495: 686, 2268324149: 1365 } // measured after the user review (variation round; plaza/strip fix round: S42 1228 to 1235, S782 3818 to 3814, S426 621 to 620; sparse-block guard round, more buildings: S42 1235 to 1321, S782 3814 to 4107, S426 620 to 686, S2268 1266 to 1365)
+const SIMPLIFIED_NEAR: Record<number, number> = { 42: 1332, 782008753: 4118, 426750495: 688, 2268324149: 1373 } // buildings re-roll (v11): old -> new — gate fix keeps buildings the gate used to drop; user ruling 2026-10-16: S42 1321 -> 1332, S782 4107 -> 4118, S426 686 -> 688, S2268 1365 -> 1373; measured after the user review (variation round; plaza/strip fix round: S42 1228 to 1235, S782 3818 to 3814, S426 621 to 620; sparse-block guard round, more buildings: S42 1235 to 1321, S782 3814 to 4107, S426 620 to 686, S2268 1266 to 1365)
 
 // blocks of 0.5 ha or more under 10 % built: the sparse-block guard re-lays them as sheds or rows (S42 59 and S782 206 before it); the rest sit behind highway setbacks or on water
 const SPARSE: Record<number, number> = { 42: 13, 782008753: 29 }
@@ -88,9 +88,9 @@ describe('buildings phase A', () => {
     let m: SectorModel
     beforeAll(() => { m = gen(params) }, 300000)
 
-    it('min edge', () => { for (const b of m.buildings) expect(minNonArcEdge(b.footprint), b.id).toBeGreaterThanOrEqual(3) })
+    it('min edge', () => { for (const b of m.buildings) expect(minNonArcEdge(b.footprint), b.id).toBeGreaterThanOrEqual(3 - 1e-6) })
     it('min width', () => { for (const b of m.buildings) expect(widthOk(b.footprint, 6), b.id).toBe(true) })
-    it('no small buildings', () => { expect(m.buildings.filter((b) => Math.abs(ringArea(b.footprint)) < 60).map((b) => b.id)).toEqual([]) })
+    it('no small buildings', () => { expect(m.buildings.filter((b) => Math.abs(ringArea(b.footprint)) < 60 - 1e-6).map((b) => b.id)).toEqual([]) })
     it('no overlap', () => {
       // buildings of two blocks whose footprints overlap (an upstream face defect, on main too; ROADMAP) are excused and counted
       const blocks = new Map(m.blocks.map((b) => [b.id, b.footprint]))

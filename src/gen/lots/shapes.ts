@@ -43,7 +43,7 @@ export const SHAPES: Record<string, ShapeDef> = {
 }
 
 /** R25 */
-export const CURVED_OR_SLANTED: ReadonlySet<string> = new Set(['A11', 'A12', 'A13', 'A15', 'A16', 'A17', 'A19', 'A21', 'A22', 'A23', 'B1', 'B1T']) // A19: its podium may be a D, stadium or rounded template
+export const CURVED_OR_SLANTED: ReadonlySet<string> = new Set(['A11', 'A12', 'A13', 'A15', 'A16', 'A17', 'A19', 'A21', 'A22', 'A23', 'B1', 'B1T', 'E4']) // A19: its podium may be a D, stadium or rounded template; E4: the composite with a bay (R25)
 
 const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x))
 /** clamp(x, lo, hi) snapped to 2 m (lo and hi are even) */

@@ -1,6 +1,7 @@
 import { expect } from 'vitest'
 import { COMPOSITES, makeComposite } from './composites'
 import { mulberry32 } from '../rng'
+import { arcEdges } from './fitbox'
 // test helpers for the lot pass (not production code)
 import { boxOf, pointInRings, ringArea, type Pt } from '../geometry'
 import { intersection } from '../clip'
@@ -98,12 +99,13 @@ export const interiorAngles = (ring: Pt[]): number[] => {
   })
 }
 
-/** shortest edge whose end vertices are not both arc points (turning <= 15.5 degrees) */
+/** shortest non-arc edge: arc points turn <= 15.5 degrees; an arc edge has both ends arc points, or one and continues an arc run (fitbox arcEdges) */
 export const minNonArcEdge = (ring: Pt[]): number => {
   const n = ring.length
   const arcPt = interiorAngles(ring).map((a) => Math.abs(180 - a) <= 15.5)
+  const arc = arcEdges(ring, (i) => arcPt[i])
   let m = Infinity
-  for (let i = 0; i < n; i++) if (!(arcPt[i] && arcPt[(i + 1) % n])) m = Math.min(m, Math.hypot(ring[(i + 1) % n].x - ring[i].x, ring[(i + 1) % n].y - ring[i].y))
+  for (let i = 0; i < n; i++) if (!arc[i]) m = Math.min(m, Math.hypot(ring[(i + 1) % n].x - ring[i].x, ring[(i + 1) % n].y - ring[i].y))
   return m
 }
 

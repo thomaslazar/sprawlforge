@@ -106,9 +106,14 @@ function smoothAt(ring: Pt[], i: number): boolean {
   const t = Math.atan2((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x), (b.x - a.x) * (c.x - b.x) + (b.y - a.y) * (c.y - b.y))
   return Math.abs(t) <= ARC_TURN
 }
-/** the acceptance gate: every non-arc edge >= 3 m, width >= 6 m, area >= 60 m2 */
-export function accepted(fp: Pt[]): boolean {
-  if (Math.abs(ringArea(fp)) < 60 || !widthOk(fp, 6)) return false
-  return fp.every((p, i) => dist(p, fp[(i + 1) % fp.length]) >= 3 || (smoothAt(fp, i) && smoothAt(fp, (i + 1) % fp.length)))
+/** an edge under 3 m is an arc edge when both ends are arc points, or one end is and the neighbour on that side is an arc edge (it runs on from an arc) */
+export function arcEdges(fp: Pt[], smooth: (i: number) => boolean): boolean[] {
+  const n = fp.length, both = fp.map((_, i) => smooth(i) && smooth((i + 1) % n))
+  return both.map((b, i) => b || (smooth(i) && both[(i + n - 1) % n]) || (smooth((i + 1) % n) && both[(i + 1) % n]))
 }
-
+/** the acceptance gate: every non-arc edge >= 3 m, width >= 6 m, area >= 60 m2 (float tolerance) */
+export function accepted(fp: Pt[]): boolean {
+  if (Math.abs(ringArea(fp)) < 60 - 1e-6 || !widthOk(fp, 6)) return false
+  const arc = arcEdges(fp, (i) => smoothAt(fp, i))
+  return fp.every((p, i) => dist(p, fp[(i + 1) % fp.length]) >= 3 - 1e-6 || arc[i])
+}

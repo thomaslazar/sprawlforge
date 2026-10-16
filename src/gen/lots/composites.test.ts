@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { mulberry32 } from '../rng'
 import { ringArea } from '../geometry'
-import { boxRing, widthOk } from './fitbox'
-import { compositeChance, makeComposite } from './composites'
+import { accepted, boxRing, widthOk } from './fitbox'
+import { COMPOSITES, compositeChance, makeComposite } from './composites'
 import { firstWith, insideOrOn, interiorAngles, near90or270 } from './fixtures'
 
 const box60x40 = { origin: { x: 0, y: 0 }, angle: 0, w: 60, d: 40 }
@@ -19,6 +19,20 @@ describe('composites', () => {
       expect(ringArea(c.footprint)).toBeGreaterThan(0)
     }
     expect(made).toBeGreaterThan(100)
+  })
+  it('every composite passes the acceptance gate', () => {
+    for (const id of Object.keys(COMPOSITES) as (keyof typeof COMPOSITES)[]) {
+      const c = COMPOSITES[id]
+      let made = 0
+      for (let s = 0; s < 2000 && made < 20; s++) {
+        const rng = mulberry32(s), fit = { origin: { x: 3000 * rng.next(), y: 3000 * rng.next() }, angle: 6.28 * rng.next(), w: 12 + rng.int(0, 40), d: 12 + rng.int(0, 40) }
+        const r = makeComposite(fit, c.zones[s % c.zones.length], c.density[s % c.density.length], false, rng)
+        if (!r || r.shape !== id) continue
+        made++
+        expect(accepted(r.footprint), `${id} seed ${s}`).toBe(true)
+      }
+      expect(made, id).toBe(20)
+    }
   })
   it('continuous fabrics take only E3 and E5', () => {
     for (let s = 0; s < 300; s++) { const c = makeComposite(box60x40, 'corp', 'packed', true, mulberry32(s)); if (c) expect(['E3', 'E5']).toContain(c.shape) }

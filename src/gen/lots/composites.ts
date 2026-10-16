@@ -61,9 +61,9 @@ function contBody(rng: Rng, ids: string[], c: { w: number; d: number }): Body | 
 }
 
 const PLAN: Record<Id, Planner> = {
-  E1(rng, gw, gd) { // corner tower, about half outside, at a front corner
-    const s = even(rng, 6, 14) as number, o = 2 * Math.floor(s / 4), right = rng.chance(0.5)
-    const body = pickBody(rng, COMPOSITES.E1.bodies, 10, Math.min(16, gw - o), 10, Math.min(16, gd - o))
+  E1(rng, gw, gd) { // corner tower, about half outside, at a front corner; overhang o >= 4 and body stubs w, d - (s - o) >= 4 keep every edge >= 4 m
+    const s = even(rng, 8, 14) as number, o = 2 * Math.floor(s / 4), right = rng.chance(0.5), lo = Math.max(10, s - o + 4)
+    const body = pickBody(rng, COMPOSITES.E1.bodies, lo, Math.min(16, gw - o), lo, Math.min(16, gd - o))
     if (!body) return null
     const bx = right ? 0 : o, x0 = right ? bx + body.w - s + o : bx - o
     return { body, bx, by: o, outer: [rect(x0, 0, x0 + s, s)], inner: [] }
@@ -88,7 +88,7 @@ const PLAN: Record<Id, Planner> = {
     if (x1 === null || x2 === null || y1 === null || y2 === null) return null
     return { body, bx: 0, by: 0, outer: [], inner: [rect(x1, y1, x1 + s1, y1 + s1), rect(x2, y2, x2 + s2, y2 + s2)] }
   },
-  E4(rng, gw, gd) { // semicircular bay on the front edge; radius <= 8 so the front margin is at most 8 m
+  E4(rng, gw, gd) { // semicircular bay on the front edge; radius <= 8 so the front margin is at most 8 m; w >= 12 and R <= w / 4 keep both front stubs (cx -+ R) >= 3 m
     const body = pickBody(rng, COMPOSITES.E4.bodies, 12, gw, 10, gd - 8)
     if (!body) return null
     const D = even(rng, Math.max(6, 0.3 * body.w), Math.min(16, 0.5 * body.w))
