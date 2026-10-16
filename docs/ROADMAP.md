@@ -308,8 +308,9 @@ are one round of their own, after the building pass:
   each platform. Likely float/clipper differences between esbuild output and
   node; find the first diverging stage and pin it.
 
-- **Lot pass perf** (2026-10-15) — the lot pass took seed 42 from ~5 s to
-  ~10 s (fitBox search, strip trimming, road clearance per piece). Not a gate
+- **Lot pass perf** (2026-10-15) — the lot pass took seed 42 from 4.7 s to
+  8.6 s (1.8×, measured on an idle host; fitBox search, strip trimming, road
+  clearance per piece). Not a gate
   while the building passes keep changing; revisit once they settle.
 
 - **Building pass follow-ups** (spec §7, 2026-10-15) — alleys and rear lanes
@@ -317,10 +318,22 @@ are one round of their own, after the building pass:
   sawtooth; parking stripes aligned per lot without the 5° rounding;
   landmark variants by flavour pack (e.g. shrine instead of church).
 
-- **Template gate rejections (phase A)** (2026-10-15) — the acceptance gate
-  still drops 37-306 buildings per reference seed: E4/rows 22-227, then A1,
-  A15/shophouse, B1/blockfill, E1/detached, A16. The lot falls back to its
-  filler kind. Fix the templates so the gate catches 0.
+- **Podium follows the block form** (user, 2026-10-16) — the podium fabric
+  today is a rectangle 0.45-0.65 of the fit box; wanted: a podium that fills
+  the buildable block outline (setbacks applied) with 1-3 towers on top, as
+  in the user's reference picture. Candidate for phase B.
+
+- **Highway strip rework** (user, 2026-10-16) — the strip fabric is one row
+  of slabs 15-60 m wide, 14-30 m deep along the highway; the user calls it
+  "very boring". Wanted: mixed depths, service roads, gaps and yards,
+  drive-ins, occasional big boxes or tower blocks facing the highway.
+
+- **Template gate rejections (phase A)** (2026-10-15, updated 2026-10-16) —
+  after the final fix wave (E4, A1 and E1 classes gone) the acceptance gate
+  still drops 1-9 buildings per reference seed (P1 6, S42 3, S782 9, S426 1,
+  S2268 8): A15/shophouse, B1/blockfill, A16 (rows, shophouse) and
+  A4/perimeter. The lot falls back to its filler kind. Fix the templates so
+  the gate catches 0; expose `fillLots` `rejected` for a ratchet (below).
 
 - **Blocks over water** (2026-10-15) — block cutting lets a block lie in
   water (seed 782008753: B8227, B8232); the lot pass drops every building
@@ -335,12 +348,23 @@ are one round of their own, after the building pass:
   reachable via compound and infill; `forceStyle` test is weak; lots are drawn
   outside the land clip; interactive lots are one path per kind; the villas
   uicheck scene shows no pools; uicheck hard-codes 4000 m; the sparse-block
-  water excusal could excuse a concave dry block.
+  water excusal could excuse a concave dry block. From the final review
+  (2026-10-16): plaza and megablock fallback lots use the centreline block
+  footprint, not the setback buildable (M5); `ring`/`unring`/`ccw`/`dist`
+  are redeclared in five lots files and `simplified()` is copied into the
+  sector test (M6); `generate.ts` drops `fillLots` `rejected`, expose it
+  for a per-seed rejection ratchet (M9); the block style comes from the
+  first piece, so a multi-piece strip block whose second piece drew sheds
+  renders as frontage (M10); eight commit subjects on `spec/buildings` run
+  over 72 chars, watch it on the next branch (M11).
 
 - **Click a building to see its type** (user, 2026-10-15) — tapping a
   building shows what it is (shape id, fabric/block style, lot kind, maybe
   the composite it belongs to). Needs per-building hit targets in the SVG
   (today lots and buildings are one `<path>` per kind) plus a small popover.
+  Do it right after the phase A merge: a bigbox block (striped parking +
+  halls, e.g. seed 42 Carbon Terrace) reads like a podium block (hatched
+  podium + towers, Cobalt Terrace).
 
 - **Mobile-friendly generator** (user, 2026-10-15) — the generator UI has
   to work on a phone: touch pan/zoom on the map, knob panel as a drawer or

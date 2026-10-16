@@ -272,7 +272,14 @@ Decisions the plan pinned where the spec was open:
 - Sides of a piece: each buildable edge takes the setback of the footprint edge whose offset line holds its midpoint (+-0.05 m); chains break at turns >= 25 degrees and at setback changes.
 - Strip cutting: widths drawn along the arc length; a rest >= the minimum width is the last lot, a smaller rest widens the previous one; single-edge lots of an untrimmed strip are quads, the rest go through `clip.intersection`.
 - Fit box search: chord-frame cross-section sampled at every 1 m and at every vertex x; O(G*V + G^2); lots wider than 120 m use a 2 m grid, then refine.
-- Acceptance gate in `index.ts`: drops any non-arc building with an edge < 3 m, T5 width < 6 m or area < 60 m2; its lot becomes its filler kind.
+- Acceptance gate in `index.ts` (`fitbox.ts` `accepted`): drops any building with a non-arc edge < 3 m, T5 width < 6 m or area < 60 m2; its lot becomes its filler kind. Floors take a 1e-6 tolerance (a rotated 6 x 10 m A1 comes back at 59.99999 m2, an exact 3 m edge at 2.99999 m).
+- T4 clarification (arc runs): an edge under 3 m is an arc edge when both ends are arc points (turn <= 15.5 degrees), or one end is an arc point and the neighbouring edge on that side is an arc edge (the first and last edge of a bay that meets a straight front). T4 and the gate share this rule (`arcEdges`) and the 3 m floor's 1e-6 tolerance.
+- Curved-or-slanted set (R25, T9 exclusion): B1/B1T, A19 (its podium may be a D, stadium or rounded template) and E4 (the bay) added.
+- Continuous fabrics: building depth 0.6-1.0 x fit depth (R24 says 0.9-1.0), a ragged back line (user review, D11).
+- Frontage ranges widened about 25 % (user review): perimeter 8-22, terrace 5-9, shophouse 5-10, rows 10-36 (§3.4: 10-18, 6-8, 6-8, 12-30); the rows gap (2-6 m) is drawn once per block.
+- Fabric weights: separate `commerce packed` and `corp packed` rows (§3.5 has one row per zone); corp has no perimeter; `blockfill` MIN_FIT 30 x 30.
+- Megablock: pieces other than the main one are laid out as `rows`.
+- Static export (R34 deviation): A19 podiums are merged into one `data-podiums` path, not a per-building `<polygon data-id>`.
 - Fabric order: cumulative draw in the R19 row order; R21 fallback by descending weight, then `rows`.
 - Arcs polygonised per R25 (24 per circle, 12 per semicircle, 6 per quarter; ellipse 24).
 - Whole-block lots: each buildable piece is one lot; `bigbox` splits into `parking` (front) and `yard` (hall).
@@ -307,18 +314,18 @@ Measurement (vite-node, dev container, timings unreliable under load; before = m
 
 | seed | buildings before / after | cover % | non-rect % | < 60 m2 | min width < 6 m | triangles non-A16 | hive cells outside core | gate rejections |
 |---|---|---|---|---|---|---|---|---|
-| P1 (app tags) | 4780 / 10368 | 34.8 / 30.2 | 49.1 / 0.0 | 213 / 0 | 1094 / 0 | 45 / 0 | 0 / 0 | n/a / 37 |
-| S42 | 3394 / 10042 | 32.0 / 28.5 | 53.8 / 0.0 | 173 / 0 | 956 / 0 | 45 / 0 | 0 / 0 | n/a / 75 |
-| S782 | 13858 / 40242 | 34.6 / 30.5 | 43.4 / 0.0 | 409 / 0 | 2883 / 0 | 116 / 0 | 0 / 0 | n/a / 306 |
-| S426 | 1840 / 4310 | 35.0 / 32.3 | 55.4 / 0.0 | 45 / 0 | 394 / 0 | 34 / 0 | 0 / 0 | n/a / 37 |
-| S2268 | 8054 / 15017 | 39.3 / 32.6 | 37.3 / 0.0 | 338 / 0 | 1461 / 0 | 64 / 0 | 0 / 0 | n/a / 156 |
+| P1 (app tags) | 4780 / 10368 | 34.8 / 30.2 | 49.1 / 0.0 | 213 / 0 | 1094 / 0 | 45 / 0 | 0 / 0 | n/a / 37 -> 6 |
+| S42 | 3394 / 10042 | 32.0 / 28.5 | 53.8 / 0.0 | 173 / 0 | 956 / 0 | 45 / 0 | 0 / 0 | n/a / 75 -> 3 |
+| S782 | 13858 / 40242 | 34.6 / 30.5 | 43.4 / 0.0 | 409 / 0 | 2883 / 0 | 116 / 0 | 0 / 0 | n/a / 306 -> 9 |
+| S426 | 1840 / 4310 | 35.0 / 32.3 | 55.4 / 0.0 | 45 / 0 | 394 / 0 | 34 / 0 | 0 / 0 | n/a / 37 -> 1 |
+| S2268 | 8054 / 15017 | 39.3 / 32.6 | 37.3 / 0.0 | 338 / 0 | 1461 / 0 | 64 / 0 | 0 / 0 | n/a / 156 -> 8 |
 
-Gate rejections are not 0: the gate catches mostly E4 (rows) and A1 outputs, so those templates still emit buildings that fail T4-T6 and the lot falls back to its filler. Left for a template fix.
+Gate rejections (x -> y): before and after the final fix wave (arc-run rule, 1e-6 floors, E1 overhang >= 4 m), which removed the E4, A1 and E1 classes; buildings after it P1 10399, S42 10127, S782 40537, S426 4345, S2268 15165. The residue (1-9 per seed) is A15/shophouse, B1/blockfill, A16 and A4/perimeter; left for a template fix.
 
 Median area per fabric, lots per kind and area share, fabric mix per sheet zone and P1 timing were not measured in phase A beyond the P1 median (HEAD 8648 ms vs main 4700 ms, idle host, 1.8x). With the plain > 8-vertex filter non-rectilinear reads 1.8-2.5 % (S426 2.50 %), above the 2 % target; the table uses the catalogue exclusion.
 
 Known:
-- Template gate rejections: the gate still drops 37-306 buildings per seed (E4/rows, then A1, A15/shophouse, B1/blockfill, E1/detached, A16); the lot falls back to its filler kind (ROADMAP).
+- Template gate rejections: the gate still drops 1-9 buildings per seed (A15/shophouse, B1/blockfill, A16, A4/perimeter); the lot falls back to its filler kind (ROADMAP).
 - Packed draws fewer buildings than dense (12643 / 16813 / 16336 sparse/dense/packed) because packed fabrics are larger masses; the density test compares built coverage (0.2449 / 0.2972 / 0.3111).
 - Browser and node models differ by about 1 % for the same params (ROADMAP).
 - S782 blocks B8227 and B8232 lie over water and stay empty (ROADMAP).
