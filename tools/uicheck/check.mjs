@@ -403,6 +403,7 @@ async function zoomShot(url, x, y, sizeM, name) {
   const view = await page.locator('.map-viewport').locator('xpath=..').boundingBox() // drag the point (still under the cursor) to the view centre
   await page.mouse.down(); await page.mouse.move(view.x + view.width / 2, view.y + view.height / 2, { steps: 8 }); await page.mouse.up()
   await page.waitForTimeout(600)
+  // these exists-asserts cannot fail (the paths always exist, whatever the view shows); the screenshots are the check
   if ((await page.locator('svg [data-lots]').count()) < 1) fail(`buildings-${name}: no lots rendered`)
   if ((await page.locator('svg [data-buildings]').count()) < 1) fail(`buildings-${name}: no buildings rendered`)
   await page.screenshot({ path: `${OUT}/buildings-${name}.png` })

@@ -220,17 +220,18 @@ describe('buildings phase A', () => {
   })
 
   it('fabric mix', () => {
-    // measured after the user review (weights, block fill, coherence 0.4), pooled over the four seeds (share / weight; rows with < 20 blocks are not asserted):
-    // residential sparse n=15 detached .47/.50 villas .20/.20 rows .33/.30
-    // residential dense n=782 perimeter .12/.15 terrace .32/.32 rows .34/.33 zeilen .18/.15 tower-park .04/.05
-    // residential packed n=307 perimeter .30/.30 terrace .40/.45 zeilen .17/.15 tower-park .11/.10
-    // mixed sparse n=8; mixed dense n=470 perimeter .15/.15 shophouse .40/.40 rows .30/.30 podium .06/.05 blockfill .09/.10
-    // mixed packed n=212 perimeter .08/.10 shophouse .43/.40 rows .24/.20 podium .04/.05 blockfill .21/.25
-    // commerce n=252 perimeter .07/.05 shophouse .55/.50 podium .09/.10 plaza .00/.10 garage .08/.05 bigbox .07/.10 blockfill .12/.10
-    // commerce packed n=131 shophouse .41/.40 podium .09/.10 plaza .00/.10 garage .03/.05 bigbox .15/.10 blockfill .28/.25
-    // corp n=738 podium .19/.15 tower-park .18/.20 plaza .00/.10 shophouse .52/.45 blockfill .09/.10
-    // corp packed n=427 podium .15/.15 tower-park .21/.20 plaza .00/.10 shophouse .36/.30 blockfill .26/.25
-    // industrial n=642 bigbox .40/.50 sheds .37/.35 rows .23/.15; fringe n=15
+    // measured after the final fix wave (weights, block fill, coherence 0.4), pooled over the four seeds, arcology blocks left out (share / weight; rows with < 20 blocks are not asserted):
+    // residential sparse n=15 detached .47/.50 villas .13/.20 rows .40/.30
+    // residential dense n=782 perimeter .12/.15 terrace .30/.32 rows .37/.33 zeilen .17/.15 tower-park .04/.05
+    // residential packed n=307 perimeter .30/.30 terrace .39/.45 zeilen .16/.15 tower-park .08/.10 (+19 rows)
+    // mixed sparse n=8; mixed dense n=470 perimeter .15/.15 shophouse .40/.40 rows .32/.30 podium .06/.05 blockfill .08/.10
+    // mixed packed n=212 perimeter .08/.10 shophouse .42/.40 rows .27/.20 podium .03/.05 blockfill .19/.25
+    // commerce n=270 perimeter .07/.05 shophouse .51/.50 podium .07/.10 plaza .02/.10 garage .06/.05 bigbox .05/.10 blockfill .11/.10 (+30 rows)
+    // commerce packed n=146 shophouse .37/.40 podium .08/.10 plaza .02/.10 garage .01/.05 bigbox .08/.10 blockfill .22/.25 (+32 rows)
+    // corp n=851 podium .14/.15 tower-park .13/.20 plaza .05/.10 shophouse .45/.45 blockfill .07/.10 (+137 rows)
+    // corp packed n=466 podium .12/.15 tower-park .16/.20 plaza .03/.10 shophouse .33/.30 blockfill .21/.25 (+65 rows)
+    // industrial n=643 bigbox .35/.50 sheds .42/.35 rows .23/.15; fringe n=15
+    // (+rows: blocks the sparse-block guard re-laid as rows)
     // pooled rows (sheet zone x density) -> fabric counts
     const rows = new Map<string, { n: number; by: Map<string, number> }>()
     for (const [, params] of SEEDS) {
@@ -239,7 +240,7 @@ describe('buildings phase A', () => {
       const dz = new Map(m.districts.map((d) => [d.id, d]))
       for (const bl of m.blocks) {
         const d = dz.get(bl.districtId)
-        if (!d || bl.style === 'plaza' || bl.style === 'megablock' || bl.style === 'compound' || bl.style === 'strip') continue
+        if (!d || bl.flags.arcology || bl.style === 'megablock' || bl.style === 'compound' || bl.style === 'strip') continue
         const cc = ringCentroid(bl.footprint)
         const dc = densityClass(Math.max(0, Math.min(1, 0.6 * params.density + 0.6 * nb(cc.x / 500, cc.y / 500) - 0.1)))
         const sz = sheetZone(d.zone, dc)

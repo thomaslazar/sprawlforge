@@ -163,7 +163,7 @@ export interface Building {
   districtId: string
   /** outer ring, meters, counter-clockwise */
   footprint: Pt[]
-  /** catalogue id: 'A1'..'A23' | 'E1'..'E6' | 'hive' | 'F1'..'F23' */
+  /** catalogue id: 'A1'..'A23' | 'B1' | 'B1T' | 'E1'..'E6' | 'hive' | 'F1'..'F23' */
   shape: string
   lotId: string
   /** extra rings drawn on the roof (courtyards, pools, parking rings) */
