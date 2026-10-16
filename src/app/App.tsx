@@ -27,7 +27,9 @@ export function App() {
   const [pendingTags, setPendingTags] = useState<Tag[]>(applied.tags)
   // display-only, session-scoped (no URL persistence): toggling re-renders
   // the SVG from the existing model with pois filtered out — zero regen
-  const [showPois, setShowPois] = useState(true)
+  // off by default until the POI rework (ROADMAP: too many, clustered);
+  // revert to true in that round
+  const [showPois, setShowPois] = useState(false)
   // export-only knob, session-scoped like showPois — never part of the URL
   const [pngScale, setPngScale] = useState(2)
 

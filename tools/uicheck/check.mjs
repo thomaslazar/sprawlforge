@@ -64,8 +64,9 @@ if (buildings < 50) fail(`expected a dense map, got ${buildings} buildings`)
 if ((await page.locator('svg path[data-lots]').count()) < 1) fail('expected lot paths')
 if ((await page.locator('svg path[data-details]').count()) < 1) fail('expected a building details path')
 
+// POIs are off by default until the POI rework (ROADMAP); the toggle check below turns them on
 const pois = await page.locator('svg circle[data-id^="P"]').count()
-if (pois < 1) fail('no POIs rendered')
+if (pois !== 0) fail(`POIs rendered by default: ${pois}`)
 
 // cursor-anchored zoom: the world point under the cursor must stay fixed on
 // screen — read the map-viewport's translate/scale transform straight from
@@ -113,19 +114,19 @@ if (Math.abs(parseFloat(baked.width) - afterZoom.zoom * 100) > 0.01)
 await page.goto(`${BASE}/?seed=42&tags=coastal,small&pack=generic&theme=neon`)
 await page.waitForSelector('svg')
 
-// Show POIs toggle: instant display filter, no reroll/regeneration — url
-// stays put and no 'Generating…' busy flip, just the markers vanishing
+// Show POIs toggle (off by default): instant display filter, no reroll/regeneration — url
+// stays put and no 'Generating…' busy flip, just the markers appearing
 const urlBeforePoiToggle = page.url()
 const showPoisToggle = page.getByLabel(/Show POIs/)
 await showPoisToggle.click()
-if ((await page.locator('svg circle[data-id^="P"]').count()) !== 0)
-  fail('unchecking Show POIs did not hide poi markers')
+if ((await page.locator('svg circle[data-id^="P"]').count()) < 1)
+  fail('checking Show POIs did not show poi markers')
 if (page.url() !== urlBeforePoiToggle) fail('toggling Show POIs changed the url')
 if (await page.getByText('Generating…').isVisible().catch(() => false))
   fail('toggling Show POIs triggered a regenerate busy state')
 await showPoisToggle.click()
-if ((await page.locator('svg circle[data-id^="P"]').count()) < 1)
-  fail('rechecking Show POIs did not restore poi markers')
+if ((await page.locator('svg circle[data-id^="P"]').count()) !== 0)
+  fail('unchecking Show POIs did not hide poi markers')
 
 // tag chips reflect the URL on load
 if (!(await page.getByRole('button', { name: 'Coastal', pressed: true }).isVisible()))

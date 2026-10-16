@@ -154,6 +154,11 @@ lots on the waterline) reattaches to the new waterline model.
 
 ## POI and label rework (needs a brainstorm run — user, 2026-10-13)
 
+**Revert when this round lands:** the "Show POIs" toggle defaults to off
+(`useState(false)` in `src/app/App.tsx`, uicheck expects no POIs on load) since
+2026-10-16 at the user's request; set it back to on once POIs are fewer and
+readable.
+
 A dedicated system, not a fix inside the current layers. Observed on
 print-theme maps: far too many POIs per map, POIs clustered so close that
 their labels write over each other, district labels "all over the place",
