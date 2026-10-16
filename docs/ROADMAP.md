@@ -328,6 +328,18 @@ are one round of their own, after the building pass:
   "very boring". Wanted: mixed depths, service roads, gaps and yards,
   drive-ins, occasional big boxes or tower blocks facing the highway.
 
+- **Parking lot generator** (user, 2026-10-16) — parking lots today are a
+  tint with stall stripes every 2.5 m, "rows and rows" with nothing else, and
+  the lot is always exactly the building's width. Wanted: a generator that
+  lays each lot out like a real one (stalls 2.5 × 5 m, double bays 10 m,
+  aisles 6 m, fire lane along the building, walkway to the entrance, entries
+  from the street, islands at the row ends) with varied styles: rows
+  perpendicular or parallel to the hall, lots on the front and back, lots on
+  two sides, walkways around the shop itself, small rear lots with one aisle
+  behind shophouse rows (sheet temp/sheet/parking.html A/B/C, all three
+  approved). Lots are never the same width as the building. Own round after
+  the building pass merge; needs a spec.
+
 - **Template gate rejections (phase A)** (2026-10-15, updated 2026-10-16) —
   after the final fix wave (E4, A1 and E1 classes gone) the acceptance gate
   still drops 1-9 buildings per reference seed (P1 6, S42 3, S782 9, S426 1,
