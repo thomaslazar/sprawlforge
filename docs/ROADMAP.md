@@ -65,6 +65,17 @@ core (clipping, insetting, filling non-rectangular shapes).
    bisection replaced by field streamlines + planar-graph faces; original
    spec `docs/specs/2026-08-06-organic-streets-design.md`).
 
+## Water rework from the ground up (user, 2026-10-15)
+
+The current water (terrain v2 coast + river + lakes) is boring and looks the
+same every time: one curved coast, one meandering band, round lakes. Redo
+it as its own round with a brainstorm first — estuaries and deltas, bays
+and headlands, braided or forked rivers, canals and docks basins, islands
+that are not blobs, wetlands, reservoirs/dams, varied shore types (cliff,
+beach, quay, mudflat), and seed-to-seed variety as the acceptance test.
+Everything downstream (bridges, highway water exits, shore zoning, piers,
+lots on the waterline) reattaches to the new waterline model.
+
 ## Deferred (explicit v1 excludes — do not forget)
 
 - **Structural editing** — moving walls/roads/buildings by hand. v1 is
@@ -211,6 +222,24 @@ statement).
 - **Tags**: a `green` axis (barren / some / leafy) so the user can ask for it,
   the way density and corp dominance are asked for today.
 
+## Transit round (user, 2026-10-15) — next pass after the building pass
+
+A railway station without tracks looks wrong, so rail and public transport
+are one round of their own, after the building pass:
+
+- **Railway**: one line through the sector the way the highway is traced
+  (enters and leaves at the window edge, bridges over water, cut and
+  embankment where it crosses streets), a main station near the centre,
+  a rail yard with parallel sidings in industrial, level crossings or
+  bridges at arterials. Large sectors may get a second line (S-Bahn).
+- **Trams**: on some arterials, drawn as a thin paired line in the road,
+  with stops; a depot in industrial.
+- **Metro**: no tunnels drawn; entrances as small stair markers on the
+  sidewalk (a POI type), clustered in the centre.
+- **Landmarks that need the network** (main station, rail yard, mag-lev
+  terminal) move here from the building pass.
+- **Metroplex link** later: lines continue between sectors.
+
 ## Street generator follow-ups (from tensor-streets, §14)
 
 - **Perf budget unverified** — target 4 km ≤ 1.5 s, 6 km ≤ 4 s on a laptop
@@ -218,13 +247,22 @@ statement).
   `src/gen/sector/perf.test.ts` is red at `PERF_SLACK=1` and skipped on CI.
   Floor: Clipper2 (`src/gen/clip.ts`) in the lot pass and face clipping, plus tracing.
   Measure on a laptop and profile before optimizing.
+- **Overlapping block faces** — some block footprints overlap each other
+  (already on main), so the lot pass fills both and their buildings overlap:
+  S42 B0716/B0749; S2268 B2407/B2428, B2410/B2422, B2107/B2117, B2105/B2116;
+  S782 B15212/B15230, B15212/B15235, B13906/B13907, B6313/B6330 (and smaller
+  ones). Arcology / boulevard re-cuts are the suspects. The sector building
+  test excuses these pairs and ratchets their count per seed.
 - **Shore steer disagrees with the prune** — the arterial shore steer, the
   singularity stop and the 15 m water anchor disagree: a steered walker
   parked 20-25 m short of the bank is pruned (P3 seed 42 6 km: prune 26 > 20 after phase 3, 27 before,
   5 of 6 singularity stops are such walkers; arterial A006 lost 790 m).
 - **Steer-outrun highway dead ends** — 16 of 200 swept coastal 2 km cases
   (of the 18 that still stop inside the window) end on concave coasts
-  (lookahead 300 m against the turn room).
+  (lookahead 300 m against the turn room). User (2026-10-15, seed
+  3218087163 `coastal,small,dense,balanced,lively,sprawl,river,lakes`): a
+  highway that ends on water with no far shore should bridge the water to
+  the window edge instead of stopping.
 - **Unwelded lake-shore street ends** on seeds 19, 20, 24; the lake test
   does not run on them.
 - **Infill streets are a crutch** — they split blocks the tracer leaves
@@ -263,6 +301,89 @@ statement).
   chrome an actual look (dark cyberpunk panel to match the neon theme,
   styled sliders/selects/buttons). Inline styles should survive only where
   values are computed at runtime (e.g. the map transform).
+
+- **Browser and node models differ slightly** (found 2026-10-15) — the same
+  params give ~1 % more buildings in the browser build than under vite-node
+  (seed 42: 10166 vs 10043; block styles identical). Deterministic within
+  each platform. Likely float/clipper differences between esbuild output and
+  node; find the first diverging stage and pin it.
+
+- **Lot pass perf** (2026-10-15) — the lot pass took seed 42 from 4.7 s to
+  8.6 s (1.8×, measured on an idle host; fitBox search, strip trimming, road
+  clearance per piece). Not a gate
+  while the building passes keep changing; revisit once they settle.
+
+- **Building pass follow-ups** (spec §7, 2026-10-15) — alleys and rear lanes
+  for fabrics other than megablock; roof details beyond podium towers and
+  sawtooth; parking stripes aligned per lot without the 5° rounding;
+  landmark variants by flavour pack (e.g. shrine instead of church).
+
+- **Podium follows the block form** (user, 2026-10-16) — the podium fabric
+  today is a rectangle 0.45-0.65 of the fit box; wanted: a podium that fills
+  the buildable block outline (setbacks applied) with 1-3 towers on top, as
+  in the user's reference picture. Candidate for phase B.
+
+- **Highway strip rework** (user, 2026-10-16) — the strip fabric is one row
+  of slabs 15-60 m wide, 14-30 m deep along the highway; the user calls it
+  "very boring". Wanted: mixed depths, service roads, gaps and yards,
+  drive-ins, occasional big boxes or tower blocks facing the highway.
+
+- **Parking lot generator** (user, 2026-10-16) — parking lots today are a
+  tint with stall stripes every 2.5 m, "rows and rows" with nothing else, and
+  the lot is always exactly the building's width. Wanted: a generator that
+  lays each lot out like a real one (stalls 2.5 × 5 m, double bays 10 m,
+  aisles 6 m, fire lane along the building, walkway to the entrance, entries
+  from the street, islands at the row ends) with varied styles: rows
+  perpendicular or parallel to the hall, lots on the front and back, lots on
+  two sides, walkways around the shop itself, small rear lots with one aisle
+  behind shophouse rows (sheet temp/sheet/parking.html A/B/C, all three
+  approved). Lots are never the same width as the building. Not only malls
+  and shops: residential blocks, company headquarters and the like get lots
+  too, but not all of them, since some have underground parking that must
+  not show on the map. Own round after the building pass merge; needs a
+  spec.
+
+- **Template gate rejections (phase A)** (2026-10-15, updated 2026-10-16) —
+  after the final fix wave (E4, A1 and E1 classes gone) the acceptance gate
+  still drops 1-9 buildings per reference seed (P1 6, S42 3, S782 9, S426 1,
+  S2268 8): A15/shophouse, B1/blockfill, A16 (rows, shophouse) and
+  A4/perimeter. The lot falls back to its filler kind. Fix the templates so
+  the gate catches 0; expose `fillLots` `rejected` for a ratchet (below).
+
+- **Blocks over water** (2026-10-15) — block cutting lets a block lie in
+  water (seed 782008753: B8227, B8232); the lot pass drops every building
+  there, so the blocks stay empty. Cut the block by the shore or drop it.
+
+- **Building pass deferred minors** (2026-10-15) — `fixtures.ts` imports
+  vitest; holes from the offset union are dropped in `buildable`; hairpin
+  reflex direction is arbitrary; clipper near-collinear retry needs a comment
+  and a tolerance of about 0.5 m² (and other clip call sites check); E6 is
+  null on tall boxes; A4 corner floor 10 × 10 vs the table's 20 × 20;
+  `layout.ts` is large (split `wholeblock.ts`); `insetRing` point reflection is
+  reachable via compound and infill; `forceStyle` test is weak; lots are drawn
+  outside the land clip; interactive lots are one path per kind; the villas
+  uicheck scene shows no pools; uicheck hard-codes 4000 m; the sparse-block
+  water excusal could excuse a concave dry block. From the final review
+  (2026-10-16): plaza and megablock fallback lots use the centreline block
+  footprint, not the setback buildable (M5); `ring`/`unring`/`ccw`/`dist`
+  are redeclared in five lots files and `simplified()` is copied into the
+  sector test (M6); `generate.ts` drops `fillLots` `rejected`, expose it
+  for a per-seed rejection ratchet (M9); the block style comes from the
+  first piece, so a multi-piece strip block whose second piece drew sheds
+  renders as frontage (M10); eight commit subjects on `spec/buildings` run
+  over 72 chars, watch it on the next branch (M11).
+
+- **Click a building to see its type** (user, 2026-10-15) — tapping a
+  building shows what it is (shape id, fabric/block style, lot kind, maybe
+  the composite it belongs to). Needs per-building hit targets in the SVG
+  (today lots and buildings are one `<path>` per kind) plus a small popover.
+  Do it right after the phase A merge: a bigbox block (striped parking +
+  halls, e.g. seed 42 Carbon Terrace) reads like a podium block (hatched
+  podium + towers, Cobalt Terrace).
+
+- **Mobile-friendly generator** (user, 2026-10-15) — the generator UI has
+  to work on a phone: touch pan/zoom on the map, knob panel as a drawer or
+  bottom sheet, no hover-only affordances, sane layout under ~400 px wide.
 
 - **Multi-language UI** — English first, German second. UI strings are
   externalized from day one (no hardcoded labels in components) so adding

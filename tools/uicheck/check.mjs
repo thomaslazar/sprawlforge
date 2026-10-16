@@ -61,7 +61,8 @@ if (!(await page.locator('svg text').allTextContents()).some((t) => /^[\d.]+ ?(m
 const buildings = await countAttr(page, 'svg [data-buildings]')
 if (buildings < 50) fail(`expected a dense map, got ${buildings} buildings`)
 
-if ((await page.locator('svg path[data-alleys]').count()) !== 1) fail('expected exactly one alleys path')
+if ((await page.locator('svg path[data-lots]').count()) < 1) fail('expected lot paths')
+if ((await page.locator('svg path[data-details]').count()) < 1) fail('expected a building details path')
 
 const pois = await page.locator('svg circle[data-id^="P"]').count()
 if (pois < 1) fail('no POIs rendered')
@@ -385,6 +386,37 @@ await page.goto(`${BASE}/?seed=42&tags=inland,corp-run`)
 await page.waitForSelector('svg')
 await page.screenshot({ path: `${OUT}/compound.png` })
 if ((await page.locator('svg [data-compound]').count()) < 1) fail('corp-run: no compound rendered')
+
+// building fabrics (spec 2026-10-15): wheel-zoom to ~sizeM visible at a map point (all maps here are 4000 m), assert lots and buildings render
+async function zoomShot(url, x, y, sizeM, name) {
+  await page.goto(`${BASE}/?${url}`)
+  await page.waitForSelector('svg [data-buildings]', { state: 'attached' })
+  await page.waitForTimeout(1500) // the worker result lands and the view settles
+  await page.getByLabel('Show POIs').uncheck()
+  const box = await page.locator('.map-viewport svg').first().boundingBox()
+  const side = Math.min(box.width, box.height) // the square map is letterboxed inside the svg box
+  const px = box.x + (box.width - side) / 2 + (x / 4000) * side, py = box.y + (box.height - side) / 2 + (y / 4000) * side
+  await page.mouse.move(px, py)
+  const z = (await readTransform()).zoom
+  for (let i = 0; i < 60 && (await readTransform()).zoom / z < 4000 / sizeM; i++) { await page.mouse.wheel(0, -240); await page.waitForTimeout(30) }
+  await page.waitForTimeout(600)
+  const view = await page.locator('.map-viewport').locator('xpath=..').boundingBox() // drag the point (still under the cursor) to the view centre
+  await page.mouse.down(); await page.mouse.move(view.x + view.width / 2, view.y + view.height / 2, { steps: 8 }); await page.mouse.up()
+  await page.waitForTimeout(600)
+  // these exists-asserts cannot fail (the paths always exist, whatever the view shows); the screenshots are the check
+  if ((await page.locator('svg [data-lots]').count()) < 1) fail(`buildings-${name}: no lots rendered`)
+  if ((await page.locator('svg [data-buildings]').count()) < 1) fail(`buildings-${name}: no buildings rendered`)
+  await page.screenshot({ path: `${OUT}/buildings-${name}.png` })
+}
+const S42Q = 'seed=42&tags=coastal,medium,dense,fringe,lively,mixed,river,arcology&pack=generic&theme=print'
+await zoomShot(S42Q, 3486, 3472, 300, 'perimeter') // S42 B5201
+await zoomShot(S42Q, 2707, 1916, 300, 'terrace') // S42 B1012
+await zoomShot(S42Q, 2857, 3244, 300, 'zeilen') // S42 B4601
+await zoomShot(S42Q, 2416, 2571, 300, 'podium') // S42 B2405 (podium blocks hold one building each)
+await zoomShot(S42Q, 2985, 1951, 300, 'bigbox') // S42 B0734 (bigbox blocks hold 1-3 buildings)
+await zoomShot('seed=2&tags=coastal,medium,dense,fringe,lively,mixed,river,arcology&pack=generic&theme=print', 2535, 1271, 300, 'villas') // seed 2 B0602 (no villas on S42/S2268/S426)
+await zoomShot('seed=14&tags=coastal,medium,dense,fringe,lively,mixed,river,arcology&pack=generic&theme=print', 3003, 409, 300, 'megablock') // seed 14 B1301
+await zoomShot('seed=2268324149&tags=coastal,medium,packed,balanced,quiet,planned&pack=generic&theme=print', 2824, 1260, 300, 'compound') // S2268 B2707
 
 // water-heavy organic fabric: crooked streets + bridges coexist
 await page.goto(`${BASE}/?seed=42&tags=coastal,river,sprawl,small`)

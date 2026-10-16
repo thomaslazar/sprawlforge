@@ -4,7 +4,7 @@ import { generateName } from '../names/names'
 import { getPack } from '../names/packs'
 import { hashSeed, mulberry32 } from '../rng'
 import {
-  assignHighwayLevels, buildInterchanges, cutStreetsAtGround, highwayCrossings, noBuildStrips,
+  assignHighwayLevels, buildInterchanges, cutStreetsAtGround, highwayCrossings,
 } from '../streets/highway'
 import {
   buildPlanarGraph, clipFacesToLand, facesOf, dropSlivers, pruneDanglers, windowRing,
@@ -12,7 +12,8 @@ import {
 import { weldConverging } from '../streets/cleanup'
 import { FRONTAGE_ID_PREFIX, RoadIndex, endKey, pruneDangling } from '../streets/trace'
 import { distToPolyline } from '../terrain/rivers'
-import { SIDEWALK, clipSegmentToRing, corridorRects, fillLots, insetRing, isStripBlock, longestEdgeAngle } from '../streets/lots'
+import { SIDEWALK, clipSegmentToRing, insetRing, isStripBlock, longestEdgeAngle } from '../streets/lots'
+import { fillLots } from '../lots'
 import { sampleTerrain } from '../terrain'
 import { HIGHWAY_WIDTH, trimFrontage } from '../streets/highway'
 import { GENERATOR_VERSION, type Block, type District, type HighwaySegment, type Road, type SectorModel, type SectorParams, type Terrain } from '../types'
@@ -453,13 +454,10 @@ export function generateSector(params: SectorParams): SectorModel {
 
   const frontageRoads = roads.filter((r) => r.id.startsWith(FRONTAGE_ID_PREFIX))
   const compoundPicks = selectCompounds(namedDistricts, rawBlocks, params, terrain, (b) => isStripBlock(b, highway, frontageRoads), roads.filter((r) => r.class !== 'highway'), { arcologies, megablocks })
-  const { buildings, blocks, megablockFootprints, compounds } = fillLots(namedDistricts, rawBlocks, params, terrain, [
-    ...(highway ? noBuildStrips(highway, segments) : []),
-    ...roads.filter((r) => r.class !== 'highway').flatMap((r) => corridorRects(r.points, r.width / 2 + SIDEWALK)),
-  ], undefined, { arcologies, megablocks }, highway, frontageRoads, compoundPicks)
+  const { buildings, lots, blocks, megablockCores: cores, compounds } = fillLots(namedDistricts, rawBlocks, params, terrain, roads, { arcologies, megablocks }, hw[0], frontageRoads, compoundPicks)
   const names = compoundNames(compounds.length)
   const compoundsOut = compounds.map((c, i) => ({ ...c, name: names[i] }))
-  const megablocksOut = namedMegablocks.map((m) => ({ ...m, footprint: megablockFootprints.get(m.id) ?? [] }))
+  const megablocksOut = namedMegablocks.map((m) => ({ ...m, core: cores.get(m.id) ?? m.core, footprint: cores.get(m.id) ?? [] }))
   const finalDistricts = deriveDistricts(namedDistricts, blocks)
   const pois = placePois(finalDistricts, buildings, pack, params, { arcologies: namedArcologies, megablocks: megablocksOut }, compoundsOut)
   const piers = placePiers(finalDistricts, terrain, params)
@@ -477,6 +475,7 @@ export function generateSector(params: SectorParams): SectorModel {
     districts: finalDistricts,
     blocks,
     buildings,
+    lots,
     pois,
     piers,
     arcologies: namedArcologies,

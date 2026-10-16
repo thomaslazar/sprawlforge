@@ -17,6 +17,7 @@ const base: SectorParams = {
   landform: 'coastal', river: false, lakes: false, islands: false, piers: false, arcology: false, megablock: false, pack: 'generic', theme: 'neon',
 }
 const model = generateSector(base)
+const podiumCount = (svg: string) => (svg.match(/<path data-podiums="1" d="([^"]*)"/)?.[1].split('M').length ?? 1) - 1
 const frontageCount = (svg: string) => [...svg.matchAll(/<path data-frontage="1" data-count="(\d+)"/g)].reduce((a, x) => a + Number(x[1]), 0)
 
 describe('renderSector', () => {
@@ -33,7 +34,7 @@ describe('renderSector', () => {
     const svg = renderSector(model, getTheme('neon'))
     for (const d of model.districts) expect(svg).toContain(`data-id="${d.id}"`)
     for (const p of model.pois) expect(svg).toContain(`data-id="${p.id}"`)
-    expect(svg.match(/<polygon data-id="BLD/g)!.length + frontageCount(svg)).toBe(model.buildings.length) // strip lots are one data-frontage path
+    expect(svg.match(/<polygon data-id="BLD/g)!.length + frontageCount(svg) + podiumCount(svg)).toBe(model.buildings.length) // strip lots are one data-frontage path
   })
   // field-driven irregularity samples the noise field per cut (arterials
   // and streets both), so a 6km sector's extra fabric pushes this past the
@@ -74,7 +75,7 @@ describe('renderSector', () => {
     roads: [],
     districts: [],
     blocks: [],
-    buildings: [],
+    buildings: [], lots: [],
     pois,
     piers: [],
     arcologies: [], megablocks: [], compounds: [],
@@ -113,7 +114,7 @@ describe('renderSector', () => {
     // proves the land-clip actually confines the fill (C2)
     districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, poly: rectPoly({ x: 0, y: 0, w: 1000, h: 1000 }), irregularity: 0.5, shore: true, labelAt: { x: 500, y: 500 }, flags: {} }],
     blocks: [],
-    buildings: [],
+    buildings: [], lots: [],
     pois: [],
     piers: [{ id: 'PR01', points: [{ x: 700, y: 500 }, { x: 760, y: 500 }], width: 6 }],
     arcologies: [], megablocks: [], compounds: [],
@@ -134,7 +135,7 @@ describe('renderSector', () => {
       ],
       districts: [{ id: 'D01', zone: 'corp', name: 'Test District', bounds: { x: 0, y: 0, w: 1000, h: 1000 }, poly: rectPoly({ x: 0, y: 0, w: 1000, h: 1000 }), irregularity: 0.5, shore: false, labelAt: { x: 500, y: 500 }, flags: {} }],
       blocks: [],
-      buildings: [],
+      buildings: [], lots: [],
       pois: [poi('P01', 'Alpha Tower', 500, 600)],
       piers: [],
       arcologies: [], megablocks: [], compounds: [],
@@ -157,7 +158,7 @@ describe('renderSector', () => {
       meta: { seed: 1, generatorVersion: GENERATOR_VERSION, params: base, sizeM: 1000, metroSeed: 1 },
       terrain: { landform: 'inland', river: false, lakes: false, islands: false, metroSeed: 1, water: [], land: [[[[0, 0], [1000, 0], [1000, 1000], [0, 1000]]]], riverSlice: null },
       roads: [{ id: 'RH', class: 'highway', points: [{ x: 0, y: 500 }, { x: 900, y: 500 }], width: 20, name: 'Highway', bridge: false, segments: [seg(0, 0.34, 'ground'), seg(0.34, 0.67, 'elevated'), seg(0.67, 1, 'sunken')] }],
-      districts: [], blocks: [], buildings: [], pois: [], piers: [], arcologies: [], megablocks: [], compounds: [],
+      districts: [], blocks: [], buildings: [], lots: [], pois: [], piers: [], arcologies: [], megablocks: [], compounds: [],
     }
     const svg = renderSector(m, theme)
     const group = (l: string) => svg.match(new RegExp(`<g data-level="${l}">[\\s\\S]*?</g>`))![0]
@@ -312,7 +313,7 @@ describe('renderSector', () => {
     expect(ia).not.toContain('<filter id="glow"')
     expect(ia).not.toContain('<polygon data-id="BLD')
     const sum = (re: RegExp) => [...ia.matchAll(re)].reduce((a, x) => a + Number(x[1]), 0)
-    expect(sum(/<path data-buildings="1" data-count="(\d+)"/g) + frontageCount(ia) + (ia.match(/<polygon points=[^>]*stroke-width="0.5"/g) ?? []).length).toBe(m.buildings.length)
+    expect(sum(/<path data-buildings="1" data-count="(\d+)"/g) + frontageCount(ia) + podiumCount(ia) + (ia.match(/<polygon points=[^>]*stroke-width="0.5"/g) ?? []).length).toBe(m.buildings.length)
     expect(cnt(ia, 'data-streets')).toBe(m.roads.filter((r) => r.class === 'street' && !r.bridge).length)
     expect(cnt(ia, 'data-ramps')).toBe(m.roads.filter((r) => r.class === 'ramp' && !r.bridge).length)
     expect(cnt(ia, 'data-junctions')).toBe(junctions)
@@ -336,11 +337,38 @@ describe('renderSector', () => {
   })
 })
 
-describe('alleys', () => {
-  it('alleys render as one path in interactive mode', () => {
-    const svg = renderSector(model, getTheme('neon'), { interactive: true })
-    expect(svg.match(/<path data-alleys/g)!.length).toBe(1)
-    expect(svg.indexOf('data-alleys')).toBeLessThan(svg.indexOf('data-streets'))
+const hsl = (hex: string): [number, number] => {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255)
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, l = (mx + mn) / 2
+  if (!d) return [0, 0]
+  const h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4
+  return [(h * 60 + 360) % 360, d / (1 - Math.abs(2 * l - 1))]
+}
+describe('lots and details', () => {
+  const s42 = { ...base, seed: 42, size: 4, landform: 'coastal', river: true, arcology: true } as SectorParams
+  it('lot and details paths in both modes', { timeout: 120000 }, () => {
+    const m = generateSector(s42)
+    for (const interactive of [false, true]) {
+      const svg = renderSector(m, getTheme('neon'), { interactive })
+      for (const k of ['parking', 'plaza', 'yard', 'green'] as const) {
+        const n = m.lots.filter((l) => l.kind === k).length
+        if (n) expect(svg).toContain(`<path data-lots="${k}" data-count="${n}"`)
+      }
+      expect(svg.indexOf('data-lots')).toBeLessThan(svg.indexOf('data-buildings') === -1 ? svg.indexOf('data-id="BLD') : svg.indexOf('data-buildings'))
+      expect(svg).toMatch(/<path data-details="1"[^>]*vector-effect="non-scaling-stroke"/)
+      expect(svg).toMatch(/<pattern id="parking-\d+"/)
+      const towers = m.buildings.filter((b) => ['A19', 'E3', 'E5'].includes(b.shape) && b.details?.length)
+      if (towers.length) {
+        const d = svg.match(/<path data-towers="1" d="([^"]*)" fill="#/)![1]
+        expect(d.split('M').length - 1).toBe(towers.reduce((a, b) => a + b.details!.length, 0))
+        expect(svg.indexOf('data-towers')).toBeLessThan(svg.indexOf('data-details'))
+      }
+      expect(podiumCount(svg)).toBe(m.buildings.filter((b) => b.shape === 'A19').length)
+      expect(svg).toContain('<pattern id="podium-hatch"')
+    }
+  })
+  it('every theme has a green lot tint', () => {
+    for (const t of Object.values(themes)) { const [h, s] = hsl(t.lot.green); expect(h, t.id).toBeGreaterThanOrEqual(80); expect(h).toBeLessThanOrEqual(160); expect(s).toBeGreaterThanOrEqual(0.2) }
   })
 })
 
@@ -403,16 +431,14 @@ describe('landmarks', () => {
       const hiveIds = new Set(fringe.blocks.filter((b) => b.flags.megablock).map((b) => b.id))
       const hive = fringe.buildings.filter((b) => hiveIds.has(b.blockId))
       expect(hive.length).toBeGreaterThan(0)
-      if (!interactive) expect(m.match(/<polygon data-id="BLD/g)!.length + frontageCount(m)).toBe(fringe.buildings.length) // each once: hive cells only in the landmark draw
+      if (!interactive) expect(m.match(/<polygon data-id="BLD/g)!.length + frontageCount(m) + podiumCount(m)).toBe(fringe.buildings.length) // each once: hive cells only in the landmark draw
       else {
         const generic = m.match(/<path data-buildings[^>]*>/g)!.join('')
-        expect(generic.split('M').length - 1 + frontageCount(m)).toBe(fringe.buildings.length - hive.length)
+        expect(generic.split('M').length - 1 + frontageCount(m) + podiumCount(m)).toBe(fringe.buildings.length - hive.length)
         expect(m).not.toContain('<polygon data-id="BLD')
       }
-      const alleyPaths = m.match(/<path data-alleys[^>]*>/g) ?? []
-      expect(alleyPaths.length).toBeGreaterThan(0)
-      const generic = alleyPaths.join('')
-      expect(generic).not.toContain(getTheme('neon').megablock.alley)
+      expect(m).toMatch(/<path data-landmark-alleys="1" d="M/) // the megablock draw keeps its alleys
+      expect(m).not.toContain('data-alleys="1"') // the generic alley path is gone
       expect(m).toContain('data-landmark-label=""') // valueless attrs are invalid XML, which breaks PNG export
     }
   })
@@ -424,8 +450,8 @@ describe('landmarks', () => {
     for (const interactive of [false, true]) {
       const svg = renderSector(m, getTheme('neon'), { interactive })
       expect(svg).toContain(`<path data-frontage="1" data-count="${count}"`)
-      if (interactive) expect(svg.match(/<path data-buildings[^>]*>/g)!.join('').split('M').length - 1).toBe(m.buildings.length - count)
-      else expect(svg.match(/<polygon data-id="BLD/g)!.length).toBe(m.buildings.length - count)
+      if (interactive) expect(svg.match(/<path data-buildings[^>]*>/g)!.join('').split('M').length - 1 + podiumCount(svg)).toBe(m.buildings.length - count)
+      else expect(svg.match(/<polygon data-id="BLD/g)!.length + podiumCount(svg)).toBe(m.buildings.length - count)
     }
   })
 })

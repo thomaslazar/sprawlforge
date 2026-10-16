@@ -1,4 +1,18 @@
-import { Clipper, Clipper64, ClipType, FillRule, type Path64, type Paths64 } from 'clipper2-js'
+import { Clipper, Clipper64, ClipType, FillRule, InternalClipper, Point64, type Path64, type Paths64 } from 'clipper2-js'
+
+// clipper2-js 1.2.4 ports C#'s struct Point64 as a shared object: getIntersectPoint returns an edge END
+// (the input vertex's own point) when t <= 0 or >= 1, and addNewIntersectNode then moves that point in
+// place, so an input vertex walks onto another's scanline. A ring whose vertices all end up on one y sends
+// getCurrYMaximaVertex round it forever (the seed-42 default-params hang). Hand out a copy instead.
+const getIntersectPoint = InternalClipper.getIntersectPoint
+if (!(getIntersectPoint as { patched?: boolean }).patched) {
+  const patched: typeof getIntersectPoint & { patched?: boolean } = (a, b, c, d) => {
+    const r = getIntersectPoint(a, b, c, d)
+    return r.ip === a || r.ip === b ? { ip: new Point64(r.ip.x, r.ip.y), success: r.success } : r
+  }
+  patched.patched = true
+  InternalClipper.getIntersectPoint = patched
+}
 
 export type Ring = [number, number][]
 export type Polygon = Ring[]
@@ -57,6 +71,11 @@ function run(op: ClipType, subj: Geom, clips: Geom[]): MultiPolygon {
   if (!ok) return [] // NaN / Infinity in the input
   const sol: Paths64 = []
   if (!c.execute(op, FillRule.NonZero, sol)) return []
+  return toMulti(sol)
+}
+
+/** rebuild polygons (outer + holes) from raw clipper output */
+function toMulti(sol: Paths64): MultiPolygon {
   // clipper2-js 1.2.4 emits consecutive duplicate and collinear vertices: trim both
   const rings = sol
     .map((p) => Clipper.trimCollinear(p.filter((q, i) => { const r = p[(i + p.length - 1) % p.length]; return q.x !== r.x || q.y !== r.y }), false))
@@ -85,3 +104,12 @@ export const intersection = (a: Geom, ...b: Geom[]): MultiPolygon => run(ClipTyp
 /** a minus the union of the subtrahends */
 export const difference = (a: Geom, ...b: Geom[]): MultiPolygon => run(ClipType.Difference, a, b)
 export const union = (a: Geom, ...b: Geom[]): MultiPolygon => run(ClipType.Union, a, b)
+
+/** positive-fill union of one self-overlapping ring, taken as given (no reorientation): loops of the opposite winding vanish */
+export const unionPositive = (ring: Ring): MultiPolygon => {
+  if (ring.some(([x, y]) => !Number.isFinite(x) || !Number.isFinite(y))) return []
+  const c = new Clipper64()
+  c.addSubjectPaths([ring.map(([x, y]) => ({ x: Math.round(x * S), y: Math.round(y * S) }))])
+  const sol: Paths64 = []
+  return c.execute(ClipType.Union, FillRule.Positive, sol) ? toMulti(sol) : []
+}

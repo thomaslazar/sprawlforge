@@ -37,7 +37,7 @@ each other.
 | 12 | Full graph + blocks | `sector/generate.ts` `facesFor`/`toBlocks` | Faces of highway + arterials + streets, each block tagged with `districtId` |
 | 13 | Wet spans | `sector/bridges.ts` `markWetSpans` | Road spans over water flagged as bridges |
 | 14 | Names | `sector/generate.ts`, `names/` | District and road names |
-| 15 | Lots | `streets/lots.ts` `fillLots` | Rotated lot grid per block, clipped to block ∩ land, minus highway no-build strips; corp-district blocks become walled compounds (`landmarks/compounds.ts` `selectCompounds`, one gate, fence + inner court lots) |
+| 15 | Lots | `lots/index.ts` `fillLots` | Per block: setback per side, buildable piece, fabric, strip lots or whole-block layout, catalogue shapes, acceptance gate (`lots/fitbox.ts` `accepted`; a failed building leaves a filler lot); corp-district blocks become walled compounds (`landmarks/compounds.ts` `selectCompounds`) |
 | 16 | Labels, POIs, piers | `sector/generate.ts` `deriveDistricts`, `sector/pois.ts`, `sector/piers.ts` | Label anchors, zone-filtered POIs, dock piers |
 | 17 | Render | `src/render/svg.ts` + `theme.ts` | One SVG string; themes are pure palettes |
 
@@ -61,6 +61,16 @@ the tracer never enters.
 
 `streets/irregularity.ts` — low-frequency noise field sampled by zoning
 and patch sizing so planned-grid quarters flow into organic ones spatially.
+
+### The lot pass (`src/gen/lots/`)
+
+Design: `docs/specs/2026-10-15-buildings-design.md`. One module per
+concern: `setback.ts` (per-side setback, buildable piece, road
+clearance), `fabrics.ts` (fabric choice per block), `strips.ts` (lot
+strips along the frontage), `fitbox.ts` (fit box per lot, acceptance
+gate), `shapes.ts` (shape catalogue), `composites.ts` (E1–E6),
+`layout.ts` (lots and buildings per fabric), `landmarks.ts` (arcology,
+megablock, compound lots), `index.ts` (orchestration, seeded streams).
 
 ## The app shell (`src/app/`)
 
@@ -112,13 +122,20 @@ known shortcuts (river corridor constant width, islet moat overlaps,
 label-width estimates, silent lot drops, …). One structural one:
 all polygon clipping goes through `src/gen/clip.ts` (clipper2-js on a 1 mm grid;
 it never throws, but its output rings need the adapter's cleanup).
+Deliberate exception: clipper2-js is pinned at exactly 1.2.4 and `clip.ts`
+patches its internal `getIntersectPoint` (it returned input vertices by
+reference); re-check the patch on any upgrade.
 
 ## Tunables (where knobs live)
 
 | Knob | File |
 |------|------|
 | Zone → irregularity bias | `sector/zoning.ts` `ZONE_IRREGULARITY` |
-| Zone → building size/fill | `streets/lots.ts` `ZONE_BUILD` |
+| Fabric weights / min fit / coherence | `lots/fabrics.ts` `FABRIC_WEIGHTS`, `MIN_FIT`, `COHERENCE` |
+| Strip depth / frontage / gap | `lots/strips.ts` `STRIP_PARAMS` |
+| Shape catalogue | `lots/shapes.ts` `SHAPES` |
+| Setbacks per edge class | `lots/setback.ts` `SETBACK` |
+| Vacant-lot chances | `lots/layout.ts` `VACANT` |
 | Street spacing / step / decay | `streets/trace.ts` `MAJOR`, `MINOR` |
 | Patch size / basis fields | `streets/field.ts` |
 | Irregularity field size / contrast | `streets/irregularity.ts` |

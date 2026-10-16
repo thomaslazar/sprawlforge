@@ -1,4 +1,4 @@
-import { inWindow, onWindowEdge, pointAtT, pointInRings, polylineLength, segHit, segmentCrossesPolyline, simplifyPolyline, slicePolyline, type Pt } from '../geometry'
+import { inWindow, onWindowEdge, pointAtT, pointInRings, polylineLength, segHit, segmentCrossesPolyline, simplifyPolyline, type Pt } from '../geometry'
 import { hashSeed, mulberry32, type Rng } from '../rng'
 import { effectiveIrregularity } from '../sector/zoning'
 import { inWater } from '../sector/bridges'
@@ -315,7 +315,7 @@ export function levelAt(segments: HighwaySegment[], t: number): HighwayLevel {
 // ------------------------------------------------------ crossings & cuts
 
 /** distance from p to the polyline plus the arc-length fraction of the nearest point */
-function nearestT(p: Pt, line: Pt[]): { dist: number; t: number } {
+export function nearestT(p: Pt, line: Pt[]): { dist: number; t: number } {
   const total = polylineLength(line) || 1
   let best = Infinity
   let bestT = 0
@@ -583,27 +583,6 @@ export function buildInterchanges(
 // -------------------------------------------------------------- no-build
 
 export const STRIP_HALF = HIGHWAY_WIDTH / 2 + 10
-
-export function noBuildStrips(highway: Road, segments: HighwaySegment[]): Pt[][] {
-  // consecutive non-sunken segments merge into one run, so per-segment caps leave no zero-width spikes in lots
-  const runs: Array<{ from: number; to: number }> = []
-  for (const s of segments) {
-    if (s.level === 'sunken') continue
-    const last = runs[runs.length - 1]
-    if (last && Math.abs(last.to - s.from) < 1e-9) last.to = s.to
-    else runs.push({ from: s.from, to: s.to })
-  }
-  return runs.map((s) => {
-    const line = slicePolyline(highway.points, s.from, s.to)
-    const off = (sign: number) => line.map((p, i) => {
-      const a = line[Math.max(0, i - 1)]
-      const b = line[Math.min(line.length - 1, i + 1)]
-      const n = normalize({ x: b.x - a.x, y: b.y - a.y })
-      return { x: p.x - n.y * STRIP_HALF * sign, y: p.y + n.x * STRIP_HALF * sign }
-    })
-    return [...off(1), ...off(-1).reverse()]
-  })
-}
 
 // -------------------------------------------------------------- frontage
 
