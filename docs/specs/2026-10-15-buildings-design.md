@@ -264,6 +264,62 @@ collinear vertices removed except arc points.
   in each, print included.
 - R34. Building batching is unchanged (per district interactive, per building static); hive/strip stay put.
 
+### 3.11 As built (phase A)
+
+Decisions the plan pinned where the spec was open:
+- Setback lookup: an edge's class comes from its midpoint (roads within 2 m via `RoadIndex`, highway by `levelAt`/`nearestT`, water 3 m outward, window, landmark ground); several: the largest; none: 7.5 m.
+- Positive-fill union: `clip.ts` `unionPositive(ring)` (FillRule.Positive, no reorientation); `buildable` makes the ring counter-clockwise first.
+- Sides of a piece: each buildable edge takes the setback of the footprint edge whose offset line holds its midpoint (+-0.05 m); chains break at turns >= 25 degrees and at setback changes.
+- Strip cutting: widths drawn along the arc length; a rest >= the minimum width is the last lot, a smaller rest widens the previous one; single-edge lots of an untrimmed strip are quads, the rest go through `clip.intersection`.
+- Fit box search: chord-frame cross-section sampled at every 1 m and at every vertex x; O(G*V + G^2); lots wider than 120 m use a 2 m grid, then refine.
+- Acceptance gate in `index.ts`: drops any non-arc building with an edge < 3 m, T5 width < 6 m or area < 60 m2; its lot becomes its filler kind.
+- Fabric order: cumulative draw in the R19 row order; R21 fallback by descending weight, then `rows`.
+- Arcs polygonised per R25 (24 per circle, 12 per semicircle, 6 per quarter; ellipse 24).
+- Whole-block lots: each buildable piece is one lot; `bigbox` splits into `parking` (front) and `yard` (hall).
+- Strip fabric only on sides with setback 7.5 m; the rest of the piece is one `yard`.
+- Megablock: hive BSP fills the whole buildable piece (user ruling below); cells failing the gate become `plaza`; `Megablock.core` and `.footprint` are the buildable.
+- Garage (F14): 60 x 40 front-aligned, details circles O 20 and O 4, lot `parking`.
+- Parking stripes: angle = longest lot edge rounded to 5 degrees.
+- `Block.alleys` filled for megablocks only; the generic alley path in `svg.ts` is gone.
+- Kept from `lots.ts`: `SIDEWALK`, `insetRing`, `insetByClipping`, `insetOrLargest`, `longestEdgeAngle`, `clipSegmentToRing`, `isStripBlock`, `isLandmarkBlock`.
+
+User rulings made during implementation (2026-10-15):
+- Podiums hatched and towers solid in the building fill (V3).
+- Fabric weights lowered for podium and perimeter (freed weight to rows/terrace/shophouse).
+- Podium template 0.45-0.65 of the fit box capped at 90 m, with 1-3 towers of 20-30 m placed anywhere.
+- Megablock: the hive fills the whole block again (the old chaotic look).
+- Coherence 0.6 -> 0.4.
+- Rear rings of buildings in dense interiors (4 m lane).
+- New `blockfill` fabric (party-wall mass with lightwells, B1/B1T).
+- Vacant lots and no identical neighbours (0.15/0.05/0.02).
+- Tower-park count = clamp(round(fit area / 3000), 2, 8), towers 12 m apart.
+- Arcologies without a ring road keep a built ring only 8 %; otherwise open grounds (`plaza` lot).
+- Highway strips 14-30 m deep, 15-60 m wide, skewed wide; deep strip blocks may draw sheds/bigbox; no hall > 120 m (bigbox over a 171 m fit box takes sheds); strip blocks never empty.
+- Plaza blocks hold 1-2 pavilions, never 0.
+- Sparse-block guard: a block >= 0.5 ha under 10 % built is re-laid with sheds/rows.
+- R22 plaza outset fallback 6 -> 4 -> 2 -> 0 m on tight pieces.
+- T8 road-clearance tolerance: setback - 2 m simplification budget.
+- T7 cross-block overlap excusal (FACE_LAP ratchet) for overlapping block faces.
+- Perf is not a gate while the passes keep changing ("i expect the performance to drop if we do the other passes").
+- D0 clipper2-js fix: `getIntersectPoint` returned input vertices by reference; `clip.ts` wraps it with a copy.
+
+Measurement (vite-node, dev container, timings unreliable under load; before = main 5768aab, after = this branch; non-rectilinear excludes arc/slanted catalogue shapes after, > 8-vertex footprints before):
+
+| seed | buildings before / after | cover % | non-rect % | < 60 m2 | min width < 6 m | triangles non-A16 | hive cells outside core | gate rejections |
+|---|---|---|---|---|---|---|---|---|
+| P1 (app tags) | 4780 / 10368 | 34.8 / 30.2 | 49.1 / 0.0 | 213 / 0 | 1094 / 0 | 45 / 0 | 0 / 0 | n/a / 37 |
+| S42 | 3394 / 10042 | 32.0 / 28.5 | 53.8 / 0.0 | 173 / 0 | 956 / 0 | 45 / 0 | 0 / 0 | n/a / 75 |
+| S782 | 13858 / 40242 | 34.6 / 30.5 | 43.4 / 0.0 | 409 / 0 | 2883 / 0 | 116 / 0 | 0 / 0 | n/a / 306 |
+| S426 | 1840 / 4310 | 35.0 / 32.3 | 55.4 / 0.0 | 45 / 0 | 394 / 0 | 34 / 0 | 0 / 0 | n/a / 37 |
+| S2268 | 8054 / 15017 | 39.3 / 32.6 | 37.3 / 0.0 | 338 / 0 | 1461 / 0 | 64 / 0 | 0 / 0 | n/a / 156 |
+
+Gate rejections are not 0: the gate catches mostly E4 (rows) and A1 outputs, so those templates still emit buildings that fail T4-T6 and the lot falls back to its filler. Left for a template fix.
+
+Known:
+- Browser and node models differ by about 1 % for the same params (ROADMAP).
+- S782 blocks B8227 and B8232 lie over water and stay empty (ROADMAP).
+- The compound scene reads weakly until phase B grounds it.
+
 ## 4. Phase B rules
 
 ### 4.1 Arcology grounds (C1–C3)

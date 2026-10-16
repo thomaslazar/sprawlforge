@@ -312,6 +312,26 @@ are one round of their own, after the building pass:
   ~10 s (fitBox search, strip trimming, road clearance per piece). Not a gate
   while the building passes keep changing; revisit once they settle.
 
+- **Building pass follow-ups** (spec §7, 2026-10-15) — alleys and rear lanes
+  for fabrics other than megablock; roof details beyond podium towers and
+  sawtooth; parking stripes aligned per lot without the 5° rounding;
+  landmark variants by flavour pack (e.g. shrine instead of church).
+
+- **Blocks over water** (2026-10-15) — block cutting lets a block lie in
+  water (seed 782008753: B8227, B8232); the lot pass drops every building
+  there, so the blocks stay empty. Cut the block by the shore or drop it.
+
+- **Building pass deferred minors** (2026-10-15) — `fixtures.ts` imports
+  vitest; holes from the offset union are dropped in `buildable`; hairpin
+  reflex direction is arbitrary; clipper near-collinear retry needs a comment
+  and a tolerance of about 0.5 m² (and other clip call sites check); E6 is
+  null on tall boxes; A4 corner floor 10 × 10 vs the table's 20 × 20;
+  `layout.ts` is large (split `wholeblock.ts`); `insetRing` point reflection is
+  reachable via compound and infill; `forceStyle` test is weak; lots are drawn
+  outside the land clip; interactive lots are one path per kind; the villas
+  uicheck scene shows no pools; uicheck hard-codes 4000 m; the sparse-block
+  water excusal could excuse a concave dry block.
+
 - **Click a building to see its type** (user, 2026-10-15) — tapping a
   building shows what it is (shape id, fabric/block style, lot kind, maybe
   the composite it belongs to). Needs per-building hit targets in the SVG
