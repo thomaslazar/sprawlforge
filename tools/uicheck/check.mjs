@@ -414,6 +414,17 @@ await zoomShot(S42Q, 2707, 1916, 300, 'terrace') // S42 B1012
 await zoomShot(S42Q, 2857, 3244, 300, 'zeilen') // S42 B4601
 await zoomShot(S42Q, 2416, 2571, 300, 'podium') // S42 B2405 (podium blocks hold one building each)
 await zoomShot(S42Q, 2985, 1951, 300, 'bigbox') // S42 B0734 (bigbox blocks hold 1-3 buildings)
+// click-to-inspect: the view is still on S42 B0734 — click its middle building (BLD6679, an A2 at 2981,1975 m)
+{
+  const at = await page.evaluate(() => { const svg = document.querySelector('.map-viewport svg'); const q = new DOMPoint(2981.3, 1974.6).matrixTransform(svg.getScreenCTM()); return { x: q.x, y: q.y } })
+  await page.mouse.click(at.x, at.y)
+  await page.waitForSelector('[data-popover]', { timeout: 3000 }).catch(() => fail('click-building: no popover'))
+  const txt = (await page.locator('[data-popover]').innerText().catch(() => '')) || ''
+  if (!/(A|B|E)\d+/.test(txt) || !txt.includes('bigbox')) fail(`click-building: popover text ${JSON.stringify(txt)}`)
+  await page.screenshot({ path: `${OUT}/click-building.png` })
+  await page.keyboard.press('Escape')
+  if ((await page.locator('[data-popover]').count()) !== 0) fail('click-building: Escape did not close the popover')
+}
 await zoomShot('seed=2&tags=coastal,medium,dense,fringe,lively,mixed,river,arcology&pack=generic&theme=print', 2535, 1271, 300, 'villas') // seed 2 B0602 (no villas on S42/S2268/S426)
 await zoomShot('seed=14&tags=coastal,medium,dense,fringe,lively,mixed,river,arcology&pack=generic&theme=print', 3003, 409, 300, 'megablock') // seed 14 B1301
 await zoomShot('seed=2268324149&tags=coastal,medium,packed,balanced,quiet,planned&pack=generic&theme=print', 2824, 1260, 300, 'compound') // S2268 B2707
