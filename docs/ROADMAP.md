@@ -373,14 +373,6 @@ are one round of their own, after the building pass:
   renders as frontage (M10); eight commit subjects on `spec/buildings` run
   over 72 chars, watch it on the next branch (M11).
 
-- **Click a building to see its type** (user, 2026-10-15) — tapping a
-  building shows what it is (shape id, fabric/block style, lot kind, maybe
-  the composite it belongs to). Needs per-building hit targets in the SVG
-  (today lots and buildings are one `<path>` per kind) plus a small popover.
-  Do it right after the phase A merge: a bigbox block (striped parking +
-  halls, e.g. seed 42 Carbon Terrace) reads like a podium block (hatched
-  podium + towers, Cobalt Terrace).
-
 - **Mobile-friendly generator** (user, 2026-10-15) — the generator UI has
   to work on a phone: touch pan/zoom on the map, knob panel as a drawer or
   bottom sheet, no hover-only affordances, sane layout under ~400 px wide.
