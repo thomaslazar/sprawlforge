@@ -58,6 +58,12 @@ export const strings = {
       pdf: 'Export PDF',
       pngScale: 'PNG resolution',
     },
+    inspect: {
+      fabric: 'Fabric',
+      lot: 'Lot',
+      district: 'District',
+      noBuilding: 'no building',
+    },
     crash: {
       title: 'SprawlForge hit an error and stopped.',
       hint: 'Reload the page to continue. If it keeps happening, please report the message below.',
