@@ -333,6 +333,16 @@ are one round of their own, after the building pass:
   "very boring". Wanted: mixed depths, service roads, gaps and yards,
   drive-ins, occasional big boxes or tower blocks facing the highway.
 
+- **More variety in what buildings actually are** (user, 2026-10-16) — the
+  click popover names a use from fabric × zone × shape (`src/gen/lots/uses.ts`)
+  with two or three names per cell, so whole districts repeat ("too many boat
+  sheds"). Wanted: longer and more specific lists per cell, weights so the
+  plain ones (warehouse, workshop, apartments) dominate and the specific ones
+  (boat shed, cold store, multiplex) stay rare, zone-flavoured extras from the
+  flavor pack, and a per-block or per-street theme so neighbours relate
+  (a row of workshops, not a random draw per building). Ties in with the POI
+  rework and the flavor packs.
+
 - **Parking lot generator** (user, 2026-10-16) — parking lots today are a
   tint with stall stripes every 2.5 m, "rows and rows" with nothing else, and
   the lot is always exactly the building's width. Wanted: a generator that

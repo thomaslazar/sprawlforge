@@ -421,7 +421,7 @@ await zoomShot(S42Q, 2985, 1951, 300, 'bigbox') // S42 B0734 (bigbox blocks hold
   await page.mouse.click(at.x, at.y)
   await page.waitForSelector('[data-popover]', { timeout: 3000 }).catch(() => fail('click-building: no popover'))
   const txt = (await page.locator('[data-popover]').innerText().catch(() => '')) || ''
-  if (!/(A|B|E)\d+/.test(txt) || !txt.includes('bigbox') || !txt.includes('square') || !/factory hall|warehouse|logistics depot|superstore|wholesale market|data centre|mall|multiplex|arena hall/i.test(txt)) fail(`click-building: popover text ${JSON.stringify(txt)}`)
+  if (!/(A|B|E)\d+/.test(txt) || !txt.includes('bigbox') || !txt.includes('square') || !/factory hall|warehouse|logistics depot|superstore|wholesale market|data centre|mall|multiplex|arena hall/i.test(txt.split('\n')[0])) fail(`click-building: popover text ${JSON.stringify(txt)}`)
   await page.screenshot({ path: `${OUT}/click-building.png` })
   await page.keyboard.press('Escape')
   if ((await page.locator('[data-popover]').count()) !== 0) fail('click-building: Escape did not close the popover')

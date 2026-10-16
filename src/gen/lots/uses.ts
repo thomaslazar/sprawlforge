@@ -3,7 +3,7 @@ import type { Block, BlockStyle, Building, District, ZoneType } from '../types'
 
 type Z = ZoneType
 /** names per fabric; a zone entry wins over `_` (the fallback for every other zone) */
-const USES: Record<BlockStyle, Partial<Record<Z | '_', string[]>>> = {
+export const USES: Record<BlockStyle, Partial<Record<Z | '_', string[]>>> = {
   bigbox: { _: ['superstore', 'wholesale market'], industrial: ['factory hall', 'warehouse', 'logistics depot'], docks: ['factory hall', 'warehouse', 'logistics depot'], entertainment: ['mall', 'multiplex', 'arena hall'], corp: ['data centre', 'superstore'] },
   sheds: { _: ['workshop', 'storage', 'repair shop'], docks: ['boat shed', 'cold store', 'storage'] },
   rows: { _: ['apartment row', 'terraced houses'], slum: ['tenements'], corp: ['back-street offices', 'row shops'], entertainment: ['back-street offices', 'row shops'], industrial: ["workers' housing"], docks: ["workers' housing"] },
@@ -16,7 +16,7 @@ const USES: Record<BlockStyle, Partial<Record<Z | '_', string[]>>> = {
   strip: { _: ['roadside store', 'motel', 'drive-in', 'filling station'] },
   'tower-park': { _: ['residential tower'], corp: ['office tower'], entertainment: ['hotel tower'] },
   podium: { _: ['corporate headquarters', 'hotel tower'] },
-  blockfill: { _: ['party-wall block'], industrial: ['factory block'] },
+  blockfill: { _: ['courtyard block'], industrial: ['factory block'] },
   garage: { _: ['parking garage'] },
   plaza: { _: ['pavilion', 'kiosk'] },
   megablock: { _: ['hive cell'] },

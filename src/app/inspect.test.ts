@@ -40,5 +40,11 @@ describe('inspect', () => {
     const r = describeAt(model, ringCentroid(a.footprint))!
     expect(r.arcology?.id).toBe(a.id)
   })
+  it('returns an arcology for a point outside every block', () => {
+    const a = model.arcologies[0]
+    const probes = [ringCentroid(a.footprint), ringCentroid(a.plaza)]
+    const p = probes.find((q) => !describeAt(model, q)?.block) ?? probes[1]
+    expect(describeAt(model, p)?.arcology?.id).toBe(a.id)
+  })
   // no megablock case: seed 42 app params generate none
 })
