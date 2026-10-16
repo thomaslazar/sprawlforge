@@ -197,7 +197,7 @@ export function App() {
             <b>{pick.pick.building ? `${pick.pick.building.shape} ${SHAPE_NAMES[pick.pick.building.shape] ?? ''}`.trim() : t.inspect.noBuilding}</b>
           </div>
           {pick.pick.block && <div>{t.inspect.fabric}: {pick.pick.block.style}</div>}
-          {pick.pick.lot && <div>{t.inspect.lot}: {pick.pick.lot.kind}</div>}
+          {pick.pick.lot && !pick.pick.building && <div>{t.inspect.lot}: {pick.pick.lot.kind}</div>}
           {pick.pick.district && <div>{t.inspect.district}: {pick.pick.district.name} ({pick.pick.district.zone})</div>}
         </div>
       )}

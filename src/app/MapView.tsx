@@ -80,7 +80,7 @@ export function MapView({
       onPointerUp={(e) => {
         const d0 = down.current
         down.current = null
-        if (d0 && Math.hypot(e.clientX - d0.x, e.clientY - d0.y) < 4) {
+        if (e.button === 0 && d0 && Math.hypot(e.clientX - d0.x, e.clientY - d0.y) < 4) {
           const svg = e.currentTarget.querySelector('svg')
           const m = svg?.getScreenCTM()
           if (svg && m) {
@@ -92,6 +92,7 @@ export function MapView({
         setDragging(false)
       }}
       onPointerCancel={() => {
+        down.current = null
         drag.current = null
         setDragging(false)
       }}

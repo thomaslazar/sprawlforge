@@ -14,11 +14,16 @@ beforeAll(() => {
 
 describe('inspect', () => {
   it('finds a building with its block and district', () => {
-    const b = model.buildings[0]
-    const r = describeAt(model, ringCentroid(b.footprint))!
-    expect(r.building?.id).toBe(b.id)
-    expect(r.block?.id).toBe(b.blockId)
-    expect(r.district?.id).toBe(b.districtId)
+    // a building whose centroid lies inside its own footprint (concave shapes may not)
+    let r: ReturnType<typeof describeAt> = null
+    for (const x of model.buildings.slice(0, 50)) {
+      const h = describeAt(model, ringCentroid(x.footprint))
+      if (h?.building?.id === x.id) { r = h; break }
+    }
+    expect(r).not.toBeNull()
+    const b = r!.building!
+    expect(r!.block?.id).toBe(b.blockId)
+    expect(r!.district?.id).toBe(b.districtId)
   })
   it('returns null far outside all blocks', () => {
     expect(describeAt(model, { x: -1000, y: -1000 })).toBeNull()
