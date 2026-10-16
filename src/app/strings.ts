@@ -63,6 +63,10 @@ export const strings = {
       lot: 'Lot',
       district: 'District',
       noBuilding: 'no building',
+      arcology: 'Arcology',
+      megablock: 'Megablock',
+      design: 'Design',
+      access: 'access',
     },
     crash: {
       title: 'SprawlForge hit an error and stopped.',

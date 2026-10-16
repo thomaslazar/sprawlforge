@@ -35,4 +35,10 @@ describe('inspect', () => {
     expect(r.building).toBeUndefined()
     expect(r.lot?.kind).toBe('parking')
   })
+  it('returns an arcology for a point inside its footprint', () => {
+    const a = model.arcologies[0]
+    const r = describeAt(model, ringCentroid(a.footprint))!
+    expect(r.arcology?.id).toBe(a.id)
+  })
+  // no megablock case: seed 42 app params generate none
 })

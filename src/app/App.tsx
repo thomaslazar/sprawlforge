@@ -5,6 +5,7 @@ import { getTheme } from '../render/theme'
 import type { GenRequest, GenResponse } from './genWorker'
 import { KnobPanel } from './KnobPanel'
 import { SHAPE_NAMES } from '../gen/lots/shapes'
+import { useName } from '../gen/lots/uses'
 import { describeAt, type Pick } from './inspect'
 import { t } from './strings'
 import { MapView } from './MapView'
@@ -15,6 +16,8 @@ import { materializeTags, resolveTags, type Tag } from './tags'
 function randomSeed(): number {
   return crypto.getRandomValues(new Uint32Array(1))[0]
 }
+
+const cap = (x: string) => x[0].toUpperCase() + x.slice(1)
 
 export function App() {
   // `applied` drives the visible map + URL. `pendingTags` is the chip
@@ -129,7 +132,7 @@ export function App() {
   useEffect(() => setPick(null), [model])
   const onPick = (p: { x: number; y: number }, at: { x: number; y: number }) => {
     const r = model && describeAt(model, p)
-    setPick(r && (r.building || r.lot) ? { pick: r, at } : null)
+    setPick(r && (r.building || r.lot || r.arcology || r.megablock) ? { pick: r, at } : null)
   }
 
   const exportName = `sprawlforge-sector-${params.seed}`
@@ -195,11 +198,22 @@ export function App() {
             pointerEvents: 'none',
           }}
         >
-          <div>
-            <b>{pick.pick.building ? `${pick.pick.building.shape} ${SHAPE_NAMES[pick.pick.building.shape] ?? ''}`.trim() : t.inspect.noBuilding}</b>
-          </div>
-          {pick.pick.block && <div>{t.inspect.fabric}: {pick.pick.block.style}</div>}
-          {pick.pick.lot && !pick.pick.building && <div>{t.inspect.lot}: {pick.pick.lot.kind}</div>}
+          {pick.pick.arcology || pick.pick.megablock ? (
+            <>
+              <div><b>{pick.pick.arcology ? t.inspect.arcology : t.inspect.megablock}</b></div>
+              <div>{(pick.pick.arcology ?? pick.pick.megablock)!.name}</div>
+              {pick.pick.arcology && <div>{t.inspect.design}: {pick.pick.arcology.design} · {t.inspect.access}: {pick.pick.arcology.access}</div>}
+            </>
+          ) : (
+            <>
+              <div>
+                <b>{pick.pick.building && pick.pick.block && pick.pick.district ? cap(useName(pick.pick.building, pick.pick.block, pick.pick.district)) : t.inspect.noBuilding}</b>
+              </div>
+              {pick.pick.building && <div>{`${pick.pick.building.shape} ${SHAPE_NAMES[pick.pick.building.shape] ?? ''}`.trim()}</div>}
+              {pick.pick.block && <div>{t.inspect.fabric}: {pick.pick.block.style}</div>}
+              {pick.pick.lot && !pick.pick.building && <div>{t.inspect.lot}: {pick.pick.lot.kind}</div>}
+            </>
+          )}
           {pick.pick.district && <div>{t.inspect.district}: {pick.pick.district.name} ({pick.pick.district.zone})</div>}
         </div>
       )}
