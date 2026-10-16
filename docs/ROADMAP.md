@@ -337,8 +337,11 @@ are one round of their own, after the building pass:
   perpendicular or parallel to the hall, lots on the front and back, lots on
   two sides, walkways around the shop itself, small rear lots with one aisle
   behind shophouse rows (sheet temp/sheet/parking.html A/B/C, all three
-  approved). Lots are never the same width as the building. Own round after
-  the building pass merge; needs a spec.
+  approved). Lots are never the same width as the building. Not only malls
+  and shops: residential blocks, company headquarters and the like get lots
+  too, but not all of them, since some have underground parking that must
+  not show on the map. Own round after the building pass merge; needs a
+  spec.
 
 - **Template gate rejections (phase A)** (2026-10-15, updated 2026-10-16) —
   after the final fix wave (E4, A1 and E1 classes gone) the acceptance gate
